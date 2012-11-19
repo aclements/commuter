@@ -5,25 +5,50 @@ import z3
 class Symbolic(object):
     pass
 
-def toz3(v):
-    if isinstance(v, Symbolic):
-        return v._v
-    return v
-
 solver = z3.Solver()
 
+# This maintains a type hierarchy that parallels Z3's symbolic type
+# hierarchy.  Each type wraps the equivalent Z3 type and defers to the
+# Z3 methods for all symbolic operations (wrapping the results in the
+# appropriate wrapper type).  However, these types add methods
+# specific to symbolic execution; most notably __nonzero__.
+
+class MetaZ3Wrapper(type):
+    """Metaclass to generate wrappers for Z3 ref methods.  The class
+    should have a __wrap__ dictionary mapping from (wrapper class
+    name, argument count) pairs to a list of method names to wrap.
+    This will generate all of the named methods, calling the
+    corresponding method on self._v, and wrapping the result using the
+    named wrapper class."""
+
+    def __new__(cls, classname, bases, classdict):
+        if "__wrap__" in classdict:
+            for (wrapclass, nargs), methods in classdict.pop("__wrap__").items():
+                for method in methods:
+                    args = ["o%d" % i for i in range(nargs - 1)]
+                    code = "def %s(%s):\n" % (method, ",".join(["self"] + args))
+                    for o in args:
+                        code += " if isinstance(%s, Symbolic): %s=%s._v\n" % \
+                            (o, o, o)
+                    code += " return %s(self._v.%s(%s))" % \
+                        (wrapclass or "", method, ",".join(args))
+                    locals_dict = {}
+                    exec code in globals(), locals_dict
+                    classdict[method] = locals_dict[method]
+
+        return type.__new__(cls, classname, bases, classdict)
+
 class SExpr(Symbolic):
+    __metaclass__ = MetaZ3Wrapper
+
     def __init__(self, ref):
         if not isinstance(ref, z3.ExprRef):
             raise TypeError("SExpr expected ExprRef, got %s" %
                             type(ref).__name__)
         self._v = ref
 
-    def __eq__(self, o):
-        return SBool(self._v == toz3(o))
-
-    def __ne__(self, o):
-        return SBool(self._v != toz3(o))
+    __wrap__ = {("SBool", 2): ["__eq__", "__ne__"],
+                (None, 1): ["__str__", "__repr__"]}
 
 class SArith(SExpr):
     def __init__(self, ref):
@@ -32,11 +57,15 @@ class SArith(SExpr):
                             type(ref).__name__)
         super(SArith, self).__init__(ref)
 
-    def __add__(self, o):
-        return SArith(self._v + toz3(o))
-
-    def __sub__(self, o):
-        return SArith(self._v - toz3(o))
+    __wrap__ = {("SArith", 2):
+                    ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
+                     "__sub__", "__truediv__",
+                     "__radd__", "__rdiv__", "__rmod__", "__rmul__", "__rpow__",
+                     "__rsub__", "__rtruediv__"],
+                ("SArith", 1):
+                    ["__neg__", "__pos__"],
+                ("SBool", 2):
+                    ["__ge__", "__gt__", "__le__", "__lt__"]}
 
     def __nonzero__(self):
         return bool(self == 0)
@@ -123,7 +152,7 @@ class State(Struct):
         self.counter = anyInt('State.counter')
 
     def sys_inc(self):
-        self.counter = self.counter + 1
+        self.counter = 1+self.counter
 
     def sys_dec(self):
         self.counter = self.counter - 1

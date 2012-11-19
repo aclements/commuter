@@ -131,14 +131,14 @@ class State(Struct):
     def sys_iszero(self):
         return self.counter == 0
 
-def test(call1, call2):
+def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
-    s1 = State()
+    s1 = base()
     r11 = call1(s1)
     r12 = call2(s1)
 
-    s2 = State()
+    s2 = base()
     r21 = call2(s2)
     r22 = call1(s2)
 
@@ -159,4 +159,4 @@ def test(call1, call2):
 calls = [State.sys_inc, State.sys_dec, State.sys_iszero]
 for i in range(len(calls)):
     for j in range(i, len(calls)):
-        symbolic_apply(test, calls[i], calls[j])
+        symbolic_apply(test, State, calls[i], calls[j])

@@ -213,34 +213,34 @@ class State(Struct):
     def sys_iszero(self):
         return self.counter == 0
 
-class Queue(Struct):
-    __slots__ = ['elems', 'npop', 'npush']
+class Pipe(Struct):
+    __slots__ = ['elems', 'nread', 'nwrite']
 
     def __init__(self):
-        self.elems = anyDict('Queue.elems')
-        self.npop = anyInt('Queue.npop')
-        self.npush = anyInt('Queue.npush')
+        self.elems = anyDict('Pipe.elems')
+        self.nread = anyInt('Pipe.nread')
+        self.nwrite = anyInt('Pipe.nwrite')
 
-        assume(self.npop >= 0)
-        assume(self.npush >= self.npop)
+        assume(self.nread >= 0)
+        assume(self.nwrite >= self.nread)
 
-    def push(self, elem):
-        self.elems[self.npush] = elem
-        self.npush = self.npush + 1
+    def write(self, elem):
+        self.elems[self.nwrite] = elem
+        self.nwrite = self.nwrite + 1
 
-    def pop(self):
-        if self.npush == self.npop:
+    def read(self):
+        if self.nwrite == self.nread:
             return None
         else:
-            e = self.elems[self.npop]
-            self.npop = self.npop + 1
+            e = self.elems[self.nread]
+            self.nread = self.nread + 1
             return e
 
-    def push_a(self):
-        self.push(anyInt('Queue.pushitem.a'))
+    def write_a(self):
+        self.write(anyInt('Pipe.writeitem.a'))
 
-    def push_b(self):
-        self.push(anyInt('Queue.pushitem.b'))
+    def write_b(self):
+        self.write(anyInt('Pipe.writeitem.b'))
 
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
@@ -268,8 +268,8 @@ def test(base, call1, call2):
         print "  %s:" % str(model).replace("\n", "\n  "), res
 
 tests = [
-  (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
-  (Queue, [Queue.push_a, Queue.push_b, Queue.pop]),
+    (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+    (Pipe, [Pipe.write_a, Pipe.write_b, Pipe.read]),
 ]
 
 for (base, calls) in tests:

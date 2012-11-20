@@ -265,7 +265,7 @@ def test(base, call1, call2):
     if len(model) == 0:
         print "  any state:", res
     else:
-        print "  %s:" % model, res
+        print "  %s:" % str(model).replace("\n", "\n  "), res
 
 tests = [
   (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
@@ -276,3 +276,4 @@ for (base, calls) in tests:
     for i in range(len(calls)):
         for j in range(i, len(calls)):
             symbolic_apply(test, base, calls[i], calls[j])
+    print

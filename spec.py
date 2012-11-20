@@ -24,6 +24,13 @@ def str_state():
 # appropriate wrapper type).  However, these types add methods
 # specific to symbolic execution; most notably __nonzero__.
 
+# Monkey-patch __nonzero__ on Z3 types to make sure we don't
+# accidentally call it instead of our wrappers.
+def z3_nonzero(self):
+    raise RuntimeError("Cannot __nonzero__ a %s" % self.__class__)
+z3.ExprRef.__nonzero__ = z3_nonzero
+del z3_nonzero
+
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref methods.  The class
     should have a __wrap__ dictionary mapping from (wrapper class

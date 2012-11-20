@@ -100,7 +100,7 @@ class SDict(object):
                 return v
 
         ## XXX hard-coded to int values for now
-        newval = anyInt('someval')
+        newval = anyInt('%s[%s]' % (self._name_prefix, str(key._v)))
         self._items.append([key, newval])
         return newval
 

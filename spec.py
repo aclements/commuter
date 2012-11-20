@@ -43,6 +43,9 @@ class SArith(SExpr):
     def __sub__(self, o):
         return make_sexpr(self._v - toz3(o))
 
+    def __mul__(self, o):
+        return make_sexpr(self._v * toz3(o))
+
     def __nonzero__(self):
         return bool(self._v == 0)
 

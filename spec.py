@@ -171,7 +171,11 @@ def test(base, call1, call2):
     else:
         print "  %s:" % model, res
 
-calls = [State.sys_inc, State.sys_dec, State.sys_iszero]
-for i in range(len(calls)):
-    for j in range(i, len(calls)):
-        symbolic_apply(test, State, calls[i], calls[j])
+tests = [
+  (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+]
+
+for (base, calls) in tests:
+    for i in range(len(calls)):
+        for j in range(i, len(calls)):
+            symbolic_apply(test, base, calls[i], calls[j])

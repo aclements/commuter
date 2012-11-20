@@ -55,7 +55,7 @@ class SExpr(Symbolic):
             raise TypeError("SExpr expected ExprRef, got %s" % strtype(ref))
         self._v = ref
 
-    __wrap__ = {("make_sexpr", 2): ["__eq__", "__ne__"],
+    __wrap__ = {("wrap", 2): ["__eq__", "__ne__"],
                 (None, 1): ["__str__", "__repr__"]}
 
 class SArith(SExpr):
@@ -64,13 +64,13 @@ class SArith(SExpr):
             raise TypeError("SArith expected ArithRef, got %s" % strtype(ref))
         super(SArith, self).__init__(ref)
 
-    __wrap__ = {("make_sexpr", 2):
+    __wrap__ = {("wrap", 2):
                     ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
                      "__sub__", "__truediv__",
                      "__radd__", "__rdiv__", "__rmod__", "__rmul__", "__rpow__",
                      "__rsub__", "__rtruediv__",
                      "__ge__", "__gt__", "__le__", "__lt__"],
-                ("make_sexpr", 1):
+                ("wrap", 1):
                     ["__neg__", "__pos__"]}
 
 class SBool(SExpr):
@@ -119,19 +119,30 @@ class SBool(SExpr):
 
 def anyInt(name):
     """Return a symbolic value that can be any integer."""
-    return make_sexpr(z3.Int(name))
+    return wrap(z3.Int(name))
 
 #
 # Conversions to Z3 types and wrapper types
 #
 
-def toz3(val):
+def unwrap(val):
+    """Convert a value to a Z3 value.
+
+    If val is a simsym.Symbolic, returns the wrapped Z3 value.
+    Otherwise, simply returns val."""
+
     if isinstance(val, Symbolic):
         return val._v
     return val
 
-def make_sexpr(ref):
-    ## handle concrete types
+def wrap(ref):
+    """Convert a value to a simsym.Symbolic.
+
+    If ref is a Z3 symbolic value, wraps it in a simsym.Symbolic.
+    Otherwise, if ref is a concrete type supported by the symbolic
+    engine, returns value."""
+
+    # Handle concrete types
     if isinstance(ref, bool):
         return ref
 
@@ -159,7 +170,7 @@ def str_state():
 def assume(e):
     """Declare symbolic expression e to be True."""
 
-    solver.add(toz3(e))
+    solver.add(unwrap(e))
     sat = solver.check()
     if sat == z3.unsat:
         raise RuntimeError("Unsatisfiable assumption")

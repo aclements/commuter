@@ -328,12 +328,13 @@ def test(base, call1, call2):
     else:
         res = "commute"
 
-    solver.check()
-    model = solver.model()
-    if len(model) == 0:
+    asserts = solver.assertions()
+    if len(asserts) == 0:
         print "  any state:", res
     else:
-        print "  %s:" % str(model).replace("\n", "\n  "), res
+        print "  %s: %s" % \
+            (str(z3.simplify(z3.And(*asserts))).replace("\n", "\n  "),
+             res)
 
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),

@@ -293,6 +293,7 @@ class Struct(object):
     def __eq__(self, o):
         if self.__class__ != o.__class__:
             return NotImplemented
+        # XXX Should this indicate what field is not equal?
         for field in self.__slots__:
             if getattr(self, field) != getattr(o, field):
                 return False
@@ -398,6 +399,8 @@ def test(base, call1, call2):
     asserts = solver.assertions()
     if len(asserts) == 0:
         # XXX What if we have assertions, but they're vacuously true?
+        # XXX Can we filter out explicit assumptions?  I think we're
+        # only interested in the path condition.
         print "  any state:", res
     else:
         print "  %s: %s" % \

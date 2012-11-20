@@ -44,7 +44,7 @@ class SArith(SExpr):
         return make_sexpr(self._v - toz3(o))
 
     def __nonzero__(self):
-        return bool(self == 0)
+        return bool(self._v == 0)
 
 class SBool(SExpr):
     def __init__(self, ref):

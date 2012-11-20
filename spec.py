@@ -131,6 +131,8 @@ class SDict(object):
         self._items.append([key, value])
 
     def __eq__(self, o):
+        if not isinstance(o, SDict):
+            return False
         if len(self._items) != len(o._items):
             return False
         for (k, v) in self._items:
@@ -138,7 +140,46 @@ class SDict(object):
             for (k2, v2) in o._items:
                 if k == k2:
                     found = True
-                    if v != v2: return False;
+                    if v != v2: return False
+            if not found:
+                return False
+        return True
+
+    def __ne__(self, o):
+        return not self.__eq__(o)
+
+class SBag(object):
+    def __init__(self, name):
+        self._name_prefix = name
+        self._items = []
+        self._choices = 0
+
+    def add(self, v):
+        self._items.append(v)
+
+    def choose(self):
+        self._choices = self._choices + 1
+        choicevar = anyInt('%s.choose.%d' % (self._name_prefix, self._choices))
+        for i in range(0, len(self._items)):
+            if choicevar == i:
+                return self._items[i]
+
+        ## the bag also contains arbitrary other items
+        newvar = anyInt('%s.someitem.%d' % (self._name_prefix, self._choices))
+        return newvar
+
+    def __eq__(self, o):
+        if not isinstance(o, SBag):
+            return False
+
+        ol = list(o._items)
+        for e1 in self._items:
+            found = False
+            for e2 in ol:
+                if e1 == e2:
+                    ol.remove(e2)
+                    found = True
+                    break
             if not found:
                 return False
         return True
@@ -242,6 +283,33 @@ class Pipe(Struct):
     def write_b(self):
         self.write(anyInt('Pipe.writeitem.b'))
 
+class UnordPipe(Struct):
+    __slots__ = ['elems', 'nitem']
+
+    def __init__(self):
+        self.elems = SBag('UnordPipe.items')
+        self.nitem = anyInt('UnordPipe.nitem')
+
+        assume(self.nitem >= 0)
+
+    def u_write(self, elem):
+        self.elems.add(elem)
+        self.nitem = self.nitem + 1
+
+    def u_read(self):
+        if self.nitem == 0:
+            return None
+        else:
+            e = self.elems.choose()
+            self.nitem = self.nitem - 1
+            return e
+
+    def u_write_a(self):
+        self.u_write(anyInt('UnordPipe.writeitem.a'))
+
+    def u_write_b(self):
+        self.u_write(anyInt('UnordPipe.writeitem.b'))
+
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
@@ -270,6 +338,7 @@ def test(base, call1, call2):
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
     (Pipe, [Pipe.write_a, Pipe.write_b, Pipe.read]),
+    (UnordPipe, [UnordPipe.u_write_a, UnordPipe.u_write_b, UnordPipe.u_read]),
 ]
 
 for (base, calls) in tests:

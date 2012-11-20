@@ -89,21 +89,40 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
-class SDict(SExpr):
-    def __init__(self, ref):
-        if not isinstance(ref, z3.ArrayRef):
-            raise TypeError("SDict expected ArrayRef, got %s" % strtype(ref))
-        super(SDict, self).__init__(ref)
+class SDict(object):
+    def __init__(self, name):
+        self._name_prefix = name
+        self._items = []
 
     def __getitem__(self, key):
-        k = toz3(key)
-        v = z3.Select(self._v, k)
-        return make_sexpr(v)
+        for (k, v) in self._items:
+            if k == key:
+                return v
+
+        ## XXX hard-coded to int values for now
+        newval = anyInt('someval')
+        self._items.append([key, newval])
+        return newval
 
     def __setitem__(self, key, value):
-        k = toz3(key)
-        v = toz3(value)
-        z3.Store(self._v, k, v)
+        self._items = [(k, v) for (k, v) in self._items if k != key]
+        self._items.append([key, value])
+
+    def __eq__(self, o):
+        if len(self._items) != len(o._items):
+            return False
+        for (k, v) in self._items:
+            found = False
+            for (k2, v2) in o._items:
+                if k == k2:
+                    found = True
+                    if v != v2: return False;
+            if not found:
+                return False
+        return True
+
+    def __ne__(self, o):
+        return not self.__eq__(o)
 
 def make_sexpr(ref):
     ## handle concrete types
@@ -114,18 +133,13 @@ def make_sexpr(ref):
         return SArith(ref)
     if isinstance(ref, z3.BoolRef):
         return SBool(ref)
-    if isinstance(ref, z3.ArrayRef):
-        return SDict(ref)
     return SExpr(ref)
 
 def anyInt(name):
     return make_sexpr(z3.Int(name))
 
 def anyDict(name):
-    ## XXX hard-coded to int->int for now
-    keytype = z3.IntSort()
-    valuetype = z3.IntSort()
-    return make_sexpr(z3.Array(name, keytype, valuetype))
+    return SDict(name)
 
 def assume(e):
     if not e:

@@ -216,7 +216,12 @@ def anyDict(name):
     return SDict(name)
 
 def assume(e):
-    solver.add(e._v)
+    solver.add(toz3(e))
+    sat = solver.check()
+    if sat == z3.unsat:
+        raise RuntimeError("Unsatisfiable assumption")
+    elif sat != z3.sat:
+        raise RuntimeError("Uncheckable assumption")
 
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning

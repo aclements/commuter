@@ -205,8 +205,7 @@ def anyDict(name):
     return SDict(name)
 
 def assume(e):
-    if not e:
-        sys.exit(0)
+    solver.add(e._v)
 
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning

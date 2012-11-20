@@ -243,6 +243,7 @@ class State(Struct):
         # value of different State objects.  Will this scale to more
         # complex state?
         self.counter = anyInt('State.counter')
+        assume(self.counter >= 0)
 
     def sys_inc(self):
         self.counter = self.counter + 1

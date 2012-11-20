@@ -1,29 +1,9 @@
+"""Simple symbolic execution engine for Python."""
+
 import sys
 import os
 import z3
 import types
-
-class Symbolic(object):
-    pass
-
-def toz3(val):
-    if isinstance(val, Symbolic):
-        return val._v
-    return val
-
-def strtype(x):
-    if type(x) == types.InstanceType:
-        return x.__class__.__name__
-    else:
-        return type(x).__name__
-
-solver = z3.Solver()
-
-def str_state():
-    asserts = solver.assertions()
-    if len(asserts) == 0:
-        return None
-    return str(z3.simplify(z3.And(*asserts)))
 
 # This maintains a type hierarchy that parallels Z3's symbolic type
 # hierarchy.  Each type wraps the equivalent Z3 type and defers to the
@@ -37,6 +17,10 @@ def z3_nonzero(self):
     raise RuntimeError("Cannot __nonzero__ a %s" % self.__class__)
 z3.ExprRef.__nonzero__ = z3_nonzero
 del z3_nonzero
+
+class Symbolic(object):
+    """Root of the symbolic type wrapper hierarchy."""
+    pass
 
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref methods.  The class
@@ -129,6 +113,23 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
+#
+# Constructors
+#
+
+def anyInt(name):
+    """Return a symbolic value that can be any integer."""
+    return make_sexpr(z3.Int(name))
+
+#
+# Conversions to Z3 types and wrapper types
+#
+
+def toz3(val):
+    if isinstance(val, Symbolic):
+        return val._v
+    return val
+
 def make_sexpr(ref):
     ## handle concrete types
     if isinstance(ref, bool):
@@ -140,10 +141,24 @@ def make_sexpr(ref):
         return SBool(ref)
     return SExpr(ref)
 
-def anyInt(name):
-    return make_sexpr(z3.Int(name))
+#
+# Symbolic executor
+#
+
+solver = z3.Solver()
+
+def str_state():
+    """Return the current path constraint as a string, or None if the
+    path is unconstrained."""
+
+    asserts = solver.assertions()
+    if len(asserts) == 0:
+        return None
+    return str(z3.simplify(z3.And(*asserts)))
 
 def assume(e):
+    """Declare symbolic expression e to be True."""
+
     solver.add(toz3(e))
     sat = solver.check()
     if sat == z3.unsat:
@@ -152,6 +167,9 @@ def assume(e):
         raise RuntimeError("Uncheckable assumption")
 
 def symbolic_apply(fn, *args):
+    """Evaluate fn(*args) under symbolic execution.  The return value
+    of fn is ignored because it may have many return values."""
+
     # XXX We could avoid this fork if we were smarter about cleaning
     # up all but the first code path
     # XXX Return a list of return values of fn.
@@ -174,3 +192,13 @@ def symbolic_apply(fn, *args):
                 sys.stderr.write(line)
         sys.exit(0)
     os.waitpid(child, 0)
+
+#
+# Utilities
+#
+
+def strtype(x):
+    if type(x) == types.InstanceType:
+        return x.__class__.__name__
+    else:
+        return type(x).__name__

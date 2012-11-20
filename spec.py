@@ -46,8 +46,8 @@ class SArith(SExpr):
     def __mul__(self, o):
         return make_sexpr(self._v * toz3(o))
 
-    def __nonzero__(self):
-        return bool(self._v == 0)
+    def __ge__(self, o):
+        return make_sexpr(self._v >= toz3(o))
 
 class SBool(SExpr):
     def __init__(self, ref):
@@ -127,6 +127,10 @@ def anyDict(name):
     valuetype = z3.IntSort()
     return make_sexpr(z3.Array(name, keytype, valuetype))
 
+def assume(e):
+    if not e:
+        sys.exit(0)
+
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning
     # up all but the first code path
@@ -173,6 +177,35 @@ class State(Struct):
     def sys_iszero(self):
         return self.counter == 0
 
+class Queue(Struct):
+    __slots__ = ['elems', 'npop', 'npush']
+
+    def __init__(self):
+        self.elems = anyDict('Queue.elems')
+        self.npop = anyInt('Queue.npop')
+        self.npush = anyInt('Queue.npush')
+
+        assume(self.npop >= 0)
+        assume(self.npush >= self.npop)
+
+    def push(self, elem):
+        self.elems[self.npush] = elem
+        self.npush = self.npush + 1
+
+    def pop(self):
+        if self.npush == self.npop:
+            return None
+        else:
+            e = self.elems[self.npop]
+            self.npop = self.npop + 1
+            return e
+
+    def push_a(self):
+        self.push(anyInt('Queue.pushitem.a'))
+
+    def push_b(self):
+        self.push(anyInt('Queue.pushitem.b'))
+
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
@@ -200,6 +233,7 @@ def test(base, call1, call2):
 
 tests = [
   (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+  (Queue, [Queue.push_a, Queue.push_b, Queue.pop]),
 ]
 
 for (base, calls) in tests:

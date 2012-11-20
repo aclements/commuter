@@ -26,10 +26,10 @@ class SExpr(Symbolic):
         self._v = ref
 
     def __eq__(self, o):
-        return SBool(self._v == toz3(o))
+        return make_sexpr(self._v == toz3(o))
 
     def __ne__(self, o):
-        return SBool(self._v != toz3(o))
+        return make_sexpr(self._v != toz3(o))
 
 class SArith(SExpr):
     def __init__(self, ref):
@@ -38,10 +38,10 @@ class SArith(SExpr):
         super(SArith, self).__init__(ref)
 
     def __add__(self, o):
-        return SArith(self._v + toz3(o))
+        return make_sexpr(self._v + toz3(o))
 
     def __sub__(self, o):
-        return SArith(self._v - toz3(o))
+        return make_sexpr(self._v - toz3(o))
 
     def __nonzero__(self):
         return bool(self == 0)
@@ -86,8 +86,19 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
+def make_sexpr(ref):
+    ## handle concrete types
+    if isinstance(ref, bool):
+        return ref
+
+    if isinstance(ref, z3.ArithRef):
+        return SArith(ref)
+    if isinstance(ref, z3.BoolRef):
+        return SBool(ref)
+    return SExpr(ref)
+
 def anyInt(name):
-    return SArith(z3.Int(name))
+    return make_sexpr(z3.Int(name))
 
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning

@@ -1,9 +1,16 @@
 import sys
 import os
 import z3
+import types
 
 class Symbolic(object):
     pass
+
+def strtype(x):
+    if type(x) == types.InstanceType:
+        return x.__class__.__name__
+    else:
+        return type(x).__name__
 
 solver = z3.Solver()
 
@@ -23,7 +30,7 @@ class MetaZ3Wrapper(type):
 
     def __new__(cls, classname, bases, classdict):
         if "__wrap__" in classdict:
-            for (wrapclass, nargs), methods in classdict.pop("__wrap__").items():
+            for (wrapper, nargs), methods in classdict.pop("__wrap__").items():
                 for method in methods:
                     args = ["o%d" % i for i in range(nargs - 1)]
                     code = "def %s(%s):\n" % (method, ",".join(["self"] + args))
@@ -31,7 +38,7 @@ class MetaZ3Wrapper(type):
                         code += " if isinstance(%s, Symbolic): %s=%s._v\n" % \
                             (o, o, o)
                     code += " return %s(self._v.%s(%s))" % \
-                        (wrapclass or "", method, ",".join(args))
+                        (wrapper or "", method, ",".join(args))
                     locals_dict = {}
                     exec code in globals(), locals_dict
                     classdict[method] = locals_dict[method]
@@ -43,38 +50,31 @@ class SExpr(Symbolic):
 
     def __init__(self, ref):
         if not isinstance(ref, z3.ExprRef):
-            raise TypeError("SExpr expected ExprRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SExpr expected ExprRef, got %s" % strtype(ref))
         self._v = ref
 
-    __wrap__ = {("SBool", 2): ["__eq__", "__ne__"],
+    __wrap__ = {("make_sexpr", 2): ["__eq__", "__ne__"],
                 (None, 1): ["__str__", "__repr__"]}
 
 class SArith(SExpr):
     def __init__(self, ref):
         if not isinstance(ref, z3.ArithRef):
-            raise TypeError("SArith expected ArithRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SArith expected ArithRef, got %s" % strtype(ref))
         super(SArith, self).__init__(ref)
 
-    __wrap__ = {("SArith", 2):
+    __wrap__ = {("make_sexpr", 2):
                     ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
                      "__sub__", "__truediv__",
                      "__radd__", "__rdiv__", "__rmod__", "__rmul__", "__rpow__",
-                     "__rsub__", "__rtruediv__"],
-                ("SArith", 1):
-                    ["__neg__", "__pos__"],
-                ("SBool", 2):
-                    ["__ge__", "__gt__", "__le__", "__lt__"]}
-
-    def __nonzero__(self):
-        return bool(self == 0)
+                     "__rsub__", "__rtruediv__",
+                     "__ge__", "__gt__", "__le__", "__lt__"],
+                ("make_sexpr", 1):
+                    ["__neg__", "__pos__"]}
 
 class SBool(SExpr):
     def __init__(self, ref):
         if not isinstance(ref, z3.BoolRef):
-            raise TypeError("SBool expected BoolRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SBool expected BoolRef, got %s" % strtype(ref))
         super(SBool, self).__init__(ref)
 
     def __nonzero__(self):
@@ -111,8 +111,61 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
+class SDict(object):
+    def __init__(self, name):
+        self._name_prefix = name
+        self._items = []
+
+    def __getitem__(self, key):
+        for (k, v) in self._items:
+            if k == key:
+                return v
+
+        ## XXX hard-coded to int values for now
+        newval = anyInt('%s[%s]' % (self._name_prefix, str(key._v)))
+        self._items.append([key, newval])
+        return newval
+
+    def __setitem__(self, key, value):
+        self._items = [(k, v) for (k, v) in self._items if k != key]
+        self._items.append([key, value])
+
+    def __eq__(self, o):
+        if len(self._items) != len(o._items):
+            return False
+        for (k, v) in self._items:
+            found = False
+            for (k2, v2) in o._items:
+                if k == k2:
+                    found = True
+                    if v != v2: return False;
+            if not found:
+                return False
+        return True
+
+    def __ne__(self, o):
+        return not self.__eq__(o)
+
+def make_sexpr(ref):
+    ## handle concrete types
+    if isinstance(ref, bool):
+        return ref
+
+    if isinstance(ref, z3.ArithRef):
+        return SArith(ref)
+    if isinstance(ref, z3.BoolRef):
+        return SBool(ref)
+    return SExpr(ref)
+
 def anyInt(name):
-    return SArith(z3.Int(name))
+    return make_sexpr(z3.Int(name))
+
+def anyDict(name):
+    return SDict(name)
+
+def assume(e):
+    if not e:
+        sys.exit(0)
 
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning
@@ -160,14 +213,43 @@ class State(Struct):
     def sys_iszero(self):
         return self.counter == 0
 
-def test(call1, call2):
+class Queue(Struct):
+    __slots__ = ['elems', 'npop', 'npush']
+
+    def __init__(self):
+        self.elems = anyDict('Queue.elems')
+        self.npop = anyInt('Queue.npop')
+        self.npush = anyInt('Queue.npush')
+
+        assume(self.npop >= 0)
+        assume(self.npush >= self.npop)
+
+    def push(self, elem):
+        self.elems[self.npush] = elem
+        self.npush = self.npush + 1
+
+    def pop(self):
+        if self.npush == self.npop:
+            return None
+        else:
+            e = self.elems[self.npop]
+            self.npop = self.npop + 1
+            return e
+
+    def push_a(self):
+        self.push(anyInt('Queue.pushitem.a'))
+
+    def push_b(self):
+        self.push(anyInt('Queue.pushitem.b'))
+
+def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
-    s1 = State()
+    s1 = base()
     r11 = call1(s1)
     r12 = call2(s1)
 
-    s2 = State()
+    s2 = base()
     r21 = call2(s2)
     r22 = call1(s2)
 
@@ -185,7 +267,12 @@ def test(call1, call2):
     else:
         print "  %s:" % model, res
 
-calls = [State.sys_inc, State.sys_dec, State.sys_iszero]
-for i in range(len(calls)):
-    for j in range(i, len(calls)):
-        symbolic_apply(test, calls[i], calls[j])
+tests = [
+  (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+  (Queue, [Queue.push_a, Queue.push_b, Queue.pop]),
+]
+
+for (base, calls) in tests:
+    for i in range(len(calls)):
+        for j in range(i, len(calls)):
+            symbolic_apply(test, base, calls[i], calls[j])

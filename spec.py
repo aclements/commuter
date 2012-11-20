@@ -1,6 +1,7 @@
 import sys
 import os
 import z3
+import types
 
 class Symbolic(object):
     pass
@@ -10,13 +11,18 @@ def toz3(v):
         return v._v
     return v
 
+def strtype(x):
+    if type(x) == types.InstanceType:
+        return x.__class__.__name__
+    else:
+        return type(x).__name__
+
 solver = z3.Solver()
 
 class SExpr(Symbolic):
     def __init__(self, ref):
         if not isinstance(ref, z3.ExprRef):
-            raise TypeError("SExpr expected ExprRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SExpr expected ExprRef, got %s" % strtype(ref))
         self._v = ref
 
     def __eq__(self, o):
@@ -28,8 +34,7 @@ class SExpr(Symbolic):
 class SArith(SExpr):
     def __init__(self, ref):
         if not isinstance(ref, z3.ArithRef):
-            raise TypeError("SArith expected ArithRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SArith expected ArithRef, got %s" % strtype(ref))
         super(SArith, self).__init__(ref)
 
     def __add__(self, o):
@@ -44,8 +49,7 @@ class SArith(SExpr):
 class SBool(SExpr):
     def __init__(self, ref):
         if not isinstance(ref, z3.BoolRef):
-            raise TypeError("SBool expected BoolRef, got %s" %
-                            type(ref).__name__)
+            raise TypeError("SBool expected BoolRef, got %s" % strtype(ref))
         super(SBool, self).__init__(ref)
 
     def __nonzero__(self):

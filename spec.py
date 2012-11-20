@@ -14,6 +14,10 @@ def strtype(x):
 
 solver = z3.Solver()
 
+def str_state():
+    asserts = solver.assertions()
+    return str(z3.simplify(z3.And(*asserts)))
+
 # This maintains a type hierarchy that parallels Z3's symbolic type
 # hierarchy.  Each type wraps the equivalent Z3 type and defers to the
 # Z3 methods for all symbolic operations (wrapping the results in the
@@ -213,8 +217,20 @@ def symbolic_apply(fn, *args):
     # XXX Return a list of return values of fn.
     child = os.fork()
     if child == 0:
-        # XXX Exceptions?
-        fn(*args)
+        try:
+            fn(*args)
+        except SystemExit:
+            raise
+        except:
+            import traceback
+            print >>sys.stderr, "Traceback (most recent call last):"
+            etype, value, tb = sys.exc_info()
+            traceback.print_tb(tb)
+            print >>sys.stderr, "  If %s" % \
+                str_state().replace("\n", "\n" + " "*5)
+            lines = traceback.format_exception_only(etype, value)
+            for line in lines:
+                sys.stderr.write(line)
         sys.exit(0)
     os.waitpid(child, 0)
 
@@ -330,11 +346,11 @@ def test(base, call1, call2):
 
     asserts = solver.assertions()
     if len(asserts) == 0:
+        # XXX What if we have assertions, but they're vacuously true?
         print "  any state:", res
     else:
         print "  %s: %s" % \
-            (str(z3.simplify(z3.And(*asserts))).replace("\n", "\n  "),
-             res)
+            (str_state().replace("\n", "\n  "), res)
 
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),

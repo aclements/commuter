@@ -6,6 +6,11 @@ import types
 class Symbolic(object):
     pass
 
+def toz3(val):
+    if isinstance(val, Symbolic):
+        return val._v
+    return val
+
 def strtype(x):
     if type(x) == types.InstanceType:
         return x.__class__.__name__
@@ -122,6 +127,48 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
+class SList(object):
+    def __init__(self, name, valSort):
+        self._vals = z3.Array(name, z3.IntSort(), valSort)
+        self._len = make_sexpr(z3.Int(name + '.len'))
+        assume(self._len >= 0)
+
+    def __check_idx(self, idx):
+        if idx < 0:
+            raise IndexError("SList index out of range: %r < %r" % (idx, 0))
+        if idx >= self.len():
+            raise IndexError("SList index out of range: %r >= %r" %
+                             (idx, self._len))
+        return toz3(idx)
+
+    def __getitem__(self, idx):
+        return make_sexpr(self._vals[self.__check_idx(idx)])
+
+    def __setitem__(self, idx, val):
+        self._vals = z3.Store(self._vals, self.__check_idx(idx), toz3(val))
+
+    def __eq__(self, o):
+        if not isinstance(o, SList):
+            return NotImplemented
+        return make_sexpr(z3.And(toz3(self._len) == toz3(o._len),
+                                 self._vals == o._vals))
+
+    def __ne__(self, o):
+        r = self == o
+        if r is NotImplemented:
+            return NotImplemented
+        return make_sexpr(z3.Not(toz3(r)))
+
+    def len(self):
+        # Overriding __len__ isn't useful because the len() builtin
+        # will try hard to coerce it to an integer.
+        return self._len
+
+    def append(self, val):
+        l = self.len()
+        self._len += 1
+        self[l] = val
+
 class SDict(object):
     def __init__(self, name):
         self._name_prefix = name
@@ -215,6 +262,9 @@ def anyInt(name):
 def anyDict(name):
     return SDict(name)
 
+def anyListOfInt(name):
+    return SList(name, z3.IntSort())
+
 def assume(e):
     solver.add(toz3(e))
     sat = solver.check()
@@ -283,22 +333,20 @@ class State(Struct):
         return self.counter == 0
 
 class Pipe(Struct):
-    __slots__ = ['elems', 'nread', 'nwrite']
+    __slots__ = ['elems', 'nread']
 
     def __init__(self):
-        self.elems = anyDict('Pipe.elems')
+        self.elems = anyListOfInt('Pipe.elems')
         self.nread = anyInt('Pipe.nread')
-        self.nwrite = anyInt('Pipe.nwrite')
 
         assume(self.nread >= 0)
-        assume(self.nwrite >= self.nread)
+        assume(self.nread <= self.elems.len())
 
     def write(self, elem):
-        self.elems[self.nwrite] = elem
-        self.nwrite = self.nwrite + 1
+        self.elems.append(elem)
 
     def read(self):
-        if self.nwrite == self.nread:
+        if self.elems.len() == self.nread:
             return None
         else:
             e = self.elems[self.nread]

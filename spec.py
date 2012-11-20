@@ -86,6 +86,22 @@ class SBool(SExpr):
         solver.add(z3.Not(self._v))
         return False
 
+class SDict(SExpr):
+    def __init__(self, ref):
+        if not isinstance(ref, z3.ArrayRef):
+            raise TypeError("SDict expected ArrayRef, got %s" % strtype(ref))
+        super(SDict, self).__init__(ref)
+
+    def __getitem__(self, key):
+        k = toz3(key)
+        v = z3.Select(self._v, k)
+        return make_sexpr(v)
+
+    def __setitem__(self, key, value):
+        k = toz3(key)
+        v = toz3(value)
+        z3.Store(self._v, k, v)
+
 def make_sexpr(ref):
     ## handle concrete types
     if isinstance(ref, bool):
@@ -95,10 +111,18 @@ def make_sexpr(ref):
         return SArith(ref)
     if isinstance(ref, z3.BoolRef):
         return SBool(ref)
+    if isinstance(ref, z3.ArrayRef):
+        return SDict(ref)
     return SExpr(ref)
 
 def anyInt(name):
     return make_sexpr(z3.Int(name))
+
+def anyDict(name):
+    ## XXX hard-coded to int->int for now
+    keytype = z3.IntSort()
+    valuetype = z3.IntSort()
+    return make_sexpr(z3.Array(name, keytype, valuetype))
 
 def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning

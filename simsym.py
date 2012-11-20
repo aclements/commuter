@@ -80,6 +80,7 @@ class SBool(SExpr):
         super(SBool, self).__init__(ref)
 
     def __nonzero__(self):
+        solver = get_solver()
         solver.push()
         solver.add(self._v)
         # XXX What about z3.unknown?
@@ -159,13 +160,20 @@ def wrap(ref):
 # Symbolic executor
 #
 
-solver = z3.Solver()
+solver = None
+
+def get_solver():
+    """Return the current z3.Solver(), or raise RuntimeError if no
+    solver is active."""
+    if solver is None:
+        raise RuntimeError("Symbolic execution attempted outside symbolic_apply")
+    return solver
 
 def str_state():
     """Return the current path constraint as a string, or None if the
     path is unconstrained."""
 
-    asserts = solver.assertions()
+    asserts = get_solver().assertions()
     if len(asserts) == 0:
         return None
     return str(z3.simplify(z3.And(*asserts)))
@@ -173,6 +181,7 @@ def str_state():
 def assume(e):
     """Declare symbolic expression e to be True."""
 
+    solver = get_solver()
     solver.add(unwrap(e))
     sat = solver.check()
     if sat == z3.unsat:
@@ -189,6 +198,8 @@ def symbolic_apply(fn, *args):
     # XXX Return a list of return values of fn.
     child = os.fork()
     if child == 0:
+        global solver
+        solver = z3.Solver()
         try:
             fn(*args)
         except SystemExit:

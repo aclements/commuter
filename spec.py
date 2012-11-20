@@ -170,41 +170,32 @@ class SList(object):
         self[l] = val
 
 class SDict(object):
-    def __init__(self, name):
-        self._name_prefix = name
-        self._items = []
+    def __init__(self, name, keySort, valSort):
+        self._map = z3.Array(name, keySort, valSort)
+        self._valid = z3.Array(name + '.valid', keySort, z3.BoolSort())
 
     def __getitem__(self, key):
-        for (k, v) in self._items:
-            if k == key:
-                return v
+        key = toz3(key)
+        if self._valid[key]:
+            return self._map[key]
+        raise KeyError(key)
 
-        ## XXX hard-coded to int values for now
-        newval = anyInt('%s[%s]' % (self._name_prefix, str(key._v)))
-        self._items.append([key, newval])
-        return newval
-
-    def __setitem__(self, key, value):
-        self._items = [(k, v) for (k, v) in self._items if k != key]
-        self._items.append([key, value])
+    def __setitem__(self, key, val):
+        key, val = toz3(key), toz3(val)
+        self._valid = z3.Store(self._valid, key, True)
+        self._map = z3.Store(self._map, key, val)
 
     def __eq__(self, o):
         if not isinstance(o, SDict):
-            return False
-        if len(self._items) != len(o._items):
-            return False
-        for (k, v) in self._items:
-            found = False
-            for (k2, v2) in o._items:
-                if k == k2:
-                    found = True
-                    if v != v2: return False
-            if not found:
-                return False
-        return True
+            return NotImplemented
+        return make_sexpr(z3.And(toz3(self._valid == o._valid),
+                                 toz3(self._map == o._map)))
 
     def __ne__(self, o):
-        return not self.__eq__(o)
+        r = self == o
+        if r is NotImplemented:
+            return NotImplemented
+        return make_sexpr(z3.Not(toz3(r)))
 
 class SBag(object):
     def __init__(self, name):
@@ -259,11 +250,11 @@ def make_sexpr(ref):
 def anyInt(name):
     return make_sexpr(z3.Int(name))
 
-def anyDict(name):
-    return SDict(name)
-
 def anyListOfInt(name):
     return SList(name, z3.IntSort())
+
+def anyDictOfIntToInt(name):
+    return SDict(name, z3.IntSort(), z3.IntSort())
 
 def assume(e):
     solver.add(toz3(e))

@@ -1,6 +1,9 @@
 import simsym
 import symtypes
 
+class PreconditionFailure(Exception):
+    def __init__(self): pass
+
 class Struct(object):
     def __eq__(self, o):
         if self.__class__ != o.__class__:
@@ -31,6 +34,8 @@ class State(Struct):
         self.counter = self.counter + 1
 
     def sys_dec(self):
+        if self.counter == 0:
+            raise PreconditionFailure()
         self.counter = self.counter - 1
 
     def sys_iszero(self):
@@ -93,30 +98,33 @@ class UnordPipe(Struct):
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
-    s1 = base()
-    r11 = call1(s1)
-    r12 = call2(s1)
+    try:
+        s1 = base()
+        r11 = call1(s1)
+        r12 = call2(s1)
 
-    s2 = base()
-    r21 = call2(s2)
-    r22 = call1(s2)
+        s2 = base()
+        r21 = call2(s2)
+        r22 = call1(s2)
 
-    if r11 != r22 or r12 != r21:
-        res = "results diverge"
-    elif s1 != s2:
-        res = "state diverges"
-    else:
-        res = "commute"
+        if r11 != r22 or r12 != r21:
+            res = "results diverge"
+        elif s1 != s2:
+            res = "state diverges"
+        else:
+            res = "commute"
 
-    state = simsym.str_state()
-    if state is None:
-        # XXX What if we have assertions, but they're vacuously true?
-        # XXX Can we filter out explicit assumptions?  I think we're
-        # only interested in the path condition.
-        print "  any state:", res
-    else:
-        print "  %s: %s" % \
-            (state.replace("\n", "\n  "), res)
+        state = simsym.str_state()
+        if state is None:
+            # XXX What if we have assertions, but they're vacuously true?
+            # XXX Can we filter out explicit assumptions?  I think we're
+            # only interested in the path condition.
+            print "  any state:", res
+        else:
+            print "  %s: %s" % \
+                (state.replace("\n", "\n  "), res)
+    except PreconditionFailure:
+        pass
 
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),

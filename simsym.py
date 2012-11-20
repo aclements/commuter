@@ -140,11 +140,14 @@ def wrap(ref):
 
     If ref is a Z3 symbolic value, wraps it in a simsym.Symbolic.
     Otherwise, if ref is a concrete type supported by the symbolic
-    engine, returns value."""
+    engine, returns value.  Otherwise, raises TypeError."""
 
-    # Handle concrete types
-    if isinstance(ref, bool):
+    if isinstance(ref, (bool, int, long, float)):
+        # Concrete type supported by Z3
         return ref
+
+    if not isinstance(ref, z3.ExprRef):
+        raise TypeError("Not a bool, int, long, float, or z3.ExprRef")
 
     if isinstance(ref, z3.ArithRef):
         return SArith(ref)

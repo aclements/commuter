@@ -205,7 +205,7 @@ class State(Struct):
         self.counter = anyInt('State.counter')
 
     def sys_inc(self):
-        self.counter = 1+self.counter
+        self.counter = self.counter + 1
 
     def sys_dec(self):
         self.counter = self.counter - 1

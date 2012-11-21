@@ -211,7 +211,7 @@ def str_state():
     path is unconstrained."""
 
     asserts = get_solver().assertions()
-    asserts = [a for a in asserts if not any([a.eq(u) for u in assumptions])]
+    asserts = [a for a in asserts if not any(a.eq(u) for u in assumptions)]
     if len(asserts) == 0:
         return None
     return str(z3.simplify(z3.And(*asserts)))

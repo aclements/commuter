@@ -59,6 +59,10 @@ class SDict(object):
         self._valid = z3.Store(self._valid, key, True)
         self._map = z3.Store(self._map, key, val)
 
+    def __delitem__(self, key):
+        key = unwrap(key)
+        self._valid = z3.Store(self._valid, key, False)
+
     def __eq__(self, o):
         if not isinstance(o, SDict):
             return NotImplemented

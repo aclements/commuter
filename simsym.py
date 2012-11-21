@@ -197,6 +197,7 @@ def ast_cleanup(a):
 #
 
 solver = None
+assumptions = []
 
 def get_solver():
     """Return the current z3.Solver(), or raise RuntimeError if no
@@ -210,6 +211,7 @@ def str_state():
     path is unconstrained."""
 
     asserts = get_solver().assertions()
+    asserts = [a for a in asserts if not any([a.eq(u) for u in assumptions])]
     if len(asserts) == 0:
         return None
     return str(z3.simplify(z3.And(*asserts)))
@@ -224,6 +226,7 @@ def assume(e):
         raise RuntimeError("Unsatisfiable assumption")
     elif sat != z3.sat:
         raise RuntimeError("Uncheckable assumption")
+    assumptions.append(unwrap(e))
 
 def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  The return value

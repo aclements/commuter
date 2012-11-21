@@ -50,8 +50,8 @@ class SDict(object):
 
     def __getitem__(self, key):
         key = unwrap(key)
-        if self._valid[key]:
-            return self._map[key]
+        if wrap(self._valid[key]):
+            return wrap(self._map[key])
         raise KeyError(key)
 
     def __setitem__(self, key, val):
@@ -62,6 +62,10 @@ class SDict(object):
     def __delitem__(self, key):
         key = unwrap(key)
         self._valid = z3.Store(self._valid, key, False)
+
+    def contains(self, key):
+        key = unwrap(key)
+        return wrap(self._valid[key])
 
     def __eq__(self, o):
         if not isinstance(o, SDict):

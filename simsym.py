@@ -219,6 +219,9 @@ def str_state():
 def assume(e):
     """Declare symbolic expression e to be True."""
 
+    if e is True:
+        return
+
     solver = get_solver()
     solver.add(unwrap(e))
     sat = solver.check()

@@ -85,6 +85,54 @@ class UnordPipe(Struct):
             self.nitem = self.nitem - 1
             return e
 
+class Fs(Struct):
+    __slots__ = ['fn_to_ino', 'ino_to_data']
+
+    def __init__(self):
+        self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
+        self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
+
+    def open(self, which):
+        fn = simsym.anyInt('Fs.open.fn.%s' % which)
+        creat = simsym.anyInt('Fs.open.creat.%s' % which)
+        excl = simsym.anyInt('Fs.open.excl.%s' % which)
+        trunc = simsym.anyInt('Fs.open.trunc.%s' % which)
+        if creat != 0:
+            if self.fn_to_ino.contains(fn):
+                if excl != 0: return False
+                # XXX need a better plan for allocating a free inode!
+                if which == 'a':
+                    self.fn_to_ino[fn] = 11
+                else:
+                    self.fn_to_ino[fn] = 12
+        if not self.fn_to_ino.contains(fn):
+            return False
+        if trunc != 0:
+            self.ino_to_data[self.fn_to_ino[fn]] = 0
+        return True
+
+    def unlink(self, which):
+        fn = simsym.anyInt('Fs.unlink.fn.%s' % which)
+        del self.fn_to_ino[fn]
+
+    def read(self, which):
+        fn = simsym.anyInt('Fs.read.fn.%s' % which)
+        if not self.fn_to_ino.contains(fn):
+            return None
+        ino = self.fn_to_ino[fn]
+        if not self.ino_to_data.contains(ino):
+            return None
+        return self.ino_to_data[ino]
+
+    def write(self, which):
+        fn = simsym.anyInt('Fs.write.fn.%s' % which)
+        if not self.fn_to_ino.contains(fn):
+            return None
+        ino = self.fn_to_ino[fn]
+        data = simsym.anyInt('Fs.write.data.%s' % which)
+        self.ino_to_data[ino] = data
+        return True
+
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
@@ -120,6 +168,7 @@ tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
     (Pipe, [Pipe.write, Pipe.read]),
     (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
+    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink]),
 ]
 
 for (base, calls) in tests:

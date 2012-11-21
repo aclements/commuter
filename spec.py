@@ -94,12 +94,12 @@ class Fs(Struct):
 
     def open(self, which):
         fn = simsym.anyInt('Fs.open.fn.%s' % which)
-        creat = simsym.anyInt('Fs.open.creat.%s' % which)
-        excl = simsym.anyInt('Fs.open.excl.%s' % which)
-        trunc = simsym.anyInt('Fs.open.trunc.%s' % which)
-        if creat != 0:
+        creat = simsym.anyBool('Fs.open.creat.%s' % which)
+        excl = simsym.anyBool('Fs.open.excl.%s' % which)
+        trunc = simsym.anyBool('Fs.open.trunc.%s' % which)
+        if creat:
             if self.fn_to_ino.contains(fn):
-                if excl != 0: return False
+                if excl: return False
                 # XXX need a better plan for allocating a free inode!
                 if which == 'a':
                     self.fn_to_ino[fn] = 11
@@ -107,7 +107,7 @@ class Fs(Struct):
                     self.fn_to_ino[fn] = 12
         if not self.fn_to_ino.contains(fn):
             return False
-        if trunc != 0:
+        if trunc:
             self.ino_to_data[self.fn_to_ino[fn]] = 0
         return True
 

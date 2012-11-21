@@ -118,6 +118,10 @@ class SBool(SExpr):
 # Constructors
 #
 
+def anyBool(name):
+    """Return a symbolic value that can be True or False."""
+    return wrap(z3.Bool(name))
+
 def anyInt(name):
     """Return a symbolic value that can be any integer."""
     return wrap(z3.Int(name))

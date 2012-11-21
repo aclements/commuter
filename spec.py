@@ -1,5 +1,7 @@
 import simsym
 import symtypes
+import z3
+import errno
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -92,24 +94,31 @@ class Fs(Struct):
         self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
         self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
 
+        fn = simsym.unwrap(simsym.anyInt('fn'))
+        simsym.assume(z3.ForAll([fn],
+                         z3.Implies(self.fn_to_ino._valid[fn],
+                                    self.ino_to_data._valid[self.fn_to_ino._map[fn]])))
+
     def open(self, which):
         fn = simsym.anyInt('Fs.open.fn.%s' % which)
         creat = simsym.anyBool('Fs.open.creat.%s' % which)
         excl = simsym.anyBool('Fs.open.excl.%s' % which)
         trunc = simsym.anyBool('Fs.open.trunc.%s' % which)
         if creat:
-            if self.fn_to_ino.contains(fn):
-                if excl: return False
+            if not self.fn_to_ino.contains(fn):
                 # XXX need a better plan for allocating a free inode!
                 if which == 'a':
                     self.fn_to_ino[fn] = 11
                 else:
                     self.fn_to_ino[fn] = 12
+                self.ino_to_data[self.fn_to_ino[fn]] = 0
+            else:
+                if excl: return ('err', errno.EEXIST)
         if not self.fn_to_ino.contains(fn):
-            return False
+            return ('err', errno.ENOENT)
         if trunc:
             self.ino_to_data[self.fn_to_ino[fn]] = 0
-        return True
+        return ('ok',)
 
     def unlink(self, which):
         fn = simsym.anyInt('Fs.unlink.fn.%s' % which)
@@ -118,20 +127,18 @@ class Fs(Struct):
     def read(self, which):
         fn = simsym.anyInt('Fs.read.fn.%s' % which)
         if not self.fn_to_ino.contains(fn):
-            return None
+            return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
-        if not self.ino_to_data.contains(ino):
-            return None
-        return self.ino_to_data[ino]
+        return ('data', self.ino_to_data[ino])
 
     def write(self, which):
         fn = simsym.anyInt('Fs.write.fn.%s' % which)
         if not self.fn_to_ino.contains(fn):
-            return None
+            return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         data = simsym.anyInt('Fs.write.data.%s' % which)
         self.ino_to_data[ino] = data
-        return True
+        return ('ok',)
 
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
@@ -165,9 +172,9 @@ def test(base, call1, call2):
         pass
 
 tests = [
-    (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe, [Pipe.write, Pipe.read]),
-    (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
+    #(State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+    #(Pipe, [Pipe.write, Pipe.read]),
+    #(UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
     (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink]),
 ]
 

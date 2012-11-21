@@ -30,15 +30,15 @@ class State(Struct):
         self.counter = simsym.anyInt('State.counter')
         simsym.assume(self.counter >= 0)
 
-    def sys_inc(self):
+    def sys_inc(self, which):
         self.counter = self.counter + 1
 
-    def sys_dec(self):
+    def sys_dec(self, which):
         if self.counter == 0:
             raise PreconditionFailure()
         self.counter = self.counter - 1
 
-    def sys_iszero(self):
+    def sys_iszero(self, which):
         return self.counter == 0
 
 class Pipe(Struct):
@@ -51,22 +51,17 @@ class Pipe(Struct):
         simsym.assume(self.nread >= 0)
         simsym.assume(self.nread <= self.elems.len())
 
-    def write(self, elem):
+    def write(self, which):
+        elem = simsym.anyInt('Pipe.write.%s' % which)
         self.elems.append(elem)
 
-    def read(self):
+    def read(self, which):
         if self.elems.len() == self.nread:
             return None
         else:
             e = self.elems[self.nread]
             self.nread = self.nread + 1
             return e
-
-    def write_a(self):
-        self.write(simsym.anyInt('Pipe.writeitem.a'))
-
-    def write_b(self):
-        self.write(simsym.anyInt('Pipe.writeitem.b'))
 
 class UnordPipe(Struct):
     __slots__ = ['elems', 'nitem']
@@ -77,11 +72,12 @@ class UnordPipe(Struct):
 
         simsym.assume(self.nitem >= 0)
 
-    def u_write(self, elem):
+    def u_write(self, which):
+        elem = simsym.anyInt('UnordPipe.write.%s' % which)
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 
-    def u_read(self):
+    def u_read(self, which):
         if self.nitem == 0:
             return None
         else:
@@ -89,23 +85,17 @@ class UnordPipe(Struct):
             self.nitem = self.nitem - 1
             return e
 
-    def u_write_a(self):
-        self.u_write(simsym.anyInt('UnordPipe.writeitem.a'))
-
-    def u_write_b(self):
-        self.u_write(simsym.anyInt('UnordPipe.writeitem.b'))
-
 def test(base, call1, call2):
     print "%s %s" % (call1.__name__, call2.__name__)
 
     try:
         s1 = base()
-        r11 = call1(s1)
-        r12 = call2(s1)
+        r11 = call1(s1, 'a')
+        r12 = call2(s1, 'b')
 
         s2 = base()
-        r21 = call2(s2)
-        r22 = call1(s2)
+        r21 = call2(s2, 'b')
+        r22 = call1(s2, 'a')
 
         if r11 != r22 or r12 != r21:
             res = "results diverge"
@@ -128,8 +118,8 @@ def test(base, call1, call2):
 
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe, [Pipe.write_a, Pipe.write_b, Pipe.read]),
-    (UnordPipe, [UnordPipe.u_write_a, UnordPipe.u_write_b, UnordPipe.u_read]),
+    (Pipe, [Pipe.write, Pipe.read]),
+    (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
 ]
 
 for (base, calls) in tests:

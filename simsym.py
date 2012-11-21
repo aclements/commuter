@@ -157,6 +157,42 @@ def wrap(ref):
     return SExpr(ref)
 
 #
+# AST matching code.  Unused because the simplifier aggressively
+# rewrites things back to its own preferred representation, and
+# it is difficult to rewrite just one child in an AST (no generic
+# AST node constructors).
+#
+
+def matchvar(n):
+    return z3.Int('@match:%s' % n)
+
+def ast_match2(a, pat, matchvars):
+    if pat.decl().name().startswith('@match:'):
+        varname = pat.decl().name()[7:]
+        cur = matchvars.get(varname, None)
+        if cur is None:
+            matchvars[varname] = a
+            return True
+        return cur.eq(a)
+
+    if a.__class__ != pat.__class__: return False
+    if not a.decl().eq(pat.decl()): return False
+    if a.num_args() != pat.num_args(): return False
+    for (aa, pa) in zip(a.children(), pat.children()):
+        if not ast_match2(aa, pa, matchvars): return False
+    return True
+
+def ast_match(a, pat, matchvars):
+    matchvars.clear()
+    return ast_match2(a, pat, matchvars)
+
+def ast_cleanup(a):
+    matchvars = {}
+    if ast_match(a, z3.Not(matchvar('a') == matchvar('b')), matchvars):
+        return matchvars['a'] != matchvars['b']
+    return a
+
+#
 # Symbolic executor
 #
 

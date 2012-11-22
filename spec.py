@@ -91,35 +91,28 @@ class UnordPipe(Struct):
             return e
 
 class Fs(Struct):
-    __slots__ = ['fn_to_ino', 'ino_to_data', 'ialloc', 'numialloc']
+    __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
 
     def __init__(self):
         self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
         self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
-        self.ialloc = symtypes.anyListOfBool('Fs.ialloc')
-        self.numialloc = simsym.anyInt('Fs.numialloc')
+        self.numifree = simsym.anyInt('Fs.numifree')
 
-        # XXX how to represent inode refcount constraints?
-
-        simsym.assume(self.numialloc <= self.ialloc._len)
+        simsym.assume(self.numifree >= 0)
         fn = simsym.unwrap(simsym.anyInt('fn'))
-        ino = simsym.unwrap(simsym.anyInt('ino'))
         simsym.assume(z3.ForAll(fn,
                          z3.Implies(self.fn_to_ino._valid[fn],
                                     self.ino_to_data._valid[self.fn_to_ino._map[fn]])))
-        simsym.assume(z3.ForAll(fn,
-                         z3.Implies(self.fn_to_ino._valid[fn],
-                            z3.And(self.fn_to_ino._map[fn] < simsym.unwrap(self.ialloc._len),
-                                   self.fn_to_ino._map[fn] >= 0,
-                                   self.ialloc._vals[self.fn_to_ino._map[fn]]))))
 
-        ## XXX the solver times out with this assumption.
-        if False:
-            simsym.assume(z3.ForAll(ino,
-                             z3.Implies(self.ialloc._vals[ino],
-                                        z3.Exists(fn,
-                                                  z3.And(self.fn_to_ino._valid[fn],
-                                                         self.fn_to_ino._map[fn] == ino)))))
+    def iused(self, ino):
+        fn = simsym.unwrap(simsym.anyInt('fn'))
+        return simsym.wrap(z3.Exists(fn,
+                              z3.And(self.fn_to_ino._valid[fn],
+                                     self.fn_to_ino._map[fn] == simsym.unwrap(ino))))
+
+    def idecref(self, ino):
+        if not self.iused(ino):
+            self.numifree = self.numifree + 1
 
     def open(self, which):
         fn = simsym.anyInt('Fs.open.fn.%s' % which)
@@ -128,14 +121,12 @@ class Fs(Struct):
         trunc = simsym.anyBool('Fs.open.trunc.%s' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
-                # XXX need a better plan for allocating a free inode!
-                if self.numialloc == self.ialloc._len:
+                if self.numifree == 0:
                     return ('err', errno.ENOSPC)
-                self.numialloc = self.numialloc + 1
                 ino = simsym.anyInt('Fs.open.ialloc.%s' % which)
-                if ino < 0 or ino >= self.ialloc._len or self.ialloc[ino]:
+                if self.iused(ino):
                     sys.exit(0)   ## XXX cleaner API?
-                self.ialloc[ino] = True
+                self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = 0
                 self.fn_to_ino[fn] = ino
             else:
@@ -152,10 +143,13 @@ class Fs(Struct):
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):
-            self.ialloc[self.fn_to_ino[dst]] = False
-            self.numialloc = self.numialloc - 1
+            dstino = self.fn_to_ino[dst]
+        else:
+            dstino = None
         self.fn_to_ino[dst] = self.fn_to_ino[src]
         del self.fn_to_ino[src]
+        if dstino is not None:
+            self.idecref(dstino)
         return ('ok',)
 
     def unlink(self, which):
@@ -164,9 +158,17 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         del self.fn_to_ino[fn]
-        self.numialloc = self.numialloc - 1
-        self.ialloc[ino] = False
-        # XXX inode refcount?
+        self.idecref(ino)
+        return ('ok',)
+
+    def link(self, which):
+        oldfn = simsym.anyInt('Fs.link.oldfn.%s' % which)
+        newfn = simsym.anyInt('Fs.link.newfn.%s' % which)
+        if not self.fn_to_ino.contains(oldfn):
+            return ('err', errno.ENOENT)
+        if self.fn_to_ino.contains(newfn):
+            return ('err', errno.EEXIST)
+        self.fn_to_ino[newfn] = self.fn_to_ino[oldfn]
         return ('ok',)
 
     def read(self, which):

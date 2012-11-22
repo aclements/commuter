@@ -89,7 +89,7 @@ class UnordPipe(Struct):
             return e
 
 class Fs(Struct):
-    __slots__ = ['fn_to_ino', 'ino_to_data']
+    __slots__ = ['fn_to_ino', 'ino_to_data', 'ialloc', 'numialloc']
 
     def __init__(self):
         self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')

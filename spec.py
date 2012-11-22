@@ -57,7 +57,7 @@ class Pipe(Struct):
         simsym.assume(self.nread <= self.elems.len())
 
     def write(self, which):
-        elem = simsym.anyInt('Pipe.write.%s' % which)
+        elem = simsym.anyInt('Pipe.write[%s].data' % which)
         self.elems.append(elem)
 
     def read(self, which):
@@ -78,7 +78,7 @@ class UnordPipe(Struct):
         simsym.assume(self.nitem >= 0)
 
     def u_write(self, which):
-        elem = simsym.anyInt('UnordPipe.write.%s' % which)
+        elem = simsym.anyInt('UnordPipe.write[%s].data' % which)
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 
@@ -115,15 +115,15 @@ class Fs(Struct):
             self.numifree = self.numifree + 1
 
     def open(self, which):
-        fn = simsym.anyInt('Fs.open.fn.%s' % which)
-        creat = simsym.anyBool('Fs.open.creat.%s' % which)
-        excl = simsym.anyBool('Fs.open.excl.%s' % which)
-        trunc = simsym.anyBool('Fs.open.trunc.%s' % which)
+        fn = simsym.anyInt('Fs.open[%s].fn' % which)
+        creat = simsym.anyBool('Fs.open[%s].creat' % which)
+        excl = simsym.anyBool('Fs.open[%s].excl' % which)
+        trunc = simsym.anyBool('Fs.open[%s].trunc' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
-                ino = simsym.anyInt('Fs.open.ialloc.%s' % which)
+                ino = simsym.anyInt('Fs.open[%s].ialloc' % which)
                 if self.iused(ino):
                     sys.exit(0)   ## XXX cleaner API?
                 self.numifree = self.numifree - 1
@@ -138,8 +138,8 @@ class Fs(Struct):
         return ('ok',)
 
     def rename(self, which):
-        src = simsym.anyInt('Fs.rename.src.%s' % which)
-        dst = simsym.anyInt('Fs.rename.dst.%s' % which)
+        src = simsym.anyInt('Fs.rename[%s].src' % which)
+        dst = simsym.anyInt('Fs.rename[%s].dst' % which)
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):
@@ -153,7 +153,7 @@ class Fs(Struct):
         return ('ok',)
 
     def unlink(self, which):
-        fn = simsym.anyInt('Fs.unlink.fn.%s' % which)
+        fn = simsym.anyInt('Fs.unlink[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
@@ -162,8 +162,8 @@ class Fs(Struct):
         return ('ok',)
 
     def link(self, which):
-        oldfn = simsym.anyInt('Fs.link.oldfn.%s' % which)
-        newfn = simsym.anyInt('Fs.link.newfn.%s' % which)
+        oldfn = simsym.anyInt('Fs.link[%s].oldfn' % which)
+        newfn = simsym.anyInt('Fs.link[%s].newfn' % which)
         if not self.fn_to_ino.contains(oldfn):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(newfn):
@@ -172,18 +172,18 @@ class Fs(Struct):
         return ('ok',)
 
     def read(self, which):
-        fn = simsym.anyInt('Fs.read.fn.%s' % which)
+        fn = simsym.anyInt('Fs.read[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         return ('data', self.ino_to_data[ino])
 
     def write(self, which):
-        fn = simsym.anyInt('Fs.write.fn.%s' % which)
+        fn = simsym.anyInt('Fs.write[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
-        data = simsym.anyInt('Fs.write.data.%s' % which)
+        data = simsym.anyInt('Fs.write[%s].data' % which)
         self.ino_to_data[ino] = data
         return ('ok',)
 

@@ -104,6 +104,7 @@ class SBool(SExpr):
         # could replay our path from the beginning, which would also
         # let us return symbolic and non-picklable values to concrete
         # space and implement a counter-example cache.
+        sys.stdout.flush()
         child = os.fork()
         if child == 0:
             # True path
@@ -242,6 +243,7 @@ def symbolic_apply(fn, *args):
     # XXX We could avoid this fork if we were smarter about cleaning
     # up all but the first code path
     # XXX Return a list of return values of fn.
+    sys.stdout.flush()
     child = os.fork()
     if child == 0:
         global solver

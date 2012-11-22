@@ -8,6 +8,8 @@ class PreconditionFailure(Exception):
     def __init__(self): pass
 
 class Struct(object):
+    __slots__ = []
+
     def __eq__(self, o):
         if self.__class__ != o.__class__:
             return NotImplemented

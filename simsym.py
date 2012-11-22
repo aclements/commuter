@@ -221,7 +221,7 @@ def str_state():
         return None
     return str(z3.simplify(z3.And(*asserts)))
 
-def assume(e):
+def require(e):
     """Declare symbolic expression e to be True."""
 
     if e is True:
@@ -234,6 +234,9 @@ def assume(e):
         raise RuntimeError("Unsatisfiable assumption")
     elif sat != z3.sat:
         raise RuntimeError("Uncheckable assumption")
+
+def assume(e):
+    require(e)
     assumptions.append(unwrap(e))
 
 def symbolic_apply(fn, *args):

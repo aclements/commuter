@@ -2,7 +2,6 @@ import simsym
 import symtypes
 import z3
 import errno
-import sys
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -124,8 +123,7 @@ class Fs(Struct):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
                 ino = simsym.anyInt('Fs.open[%s].ialloc' % which)
-                if self.iused(ino):
-                    sys.exit(0)   ## XXX cleaner API?
+                simsym.require(simsym.wrap(z3.Not(simsym.unwrap(self.iused(ino)))))
                 self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = 0
                 self.fn_to_ino[fn] = ino

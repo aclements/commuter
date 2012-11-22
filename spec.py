@@ -146,6 +146,18 @@ class Fs(Struct):
             self.ino_to_data[self.fn_to_ino[fn]] = 0
         return ('ok',)
 
+    def rename(self, which):
+        src = simsym.anyInt('Fs.rename.src.%s' % which)
+        dst = simsym.anyInt('Fs.rename.dst.%s' % which)
+        if not self.fn_to_ino.contains(src):
+            return ('err', errno.ENOENT)
+        if self.fn_to_ino.contains(dst):
+            self.ialloc[self.fn_to_ino[dst]] = False
+            self.numialloc = self.numialloc - 1
+        self.fn_to_ino[dst] = self.fn_to_ino[src]
+        del self.fn_to_ino[src]
+        return ('ok',)
+
     def unlink(self, which):
         fn = simsym.anyInt('Fs.unlink.fn.%s' % which)
         if not self.fn_to_ino.contains(fn):
@@ -155,7 +167,7 @@ class Fs(Struct):
         self.numialloc = self.numialloc - 1
         self.ialloc[ino] = False
         # XXX inode refcount?
-        return ('ok')
+        return ('ok',)
 
     def read(self, which):
         fn = simsym.anyInt('Fs.read.fn.%s' % which)
@@ -208,7 +220,7 @@ tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
     (Pipe, [Pipe.write, Pipe.read]),
     (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
-    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink]),
+    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.rename]),
 ]
 
 for (base, calls) in tests:

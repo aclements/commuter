@@ -2,6 +2,7 @@ import simsym
 import symtypes
 import z3
 import errno
+import sys
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -93,11 +94,30 @@ class Fs(Struct):
     def __init__(self):
         self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
         self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
+        self.ialloc = symtypes.anyListOfBool('Fs.ialloc')
+        self.numialloc = simsym.anyInt('Fs.numialloc')
 
+        # XXX how to represent inode refcount constraints?
+
+        simsym.assume(self.numialloc <= self.ialloc._len)
         fn = simsym.unwrap(simsym.anyInt('fn'))
-        simsym.assume(z3.ForAll([fn],
+        ino = simsym.unwrap(simsym.anyInt('ino'))
+        simsym.assume(z3.ForAll(fn,
                          z3.Implies(self.fn_to_ino._valid[fn],
                                     self.ino_to_data._valid[self.fn_to_ino._map[fn]])))
+        simsym.assume(z3.ForAll(fn,
+                         z3.Implies(self.fn_to_ino._valid[fn],
+                            z3.And(self.fn_to_ino._map[fn] < simsym.unwrap(self.ialloc._len),
+                                   self.fn_to_ino._map[fn] >= 0,
+                                   self.ialloc._vals[self.fn_to_ino._map[fn]]))))
+
+        ## XXX the solver times out with this assumption.
+        if False:
+            simsym.assume(z3.ForAll(ino,
+                             z3.Implies(self.ialloc._vals[ino],
+                                        z3.Exists(fn,
+                                                  z3.And(self.fn_to_ino._valid[fn],
+                                                         self.fn_to_ino._map[fn] == ino)))))
 
     def open(self, which):
         fn = simsym.anyInt('Fs.open.fn.%s' % which)
@@ -107,11 +127,15 @@ class Fs(Struct):
         if creat:
             if not self.fn_to_ino.contains(fn):
                 # XXX need a better plan for allocating a free inode!
-                if which == 'a':
-                    self.fn_to_ino[fn] = 11
-                else:
-                    self.fn_to_ino[fn] = 12
-                self.ino_to_data[self.fn_to_ino[fn]] = 0
+                if self.numialloc == self.ialloc._len:
+                    return ('err', errno.ENOSPC)
+                self.numialloc = self.numialloc + 1
+                ino = simsym.anyInt('Fs.open.ialloc.%s' % which)
+                if ino < 0 or ino >= self.ialloc._len or self.ialloc[ino]:
+                    sys.exit(0)   ## XXX cleaner API?
+                self.ialloc[ino] = True
+                self.ino_to_data[ino] = 0
+                self.fn_to_ino[fn] = ino
             else:
                 if excl: return ('err', errno.EEXIST)
         if not self.fn_to_ino.contains(fn):
@@ -122,7 +146,14 @@ class Fs(Struct):
 
     def unlink(self, which):
         fn = simsym.anyInt('Fs.unlink.fn.%s' % which)
+        if not self.fn_to_ino.contains(fn):
+            return ('err', errno.ENOENT)
+        ino = self.fn_to_ino[fn]
         del self.fn_to_ino[fn]
+        self.numialloc = self.numialloc - 1
+        self.ialloc[ino] = False
+        # XXX inode refcount?
+        return ('ok')
 
     def read(self, which):
         fn = simsym.anyInt('Fs.read.fn.%s' % which)

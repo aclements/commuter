@@ -222,7 +222,7 @@ tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
     (Pipe, [Pipe.write, Pipe.read]),
     (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
-    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.rename]),
+    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 
 for (base, calls) in tests:

@@ -121,5 +121,8 @@ class SBag(object):
 def anyListOfInt(name):
     return SList(name, z3.IntSort())
 
+def anyListOfBool(name):
+    return SList(name, z3.BoolSort())
+
 def anyDictOfIntToInt(name):
     return SDict(name, z3.IntSort(), z3.IntSort())

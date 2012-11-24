@@ -219,7 +219,8 @@ def str_state():
     asserts = [a for a in asserts if not any(a.eq(u) for u in assumptions)]
     if len(asserts) == 0:
         return None
-    return str(z3.simplify(z3.And(*asserts)))
+    return str(z3.simplify(z3.And(*asserts),
+                           expand_select_store=True))
 
 def require(e):
     """Declare symbolic expression e to be True."""

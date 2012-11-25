@@ -196,23 +196,12 @@ def test(base, call1, call2):
         r22 = call1(s2, 'a')
 
         if r11 != r22 or r12 != r21:
-            res = "results diverge"
-        elif s1 != s2:
-            res = "state diverges"
-        else:
-            res = "commute"
-
-        state = simsym.str_state()
-        if state is None:
-            # XXX What if we have assertions, but they're vacuously true?
-            # XXX Can we filter out explicit assumptions?  I think we're
-            # only interested in the path condition.
-            print "  any state:", res
-        else:
-            print "  %s: %s" % \
-                (state.replace("\n", "\n  "), res)
+            return "results diverge"
+        if s1 != s2:
+            return "state diverges"
+        return "commute"
     except PreconditionFailure:
-        pass
+        return None
 
 tests = [
     (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
@@ -225,5 +214,13 @@ for (base, calls) in tests:
     for i in range(len(calls)):
         for j in range(i, len(calls)):
             print "%s %s" % (calls[i].__name__, calls[j].__name__)
-            simsym.symbolic_apply(test, base, calls[i], calls[j])
+            rvs = simsym.symbolic_apply(test, base, calls[i], calls[j])
+            for (cond, res) in rvs:
+                if res is None:
+                    continue
+                if len(cond) == 0:
+                    print '  any state:', res
+                else:
+                    s = z3.simplify(z3.And(*cond), expand_select_store=True)
+                    print '  %s: %s' % (str(s).replace('\n', '\n  '), res)
     print

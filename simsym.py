@@ -253,8 +253,7 @@ def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  The return value
     of fn is ignored because it may have many return values."""
 
-    # XXX Return a list of return values of fn.
-
+    rvs = []
     queue_schedule([])
 
     global schedq
@@ -270,7 +269,10 @@ def symbolic_apply(fn, *args):
         solver = z3.Solver()
         assumptions = []
         try:
-            fn(*args)
+            rv = fn(*args)
+            cond = [a for a in solver.assertions() if
+                    not any(a.eq(u) for u in assumptions)]
+            rvs.append((cond, rv))
         except SystemExit:
             raise
         except:
@@ -286,6 +288,7 @@ def symbolic_apply(fn, *args):
                 sys.stderr.write(line)
         solver = None
         assumptions = None
+    return rvs
 
 #
 # Utilities

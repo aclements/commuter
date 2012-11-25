@@ -229,7 +229,7 @@ for (base, calls) in tests:
                         s = True
                     else:
                         expr = z3.Or(*[z3.And(*c) for c in conds[res]])
-                        te = z3.Tactic('ctx-solver-simplify')(expr)
+                        te = z3.Repeat(z3.Tactic('ctx-solver-simplify'))(expr)
                         if len(te[0]) == 0:
                             s = True
                         else:

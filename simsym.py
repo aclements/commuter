@@ -244,31 +244,30 @@ def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  The return value
     of fn is ignored because it may have many return values."""
 
-    # XXX We could avoid this fork if we were smarter about cleaning
-    # up all but the first code path
     # XXX Return a list of return values of fn.
-    sys.stdout.flush()
-    child = os.fork()
-    if child == 0:
-        global solver
-        solver = z3.Solver()
-        try:
-            fn(*args)
-        except SystemExit:
-            raise
-        except:
-            import traceback
-            print >>sys.stderr, "Traceback (most recent call last):"
-            etype, value, tb = sys.exc_info()
-            traceback.print_tb(tb)
-            state = str_state()
-            if state is not None:
-                print >>sys.stderr, "  If %s" % state.replace("\n", "\n" + " "*5)
-            lines = traceback.format_exception_only(etype, value)
-            for line in lines:
-                sys.stderr.write(line)
+    startpid = os.getpid()
+
+    global solver
+    solver = z3.Solver()
+    try:
+        fn(*args)
+    except SystemExit:
+        raise
+    except:
+        import traceback
+        print >>sys.stderr, "Traceback (most recent call last):"
+        etype, value, tb = sys.exc_info()
+        traceback.print_tb(tb)
+        state = str_state()
+        if state is not None:
+            print >>sys.stderr, "  If %s" % state.replace("\n", "\n" + " "*5)
+        lines = traceback.format_exception_only(etype, value)
+        for line in lines:
+            sys.stderr.write(line)
+    solver = None
+
+    if os.getpid() != startpid:
         sys.exit(0)
-    os.waitpid(child, 0)
 
 #
 # Utilities

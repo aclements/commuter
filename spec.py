@@ -2,6 +2,7 @@ import simsym
 import symtypes
 import z3
 import errno
+import collections
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -215,12 +216,20 @@ for (base, calls) in tests:
         for j in range(i, len(calls)):
             print "%s %s" % (calls[i].__name__, calls[j].__name__)
             rvs = simsym.symbolic_apply(test, base, calls[i], calls[j])
+            conds = collections.defaultdict(list)
             for (cond, res) in rvs:
+                conds[res].append(cond)
+            for res in sorted(conds):
                 if res is None:
                     continue
-                if len(cond) == 0:
-                    print '  any state:', res
                 else:
-                    s = z3.simplify(z3.And(*cond), expand_select_store=True)
-                    print '  %s: %s' % (str(s).replace('\n', '\n  '), res)
+                    if [] in conds[res]:
+                        s = True
+                    else:
+                        s = z3.simplify(z3.Or(*[z3.And(*c) for c in conds[res]]),
+                                        expand_select_store=True)
+                    if str(s) == 'True':  ## XXX hack
+                        print '  %s: any state' % res
+                    else:
+                        print '  %s:\n    %s' % (res, str(s).replace('\n', '\n    '))
     print

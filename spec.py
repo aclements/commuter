@@ -1,6 +1,7 @@
 import simsym
 import symtypes
 import z3
+import z3printer
 import errno
 import collections
 
@@ -211,6 +212,7 @@ tests = [
     (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 
+z3printer._PP.max_lines = float('inf')
 for (base, calls) in tests:
     for i in range(len(calls)):
         for j in range(i, len(calls)):

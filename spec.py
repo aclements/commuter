@@ -186,8 +186,6 @@ class Fs(Struct):
         return ('ok',)
 
 def test(base, call1, call2):
-    print "%s %s" % (call1.__name__, call2.__name__)
-
     try:
         s1 = base()
         r11 = call1(s1, 'a')
@@ -226,5 +224,6 @@ tests = [
 for (base, calls) in tests:
     for i in range(len(calls)):
         for j in range(i, len(calls)):
+            print "%s %s" % (calls[i].__name__, calls[j].__name__)
             simsym.symbolic_apply(test, base, calls[i], calls[j])
     print

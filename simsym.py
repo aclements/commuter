@@ -100,20 +100,21 @@ class SBool(SExpr):
             raise RuntimeError("Branch contradiction")
 
         # Both are possible; take both paths
-        # XXX os.fork might prove too expensive.  Alternatively, we
-        # could replay our path from the beginning, which would also
-        # let us return symbolic and non-picklable values to concrete
-        # space and implement a counter-example cache.
-        sys.stdout.flush()
-        child = os.fork()
-        if child == 0:
-            # True path
+        global cursched
+        global curschedidx
+        if len(cursched) == curschedidx:
+            newsched = list(cursched)
+            cursched.append(True)
+            newsched.append(False)
+            queue_schedule(newsched)
+
+        rv = cursched[curschedidx]
+        if rv == True:
             solver.add(self._v)
-            return True
-        # False path
-        os.waitpid(child, 0)
-        solver.add(z3.Not(self._v))
-        return False
+        else:
+            solver.add(z3.Not(self._v))
+        curschedidx = curschedidx + 1
+        return rv
 
 #
 # Constructors
@@ -202,7 +203,10 @@ def ast_cleanup(a):
 #
 
 solver = None
-assumptions = []
+assumptions = None
+schedq = []
+cursched = None
+curschedidx = None
 
 def get_solver():
     """Return the current z3.Solver(), or raise RuntimeError if no
@@ -210,6 +214,11 @@ def get_solver():
     if solver is None:
         raise RuntimeError("Symbolic execution attempted outside symbolic_apply")
     return solver
+
+def queue_schedule(s):
+    # print "currently in schedule", cursched
+    # print "queueing schedule", s
+    schedq.append(s)
 
 def str_state():
     """Return the current path constraint as a string, or None if the
@@ -245,29 +254,38 @@ def symbolic_apply(fn, *args):
     of fn is ignored because it may have many return values."""
 
     # XXX Return a list of return values of fn.
-    startpid = os.getpid()
 
-    global solver
-    solver = z3.Solver()
-    try:
-        fn(*args)
-    except SystemExit:
-        raise
-    except:
-        import traceback
-        print >>sys.stderr, "Traceback (most recent call last):"
-        etype, value, tb = sys.exc_info()
-        traceback.print_tb(tb)
-        state = str_state()
-        if state is not None:
-            print >>sys.stderr, "  If %s" % state.replace("\n", "\n" + " "*5)
-        lines = traceback.format_exception_only(etype, value)
-        for line in lines:
-            sys.stderr.write(line)
-    solver = None
+    queue_schedule([])
 
-    if os.getpid() != startpid:
-        sys.exit(0)
+    global schedq
+    while len(schedq) > 0:
+        global cursched
+        cursched = schedq.pop()
+
+        global curschedidx
+        curschedidx = 0
+
+        global solver
+        global assumptions
+        solver = z3.Solver()
+        assumptions = []
+        try:
+            fn(*args)
+        except SystemExit:
+            raise
+        except:
+            import traceback
+            print >>sys.stderr, "Traceback (most recent call last):"
+            etype, value, tb = sys.exc_info()
+            traceback.print_tb(tb)
+            state = str_state()
+            if state is not None:
+                print >>sys.stderr, "  If %s" % state.replace("\n", "\n" + " "*5)
+            lines = traceback.format_exception_only(etype, value)
+            for line in lines:
+                sys.stderr.write(line)
+        solver = None
+        assumptions = None
 
 #
 # Utilities

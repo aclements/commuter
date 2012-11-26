@@ -273,21 +273,9 @@ def symbolic_apply(fn, *args):
             cond = [a for a in solver.assertions() if
                     not any(a.eq(u) for u in assumptions)]
             rvs.append((cond, rv))
-        except SystemExit:
-            raise
-        except:
-            import traceback
-            print >>sys.stderr, "Traceback (most recent call last):"
-            etype, value, tb = sys.exc_info()
-            traceback.print_tb(tb)
-            state = str_state()
-            if state is not None:
-                print >>sys.stderr, "  If %s" % state.replace("\n", "\n" + " "*5)
-            lines = traceback.format_exception_only(etype, value)
-            for line in lines:
-                sys.stderr.write(line)
-        solver = None
-        assumptions = None
+        finally:
+            solver = None
+            assumptions = None
     return rvs
 
 #

@@ -241,9 +241,9 @@ def require(e):
     solver.add(unwrap(e))
     sat = solver.check()
     if sat == z3.unsat:
-        raise RuntimeError("Unsatisfiable assumption")
+        raise RuntimeError("Unsatisfiable assumption %s" % e)
     elif sat != z3.sat:
-        raise RuntimeError("Uncheckable assumption")
+        raise RuntimeError("Uncheckable assumption %s" % e)
 
 def assume(e):
     require(e)
@@ -273,6 +273,12 @@ def symbolic_apply(fn, *args):
             cond = [a for a in solver.assertions() if
                     not any(a.eq(u) for u in assumptions)]
             rvs.append((cond, rv))
+        except Exception as e:
+            if len(e.args) == 1:
+                e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
+            else:
+                e.args = e.args + (str_state(),)
+            raise
         finally:
             solver = None
             assumptions = None

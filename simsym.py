@@ -236,6 +236,8 @@ def require(e):
 
     if e is True:
         return
+    if any(unwrap(e).eq(a) for a in assumptions):
+        return
 
     solver = get_solver()
     solver.add(unwrap(e))

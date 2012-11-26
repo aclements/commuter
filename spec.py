@@ -229,12 +229,16 @@ for (base, calls) in tests:
                         s = True
                     else:
                         expr = z3.Or(*[z3.And(*c) for c in conds[res]])
-                        te = z3.Repeat(z3.Tactic('ctx-solver-simplify'))(expr)
+                        t = z3.Repeat(z3.Then(
+                                'ctx-solver-simplify',
+                                z3.With('simplify', expand_select_store=True),
+                                ))
+                        te = t(expr)
                         if len(te[0]) == 0:
                             s = True
                         else:
                             expr = z3.And(*[z3.And(*e) for e in te])
-                            s = z3.simplify(expr, expand_select_store=True)
+                            s = z3.simplify(expr)
                     if str(s) == 'True':  ## XXX hack
                         print '  %s: any state' % res
                     else:

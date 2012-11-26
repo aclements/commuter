@@ -83,13 +83,18 @@ class SBool(SExpr):
         solver = get_solver()
         solver.push()
         solver.add(self._v)
-        # XXX What about z3.unknown?
-        canTrue = (solver.check() == z3.sat)
+        c = solver.check()
+        if c == z3.unknown:
+            raise RuntimeError('Undecidable constraints')
+        canTrue = (c == z3.sat)
         solver.pop()
 
         solver.push()
         solver.add(z3.Not(self._v))
-        canFalse = (solver.check() == z3.sat)
+        c = solver.check()
+        if c == z3.unknown:
+            raise RuntimeError('Undecidable constraints')
+        canFalse = (c == z3.sat)
         solver.pop()
 
         if canTrue and not canFalse:

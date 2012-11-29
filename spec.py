@@ -4,6 +4,7 @@ import z3
 import z3printer
 import errno
 import collections
+import itertools
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -187,20 +188,25 @@ class Fs(Struct):
         self.ino_to_data[ino] = data
         return ('ok',)
 
-def test(base, call1, call2):
+def test(base, *calls):
     try:
-        s1 = base()
-        r11 = call1(s1, 'a')
-        r12 = call2(s1, 'b')
+        all_s = []
+        all_r = []
 
-        s2 = base()
-        r21 = call2(s2, 'b')
-        r22 = call1(s2, 'a')
+        for callseq in itertools.permutations(range(0, len(calls))):
+            s = base()
+            r = {}
+            for idx in callseq:
+                r[idx] = calls[idx](s, chr(idx + ord('a')))
+            all_s.append(s)
+            all_r.append(r)
 
-        if r11 != r22 or r12 != r21:
-            return "results diverge"
-        if s1 != s2:
-            return "state diverges"
+        for r in all_r:
+            if len([r2 for r2 in all_r if r != r2]) > 0:
+                return "results diverge"
+        for s in all_s:
+            if len([s2 for s2 in all_s if s != s2]) > 0:
+                return "state diverges"
         return "commute"
     except PreconditionFailure:
         return None

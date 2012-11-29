@@ -220,24 +220,23 @@ tests = [
 
 z3printer._PP.max_lines = float('inf')
 for (base, calls) in tests:
-    for i in range(len(calls)):
-        for j in range(i, len(calls)):
-            print "%s %s" % (calls[i].__name__, calls[j].__name__)
-            rvs = simsym.symbolic_apply(test, base, calls[i], calls[j])
-            conds = collections.defaultdict(list)
-            for (cond, res) in rvs:
-                conds[res].append(cond)
-            for res in sorted(conds):
-                if res is None:
-                    continue
+    for callset in itertools.combinations_with_replacement(calls, 2):
+        print ' '.join([c.__name__ for c in callset])
+        rvs = simsym.symbolic_apply(test, base, *callset)
+        conds = collections.defaultdict(list)
+        for (cond, res) in rvs:
+            conds[res].append(cond)
+        for res in sorted(conds):
+            if res is None:
+                continue
+            else:
+                if [] in conds[res]:
+                    s = True
                 else:
-                    if [] in conds[res]:
-                        s = True
-                    else:
-                        e = z3.Or(*[z3.And(*c) for c in conds[res]])
-                        s = simsym.simplify(e)
-                    if str(s) == 'True':  ## XXX hack
-                        print '  %s: any state' % res
-                    else:
-                        print '  %s:\n    %s' % (res, str(s).replace('\n', '\n    '))
+                    e = z3.Or(*[z3.And(*c) for c in conds[res]])
+                    s = simsym.simplify(e)
+                if str(s) == 'True':  ## XXX hack
+                    print '  %s: any state' % res
+                else:
+                    print '  %s:\n    %s' % (res, str(s).replace('\n', '\n    '))
     print

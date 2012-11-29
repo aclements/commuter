@@ -70,17 +70,17 @@ class Pipe(Struct):
             self.nread = self.nread + 1
             return e
 
-class UnordPipe(Struct):
+class UPipe(Struct):
     __slots__ = ['elems', 'nitem']
 
     def __init__(self):
-        self.elems = symtypes.SBag('UnordPipe.items')
-        self.nitem = simsym.anyInt('UnordPipe.nitem')
+        self.elems = symtypes.SBag('UPipe.items')
+        self.nitem = simsym.anyInt('UPipe.nitem')
 
         simsym.assume(self.nitem >= 0)
 
     def u_write(self, which):
-        elem = simsym.anyInt('UnordPipe.write[%s].data' % which)
+        elem = simsym.anyInt('UPipe.write[%s].data' % which)
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 
@@ -212,15 +212,15 @@ def test(base, *calls):
         return None
 
 tests = [
-    (State, [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe, [Pipe.write, Pipe.read]),
-    (UnordPipe, [UnordPipe.u_write, UnordPipe.u_read]),
-    (Fs, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
+    (State, 3, [State.sys_inc, State.sys_dec, State.sys_iszero]),
+    (Pipe,  3, [Pipe.write, Pipe.read]),
+    (UPipe, 3, [UPipe.u_write, UPipe.u_read]),
+    (Fs,    2, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 
 z3printer._PP.max_lines = float('inf')
-for (base, calls) in tests:
-    for callset in itertools.combinations_with_replacement(calls, 2):
+for (base, ncomb, calls) in tests:
+    for callset in itertools.combinations_with_replacement(calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
         rvs = simsym.symbolic_apply(test, base, *callset)
         conds = collections.defaultdict(list)

@@ -1,0 +1,11 @@
+Needless commutativity:
+  stat -> projections of return values
+  unordered pipe -> state divergence on write
+  unmap -> need an application?
+
+Our current system calls are non-blocking.  Blocking pipe read may be
+slightly more commutative.  Perhaps the right way to represent blocking is
+to raise PreconditionFailure: e.g., a blocking pipe read would not have
+returned so early in a normal execution.  We can then reason separately
+about blocking and non-blocking pipe reads.
+

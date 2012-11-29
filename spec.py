@@ -218,6 +218,7 @@ tests = [
     (Fs,    2, [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 
+print_conds = True
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, calls) in tests:
     for callset in itertools.combinations_with_replacement(calls, ncomb):
@@ -230,13 +231,16 @@ for (base, ncomb, calls) in tests:
             if res is None:
                 continue
             else:
-                if [] in conds[res]:
-                    s = True
-                else:
-                    e = z3.Or(*[z3.And(*c) for c in conds[res]])
-                    s = simsym.simplify(e)
-                if str(s) == 'True':  ## XXX hack
-                    print '  %s: any state' % res
-                else:
-                    print '  %s:\n    %s' % (res, str(s).replace('\n', '\n    '))
+                out = '%d paths' % len(conds[res])
+                if print_conds:
+                    if [] in conds[res]:
+                        s = True
+                    else:
+                        e = z3.Or(*[z3.And(*c) for c in conds[res]])
+                        s = simsym.simplify(e)
+                    if str(s) == 'True':  ## XXX hack
+                        out = out + ', any state'
+                    else:
+                        out = out + ',\n    %s' % str(s).replace('\n', '\n    ')
+                print '  %s: %s' % (res, out)
     print

@@ -235,6 +235,17 @@ def str_state():
     return str(z3.simplify(z3.And(*asserts),
                            expand_select_store=True))
 
+def simplify(expr):
+    t = z3.Repeat(z3.Then('ctx-solver-simplify',
+                          z3.With('simplify', expand_select_store=True)))
+    subgoals = t(expr)
+    if len(subgoals[0]) == 0:
+        ## XXX How to cleanly get a True Z3 expression?
+        s = z3.simplify(z3.Bool('a')==z3.Bool('a'))
+    else:
+        s = z3.simplify(z3.And(*[z3.And(*g) for g in subgoals]))
+    return s
+
 def require(e):
     """Declare symbolic expression e to be True."""
 

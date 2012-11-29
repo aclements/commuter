@@ -228,17 +228,8 @@ for (base, calls) in tests:
                     if [] in conds[res]:
                         s = True
                     else:
-                        expr = z3.Or(*[z3.And(*c) for c in conds[res]])
-                        t = z3.Repeat(z3.Then(
-                                'ctx-solver-simplify',
-                                z3.With('simplify', expand_select_store=True),
-                                ))
-                        te = t(expr)
-                        if len(te[0]) == 0:
-                            s = True
-                        else:
-                            expr = z3.And(*[z3.And(*e) for e in te])
-                            s = z3.simplify(expr)
+                        e = z3.Or(*[z3.And(*c) for c in conds[res]])
+                        s = simsym.simplify(e)
                     if str(s) == 'True':  ## XXX hack
                         print '  %s: any state' % res
                     else:

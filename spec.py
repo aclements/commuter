@@ -16,10 +16,13 @@ class Struct(object):
         if self.__class__ != o.__class__:
             return NotImplemented
         # XXX Should this indicate what field is not equal?
+        fieldeqs = []
         for field in self.__slots__:
-            if getattr(self, field) != getattr(o, field):
-                return False
-        return True
+            fieldeqs.append(getattr(self, field) == getattr(o, field))
+        if any([isinstance(x, simsym.Symbolic) for x in fieldeqs]):
+            return simsym.wrap(z3.And(*[simsym.unwrap(x) for x in fieldeqs]))
+        else:
+            return all(fieldeqs)
 
     def __ne__(self, o):
         r = (self == o)

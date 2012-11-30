@@ -236,7 +236,8 @@ def str_state():
                            expand_select_store=True))
 
 def simplify(expr):
-    t = z3.Repeat(z3.Then('ctx-solver-simplify',
+    t = z3.Repeat(z3.Then('propagate-values',
+                          'ctx-solver-simplify',
                           z3.With('simplify', expand_select_store=True)))
     subgoals = t(expr)
     if len(subgoals[0]) == 0:

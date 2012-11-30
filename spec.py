@@ -202,9 +202,6 @@ def test(base, projections, *calls):
             all_r.append(r)
 
         diverge = set()
-        for r in all_r:
-            if len([r2 for r2 in all_r if r != r2]) > 0:
-                diverge.add('results')
 
         for s in all_s:
             if len([s2 for s2 in all_s if s != s2]) > 0:
@@ -223,13 +220,13 @@ def test(base, projections, *calls):
         return None
 
 tests = [
-    (State, 3, {},
+    (State, 3, {'full': lambda(x): x},
      [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe,  3, {},
+    (Pipe,  3, {'full': lambda(x): x},
      [Pipe.write, Pipe.read]),
-    (UPipe, 3, {},
+    (UPipe, 3, {'full': lambda(x): x},
      [UPipe.u_write, UPipe.u_read]),
-    (Fs,    2, {'first': lambda(x): x[0]},
+    (Fs,    2, {'full': lambda(x): x, 'first': lambda(x): x[0]},
      [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 

@@ -145,6 +145,13 @@ def symnot(e):
     else:
         return not e
 
+def symeq(a, b):
+    if isinstance(a, tuple) and isinstance(b, tuple):
+        if len(a) != len(b):
+            return False
+        return symand(*[symeq(aa, bb) for (aa, bb) in zip(a, b)])
+    return a == b
+
 #
 # Conversions to Z3 types and wrapper types
 #

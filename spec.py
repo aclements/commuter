@@ -201,13 +201,16 @@ def test(base, *calls):
             all_s.append(s)
             all_r.append(r)
 
+        diverge = set()
         for r in all_r:
             if len([r2 for r2 in all_r if r != r2]) > 0:
-                return "results diverge"
+                diverge.add('results')
         for s in all_s:
             if len([s2 for s2 in all_s if s != s2]) > 0:
-                return "state diverges"
-        return "commute"
+                diverge.add('states')
+        if len(diverge) == 0:
+            return 'commute'
+        return '%s diverge' % ', '.join(sorted(diverge))
     except PreconditionFailure:
         return None
 

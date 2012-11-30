@@ -188,7 +188,7 @@ class Fs(Struct):
         self.ino_to_data[ino] = data
         return ('ok',)
 
-def test(base, projections, *calls):
+def test(base, *calls):
     try:
         all_s = []
         all_r = []
@@ -203,15 +203,13 @@ def test(base, projections, *calls):
 
         diverge = set()
 
+        for r in all_r:
+            if len([r2 for r2 in all_r if r != r2]) > 0:
+                diverge.add('results')
+
         for s in all_s:
             if len([s2 for s2 in all_s if s != s2]) > 0:
                 diverge.add('states')
-
-        for p in projections:
-            pf = projections[p]
-            for r in all_r:
-                if len([r2 for r2 in all_r if pf(r) != pf(r2)]) > 0:
-                    diverge.add('results-%s' % p)
 
         if len(diverge) == 0:
             return 'commute'
@@ -220,22 +218,32 @@ def test(base, projections, *calls):
         return None
 
 tests = [
-    (State, 3, {'full': lambda(x): x},
+    (State, 3, {},
      [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe,  3, {'full': lambda(x): x},
+    (Pipe,  3, {},
      [Pipe.write, Pipe.read]),
-    (UPipe, 3, {'full': lambda(x): x},
+    (UPipe, 3, {},
      [UPipe.u_write, UPipe.u_read]),
-    (Fs,    2, {'full': lambda(x): x, 'first': lambda(x): x[0]},
+    (Fs,    2, {'first': lambda(x): x[0]},
      [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
+
+def projected_call(pname, pf, method):
+    def wrapped(*args, **kwargs):
+        return pf(method(*args, **kwargs))
+    wrapped.__name__ = '%s:%s' % (method.__name__, pname)
+    return wrapped
 
 print_conds = True
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
-    for callset in itertools.combinations_with_replacement(calls, ncomb):
+    projected_calls = list(calls)
+    for p in projections:
+        for c in calls:
+            projected_calls.append(projected_call(p, projections[p], c))
+    for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
-        rvs = simsym.symbolic_apply(test, base, projections, *callset)
+        rvs = simsym.symbolic_apply(test, base, *callset)
         conds = collections.defaultdict(list)
         for (cond, res) in rvs:
             conds[res].append(cond)

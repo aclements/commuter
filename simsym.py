@@ -133,6 +133,18 @@ def anyInt(name):
     """Return a symbolic value that can be any integer."""
     return wrap(z3.Int(name))
 
+def symand(*exprs):
+    if any([isinstance(x, Symbolic) for x in exprs]):
+        return wrap(z3.And(*[unwrap(x) for x in exprs]))
+    else:
+        return all(exprs)
+
+def symnot(e):
+    if isinstance(e, Symbolic):
+        return wrap(z3.Not(unwrap(e)))
+    else:
+        return not e
+
 #
 # Conversions to Z3 types and wrapper types
 #

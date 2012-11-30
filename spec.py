@@ -16,19 +16,15 @@ class Struct(object):
         if self.__class__ != o.__class__:
             return NotImplemented
         # XXX Should this indicate what field is not equal?
-        fieldeqs = []
-        for field in self.__slots__:
-            fieldeqs.append(getattr(self, field) == getattr(o, field))
-        if any([isinstance(x, simsym.Symbolic) for x in fieldeqs]):
-            return simsym.wrap(z3.And(*[simsym.unwrap(x) for x in fieldeqs]))
-        else:
-            return all(fieldeqs)
+        fieldeqs = [getattr(self, field) == getattr(o, field)
+                    for field in self.__slots__]
+        return simsym.symand(*fieldeqs)
 
     def __ne__(self, o):
         r = (self == o)
         if r is NotImplemented:
             return NotImplemented
-        return not r
+        return simsym.symnot(r)
 
 class State(Struct):
     __slots__ = ["counter"]
@@ -129,7 +125,7 @@ class Fs(Struct):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
                 ino = simsym.anyInt('Fs.open[%s].ialloc' % which)
-                simsym.assume(simsym.wrap(z3.Not(simsym.unwrap(self.iused(ino)))))
+                simsym.assume(simsym.symnot(self.iused(ino)))
                 self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = 0
                 self.fn_to_ino[fn] = ino

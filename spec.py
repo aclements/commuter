@@ -243,7 +243,6 @@ for (base, ncomb, projections, calls) in tests:
     for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
         rvs = simsym.symbolic_apply(test, base, *callset)
-        rvs = simsym.combine(rvs)
         conds = collections.defaultdict(list)
         for (cond, res) in rvs:
             conds[res].append(cond)

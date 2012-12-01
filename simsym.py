@@ -260,8 +260,7 @@ def simplify(expr):
                           z3.With('simplify', expand_select_store=True)))
     subgoals = t(expr)
     if len(subgoals[0]) == 0:
-        ## XXX How to cleanly get a True Z3 expression?
-        s = z3.simplify(z3.Bool('a')==z3.Bool('a'))
+        s = z3.BoolVal(True)
     else:
         s = z3.simplify(z3.And(*[z3.And(*g) for g in subgoals]))
     return s
@@ -307,8 +306,9 @@ def symbolic_apply(fn, *args):
         assumptions = []
         try:
             rv = fn(*args)
-            cond = [a for a in solver.assertions() if
-                    not any(a.eq(u) for u in assumptions)]
+            condlist = [a for a in solver.assertions()
+                        if not any(a.eq(u) for u in assumptions)]
+            cond = z3.And(*([z3.BoolVal(True)] + condlist))
             rvs.append((cond, rv))
         except Exception as e:
             if len(e.args) == 1:

@@ -249,17 +249,12 @@ for (base, ncomb, projections, calls) in tests:
         for res in sorted(conds):
             if res is None:
                 continue
-            else:
-                out = '%d paths' % len(conds[res])
-                if print_conds:
-                    if [] in conds[res]:
-                        s = True
-                    else:
-                        e = z3.Or(*[z3.And(*c) for c in conds[res]])
-                        s = simsym.simplify(e)
-                    if str(s) == 'True':  ## XXX hack
-                        out = out + ', any state'
-                    else:
-                        out = out + ',\n    %s' % str(s).replace('\n', '\n    ')
-                print '  %s: %s' % (res, out)
+            out = '%d paths' % len(conds[res])
+            if print_conds:
+                s = simsym.simplify(z3.Or(*conds[res]))
+                if str(s) == 'True':  ## XXX hack
+                    out = out + ', any state'
+                else:
+                    out = out + ',\n    %s' % str(s).replace('\n', '\n    ')
+            print '  %s: %s' % (res, out)
     print

@@ -18,7 +18,7 @@ class Struct(object):
         # XXX Should this indicate what field is not equal?
         fieldeqs = [getattr(self, field) == getattr(o, field)
                     for field in self.__slots__]
-        return simsym.symand(*fieldeqs)
+        return simsym.symand(fieldeqs)
 
     def __ne__(self, o):
         r = (self == o)
@@ -243,6 +243,7 @@ for (base, ncomb, projections, calls) in tests:
     for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
         rvs = simsym.symbolic_apply(test, base, *callset)
+        rvs = simsym.combine(rvs)
         conds = collections.defaultdict(list)
         for (cond, res) in rvs:
             conds[res].append(cond)
@@ -251,7 +252,8 @@ for (base, ncomb, projections, calls) in tests:
                 continue
             out = '%d paths' % len(conds[res])
             if print_conds:
-                s = simsym.simplify(z3.Or(*conds[res]))
+                e = simsym.symor(conds[res])
+                s = simsym.simplify(e)
                 if str(s) == 'True':  ## XXX hack
                     out = out + ', any state'
                 else:

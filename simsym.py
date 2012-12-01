@@ -133,11 +133,17 @@ def anyInt(name):
     """Return a symbolic value that can be any integer."""
     return wrap(z3.Int(name))
 
-def symand(*exprs):
-    if any([isinstance(x, Symbolic) for x in exprs]):
-        return wrap(z3.And(*[unwrap(x) for x in exprs]))
+def symand(exprlist):
+    if any([isinstance(x, Symbolic) for x in exprlist]):
+        return wrap(z3.And(*[unwrap(x) for x in exprlist]))
     else:
-        return all(exprs)
+        return all(exprlist)
+
+def symor(exprlist):
+    if any([isinstance(x, Symbolic) for x in exprlist]):
+        return wrap(z3.Or(*[unwrap(x) for x in exprlist]))
+    else:
+        return any(exprlist)
 
 def symnot(e):
     if isinstance(e, Symbolic):
@@ -149,7 +155,7 @@ def symeq(a, b):
     if isinstance(a, tuple) and isinstance(b, tuple):
         if len(a) != len(b):
             return False
-        return symand(*[symeq(aa, bb) for (aa, bb) in zip(a, b)])
+        return symand([symeq(aa, bb) for (aa, bb) in zip(a, b)])
     return a == b
 
 #
@@ -258,11 +264,11 @@ def simplify(expr):
     t = z3.Repeat(z3.Then('propagate-values',
                           'ctx-solver-simplify',
                           z3.With('simplify', expand_select_store=True)))
-    subgoals = t(expr)
+    subgoals = t(unwrap(expr))
     if len(subgoals[0]) == 0:
-        s = z3.BoolVal(True)
+        s = wrap(z3.BoolVal(True))
     else:
-        s = z3.simplify(z3.And(*[z3.And(*g) for g in subgoals]))
+        s = wrap(z3.simplify(z3.And(*[z3.And(*g) for g in subgoals])))
     return s
 
 def require(e):
@@ -308,7 +314,7 @@ def symbolic_apply(fn, *args):
             rv = fn(*args)
             condlist = [a for a in solver.assertions()
                         if not any(a.eq(u) for u in assumptions)]
-            cond = z3.And(*([z3.BoolVal(True)] + condlist))
+            cond = wrap(z3.And(*([z3.BoolVal(True)] + condlist)))
             rvs.append((cond, rv))
         except Exception as e:
             if len(e.args) == 1:
@@ -320,6 +326,29 @@ def symbolic_apply(fn, *args):
             solver = None
             assumptions = None
     return rvs
+
+def combine(rvs):
+    """Given a set of return values from symbolic_apply, combine
+    the conditions for identical return values."""
+
+    combined = []
+    used = [False] * len(rvs)
+    for idx, (cond, rv) in enumerate(rvs):
+        if used[idx]:
+            continue
+        used[idx] = True
+        for idx2, (cond2, rv2) in enumerate(rvs):
+            if used[idx2]:
+                continue
+            solver = z3.Solver()
+            e = symnot(symeq(rv, rv2))
+            solver.add(unwrap(e))
+            c = solver.check()
+            if c == z3.unsat:
+                used[idx2] = True
+                cond = wrap(z3.Or(unwrap(cond), unwrap(cond2)))
+        combined.append((cond, rv))
+    return combined
 
 #
 # Utilities

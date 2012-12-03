@@ -138,6 +138,52 @@ class SBool(SExpr, SymbolicVal):
         curschedidx = curschedidx + 1
         return rv
 
+class SEnumBase(SExpr):
+    def __init__(self, ref):
+        if not isinstance(ref, z3.DatatypeRef):
+            raise TypeError("SEnumBase expected DatatypeRef, got %s" %
+                            strtype(ref))
+        super(SEnumBase, self).__init__(ref)
+
+def tenum(name, vals):
+    """Return an enumeration type called 'name' with the given values.
+    'vals' must be a list of strings or a string of space-separated
+    names.  The returned type will have a class field for each value.
+    Instantiating the resulting type will return a symbolic enum that
+    can take on any of the enumerated values."""
+
+    if isinstance(vals, basestring):
+        vals = vals.split()
+    sort, consts = z3.EnumSort(name, vals)
+    fields = dict(zip(vals, consts))
+    fields["_z3_sort"] = sort
+    return type(name, (SEnumBase, SymbolicVal), fields)
+
+class STupleBase(SExpr):
+    def __init__(self, ref):
+        if not isinstance(ref, z3.DatatypeRef):
+            raise TypeError("SEnumBase expected DatatypeRef, got %s" %
+                            strtype(ref))
+        super(STupleBase, self).__init__(ref)
+
+def ttuple(name, *types):
+    """Return a named tuple type with the given fields.  Each 'type'
+    argument must be a pair of name and type."""
+
+    sort = z3.Datatype(name)
+    sort.declare(name, *[(fname, typ._z3_sort) for fname, typ in types])
+    sort = sort.create()
+    fields = {"_z3_sort" : sort}
+    for fname, typ in types:
+        code = """\
+@property
+def %s(self):
+    return wrap(self._z3_sort.%s(self._v))""" % (fname, fname)
+        locals_dict = {}
+        exec code in globals(), locals_dict
+        fields[fname] = locals_dict[fname]
+    return type(name, (STupleBase, SymbolicVal), fields)
+
 #
 # Constructors
 #

@@ -162,7 +162,7 @@ def tenum(name, vals):
 class STupleBase(SExpr):
     def __init__(self, ref):
         if not isinstance(ref, z3.DatatypeRef):
-            raise TypeError("SEnumBase expected DatatypeRef, got %s" %
+            raise TypeError("STupleBase expected DatatypeRef, got %s" %
                             strtype(ref))
         super(STupleBase, self).__init__(ref)
 

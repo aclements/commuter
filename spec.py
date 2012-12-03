@@ -33,7 +33,7 @@ class State(Struct):
         # XXX This name matters since it connects the initial counter
         # value of different State objects.  Will this scale to more
         # complex state?
-        self.counter = simsym.anyInt('State.counter')
+        self.counter = simsym.SInt.any('State.counter')
         simsym.assume(self.counter >= 0)
 
     def sys_inc(self, which):
@@ -52,13 +52,13 @@ class Pipe(Struct):
 
     def __init__(self):
         self.elems = symtypes.anyListOfInt('Pipe.elems')
-        self.nread = simsym.anyInt('Pipe.nread')
+        self.nread = simsym.SInt.any('Pipe.nread')
 
         simsym.assume(self.nread >= 0)
         simsym.assume(self.nread <= self.elems.len())
 
     def write(self, which):
-        elem = simsym.anyInt('Pipe.write[%s].data' % which)
+        elem = simsym.SInt.any('Pipe.write[%s].data' % which)
         self.elems.append(elem)
 
     def read(self, which):
@@ -74,12 +74,12 @@ class UPipe(Struct):
 
     def __init__(self):
         self.elems = symtypes.SBag('UPipe.items')
-        self.nitem = simsym.anyInt('UPipe.nitem')
+        self.nitem = simsym.SInt.any('UPipe.nitem')
 
         simsym.assume(self.nitem >= 0)
 
     def u_write(self, which):
-        elem = simsym.anyInt('UPipe.write[%s].data' % which)
+        elem = simsym.SInt.any('UPipe.write[%s].data' % which)
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 
@@ -97,16 +97,16 @@ class Fs(Struct):
     def __init__(self):
         self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
         self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
-        self.numifree = simsym.anyInt('Fs.numifree')
+        self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree >= 0)
-        fn = simsym.unwrap(simsym.anyInt('fn'))
+        fn = simsym.unwrap(simsym.SInt.any('fn'))
         simsym.assume(z3.ForAll(fn,
                          z3.Implies(self.fn_to_ino._valid[fn],
                                     self.ino_to_data._valid[self.fn_to_ino._map[fn]])))
 
     def iused(self, ino):
-        fn = simsym.unwrap(simsym.anyInt('fn'))
+        fn = simsym.unwrap(simsym.SInt.any('fn'))
         return simsym.wrap(z3.Exists(fn,
                               z3.And(self.fn_to_ino._valid[fn],
                                      self.fn_to_ino._map[fn] == simsym.unwrap(ino))))
@@ -116,15 +116,15 @@ class Fs(Struct):
             self.numifree = self.numifree + 1
 
     def open(self, which):
-        fn = simsym.anyInt('Fs.open[%s].fn' % which)
-        creat = simsym.anyBool('Fs.open[%s].creat' % which)
-        excl = simsym.anyBool('Fs.open[%s].excl' % which)
-        trunc = simsym.anyBool('Fs.open[%s].trunc' % which)
+        fn = simsym.SInt.any('Fs.open[%s].fn' % which)
+        creat = simsym.SBool.any('Fs.open[%s].creat' % which)
+        excl = simsym.SBool.any('Fs.open[%s].excl' % which)
+        trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
-                ino = simsym.anyInt('Fs.open[%s].ialloc' % which)
+                ino = simsym.SInt.any('Fs.open[%s].ialloc' % which)
                 simsym.assume(simsym.symnot(self.iused(ino)))
                 self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = 0
@@ -138,8 +138,8 @@ class Fs(Struct):
         return ('ok',)
 
     def rename(self, which):
-        src = simsym.anyInt('Fs.rename[%s].src' % which)
-        dst = simsym.anyInt('Fs.rename[%s].dst' % which)
+        src = simsym.SInt.any('Fs.rename[%s].src' % which)
+        dst = simsym.SInt.any('Fs.rename[%s].dst' % which)
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):
@@ -153,7 +153,7 @@ class Fs(Struct):
         return ('ok',)
 
     def unlink(self, which):
-        fn = simsym.anyInt('Fs.unlink[%s].fn' % which)
+        fn = simsym.SInt.any('Fs.unlink[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
@@ -162,8 +162,8 @@ class Fs(Struct):
         return ('ok',)
 
     def link(self, which):
-        oldfn = simsym.anyInt('Fs.link[%s].oldfn' % which)
-        newfn = simsym.anyInt('Fs.link[%s].newfn' % which)
+        oldfn = simsym.SInt.any('Fs.link[%s].oldfn' % which)
+        newfn = simsym.SInt.any('Fs.link[%s].newfn' % which)
         if not self.fn_to_ino.contains(oldfn):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(newfn):
@@ -172,18 +172,18 @@ class Fs(Struct):
         return ('ok',)
 
     def read(self, which):
-        fn = simsym.anyInt('Fs.read[%s].fn' % which)
+        fn = simsym.SInt.any('Fs.read[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         return ('data', self.ino_to_data[ino])
 
     def write(self, which):
-        fn = simsym.anyInt('Fs.write[%s].fn' % which)
+        fn = simsym.SInt.any('Fs.write[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
-        data = simsym.anyInt('Fs.write[%s].data' % which)
+        data = simsym.SInt.any('Fs.write[%s].data' % which)
         self.ino_to_data[ino] = data
         return ('ok',)
 

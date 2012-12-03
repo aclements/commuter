@@ -22,6 +22,18 @@ class Symbolic(object):
     """Root of the symbolic type wrapper hierarchy."""
     pass
 
+class SymbolicVal(object):
+    """A symbolic value with a specific type (or "sort" in z3
+    terminology).  A subclass of SymbolicVal must have a _z3_sort
+    class field giving the z3.SortRef for the value's type."""
+
+    @classmethod
+    def any(cls, name):
+        """Return a symbolic constant of unknown value."""
+        # Const returns the most specific z3.*Ref type it can based on
+        # the sort.
+        return cls(z3.Const(name, cls._z3_sort))
+
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref methods.  The class
     should have a __wrap__ dictionary mapping from (wrapper class
@@ -73,7 +85,12 @@ class SArith(SExpr):
                 ("wrap", 1):
                     ["__neg__", "__pos__"]}
 
-class SBool(SExpr):
+class SInt(SArith, SymbolicVal):
+    _z3_sort = z3.IntSort()
+
+class SBool(SExpr, SymbolicVal):
+    _z3_sort = z3.BoolSort()
+
     def __init__(self, ref):
         if not isinstance(ref, z3.BoolRef):
             raise TypeError("SBool expected BoolRef, got %s" % strtype(ref))
@@ -124,14 +141,6 @@ class SBool(SExpr):
 #
 # Constructors
 #
-
-def anyBool(name):
-    """Return a symbolic value that can be True or False."""
-    return wrap(z3.Bool(name))
-
-def anyInt(name):
-    """Return a symbolic value that can be any integer."""
-    return wrap(z3.Int(name))
 
 def symand(exprlist):
     if any([isinstance(x, Symbolic) for x in exprlist]):

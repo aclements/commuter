@@ -19,8 +19,24 @@ z3.ExprRef.__nonzero__ = z3_nonzero
 del z3_nonzero
 
 class Symbolic(object):
-    """Root of the symbolic type wrapper hierarchy."""
-    pass
+    """Root of the symbolic type wrapper hierarchy.  Subclasses must
+    provide a _z3_ref_type class field giving the Z3 ref type wrapped
+    by instances of the subclass."""
+
+    def __init__(self):
+        raise RuntimeError("%s cannot be constructed directly" % strtype(self))
+
+    @classmethod
+    def _wrap(cls, z3ref):
+        """Construct an instance of 'cls' wrapping the given Z3 ref
+        object."""
+        if not isinstance(z3ref, cls._z3_ref_type):
+            raise TypeError("%s expected %s, got %s" %
+                            (cls.__name__, cls._z3_ref_type.__name__,
+                             strtype(z3ref)))
+        obj = cls.__new__(cls)
+        obj._v = z3ref
+        return obj
 
 class SymbolicVal(object):
     """A symbolic value with a specific type (or "sort" in z3
@@ -32,7 +48,7 @@ class SymbolicVal(object):
         """Return a symbolic constant of unknown value."""
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.
-        return cls(z3.Const(name, cls._z3_sort))
+        return cls._wrap(z3.Const(name, cls._z3_sort))
 
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref methods.  The class
@@ -60,21 +76,14 @@ class MetaZ3Wrapper(type):
         return type.__new__(cls, classname, bases, classdict)
 
 class SExpr(Symbolic):
+    _z3_ref_type = z3.ExprRef
+
     __metaclass__ = MetaZ3Wrapper
-
-    def __init__(self, ref):
-        if not isinstance(ref, z3.ExprRef):
-            raise TypeError("SExpr expected ExprRef, got %s" % strtype(ref))
-        self._v = ref
-
     __wrap__ = {("wrap", 2): ["__eq__", "__ne__"],
                 (None, 1): ["__str__", "__repr__"]}
 
 class SArith(SExpr):
-    def __init__(self, ref):
-        if not isinstance(ref, z3.ArithRef):
-            raise TypeError("SArith expected ArithRef, got %s" % strtype(ref))
-        super(SArith, self).__init__(ref)
+    _z3_ref_type = z3.ArithRef
 
     __wrap__ = {("wrap", 2):
                     ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
@@ -89,12 +98,8 @@ class SInt(SArith, SymbolicVal):
     _z3_sort = z3.IntSort()
 
 class SBool(SExpr, SymbolicVal):
+    _z3_ref_type = z3.BoolRef
     _z3_sort = z3.BoolSort()
-
-    def __init__(self, ref):
-        if not isinstance(ref, z3.BoolRef):
-            raise TypeError("SBool expected BoolRef, got %s" % strtype(ref))
-        super(SBool, self).__init__(ref)
 
     def __nonzero__(self):
         solver = get_solver()
@@ -139,11 +144,7 @@ class SBool(SExpr, SymbolicVal):
         return rv
 
 class SEnumBase(SExpr):
-    def __init__(self, ref):
-        if not isinstance(ref, z3.DatatypeRef):
-            raise TypeError("SEnumBase expected DatatypeRef, got %s" %
-                            strtype(ref))
-        super(SEnumBase, self).__init__(ref)
+    _z3_ref_type = z3.DatatypeRef
 
 def tenum(name, vals):
     """Return an enumeration type called 'name' with the given values.
@@ -160,11 +161,7 @@ def tenum(name, vals):
     return type(name, (SEnumBase, SymbolicVal), fields)
 
 class STupleBase(SExpr):
-    def __init__(self, ref):
-        if not isinstance(ref, z3.DatatypeRef):
-            raise TypeError("STupleBase expected DatatypeRef, got %s" %
-                            strtype(ref))
-        super(STupleBase, self).__init__(ref)
+    _z3_ref_type = z3.DatatypeRef
 
 def ttuple(name, *types):
     """Return a named tuple type with the given fields.  Each 'type'
@@ -242,10 +239,10 @@ def wrap(ref):
         raise TypeError("Not a bool, int, long, float, or z3.ExprRef")
 
     if isinstance(ref, z3.ArithRef):
-        return SArith(ref)
+        return SArith._wrap(ref)
     if isinstance(ref, z3.BoolRef):
-        return SBool(ref)
-    return SExpr(ref)
+        return SBool._wrap(ref)
+    return SExpr._wrap(ref)
 
 #
 # AST matching code.  Unused because the simplifier aggressively

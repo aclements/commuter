@@ -201,19 +201,12 @@ def test(base, *calls):
             all_s.append(s)
             all_r.append(r)
 
-        diverge = set()
-
-        for r in all_r:
-            if len([r2 for r2 in all_r if r != r2]) > 0:
-                diverge.add('results')
-
-        for s in all_s:
-            if len([s2 for s2 in all_s if s != s2]) > 0:
-                diverge.add('states')
-
-        if len(diverge) == 0:
-            return 'commute'
-        return '%s diverge' % ', '.join(sorted(diverge))
+        diverge = ''
+        if any([all_r[0] != r for r in all_r[1:]]):
+            diverge = diverge + 'r'
+        if any([all_s[0] != s for s in all_s[1:]]):
+            diverge = diverge + 's'
+        return diverge
     except PreconditionFailure:
         return None
 
@@ -234,7 +227,6 @@ def projected_call(pname, pf, method):
     wrapped.__name__ = '%s:%s' % (method.__name__, pname)
     return wrapped
 
-print_conds = True
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
     projected_calls = list(calls)
@@ -244,19 +236,37 @@ for (base, ncomb, projections, calls) in tests:
     for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
         rvs = simsym.symbolic_apply(test, base, *callset)
-        conds = collections.defaultdict(list)
-        for (cond, res) in rvs:
-            conds[res].append(cond)
-        for res in sorted(conds):
-            if res is None:
+        conds = collections.defaultdict(lambda: simsym.wrap(z3.BoolVal(False)))
+        for (cond, res) in simsym.combine(rvs):
+            conds[res] = cond
+
+        pc = simsym.simplify(conds[''])
+        pr = simsym.simplify(simsym.symor([conds['r'], conds['rs']]))
+        ps = simsym.simplify(conds['s'])
+
+        ex_pc = simsym.exists(simsym.internals(), pc)
+        nex_pc = simsym.symnot(ex_pc)
+        ex_pr = simsym.exists(simsym.internals(), pr)
+        nex_pr = simsym.symnot(ex_pr)
+        ps2 = simsym.symand([ps, nex_pc, nex_pr])
+
+        ps_ex_pr = simsym.symand([ps, ex_pr])
+        pr2 = simsym.symand([simsym.symor([pr, ps_ex_pr]), nex_pc])
+
+        ps_ex_pc = simsym.symand([ps, ex_pc])
+        pr_ex_pc = simsym.symand([pr, ex_pc])
+        pc2 = simsym.symor([pc, ps_ex_pc, pr_ex_pc])
+
+        for msg, cond in (('commute', pc2),
+                          ('results diverge', pr2),
+                          ('states diverge', ps2)):
+            scond = simsym.simplify(cond)
+            s = str(scond)
+            if s == 'False':
                 continue
-            out = '%d paths' % len(conds[res])
-            if print_conds:
-                e = simsym.symor(conds[res])
-                s = simsym.simplify(e)
-                if str(s) == 'True':  ## XXX hack
-                    out = out + ', any state'
-                else:
-                    out = out + ',\n    %s' % str(s).replace('\n', '\n    ')
-            print '  %s: %s' % (res, out)
+            if s == 'True':
+                s = 'any state'
+            else:
+                s = '\n    ' + s.replace('\n', '\n    ')
+            print '  %s: %s' % (msg, s)
     print

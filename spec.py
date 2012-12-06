@@ -260,13 +260,12 @@ for (base, ncomb, projections, calls) in tests:
         for msg, cond in (('commute', pc2),
                           ('results diverge', pr2),
                           ('states diverge', ps2)):
-            scond = simsym.simplify(cond)
-            s = str(scond)
-            if s == 'False':
+            if simsym.check(cond) == z3.unsat:
                 continue
-            if s == 'True':
+            if simsym.check(simsym.symnot(cond)) == z3.unsat:
                 s = 'any state'
             else:
-                s = '\n    ' + s.replace('\n', '\n    ')
+                scond = simsym.simplify(cond)
+                s = '\n    ' + str(scond).replace('\n', '\n    ')
             print '  %s: %s' % (msg, s)
     print

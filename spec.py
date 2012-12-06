@@ -202,9 +202,9 @@ def test(base, *calls):
             all_r.append(r)
 
         diverge = ''
-        if any([all_r[0] != r for r in all_r[1:]]):
+        if simsym.symor([all_r[0] != r for r in all_r[1:]]):
             diverge = diverge + 'r'
-        if any([all_s[0] != s for s in all_s[1:]]):
+        if simsym.symor([all_s[0] != s for s in all_s[1:]]):
             diverge = diverge + 's'
         return diverge
     except PreconditionFailure:

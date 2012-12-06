@@ -125,6 +125,7 @@ class Fs(Struct):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
                 ino = simsym.SInt.any('Fs.open[%s].ialloc' % which)
+                simsym.add_internal(ino)
                 simsym.assume(simsym.symnot(self.iused(ino)))
                 self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = 0

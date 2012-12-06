@@ -91,6 +91,7 @@ class SBag(object):
     def choose(self):
         self._choices = self._choices + 1
         choicevar = SInt.any('%s.choose.%d' % (self._name_prefix, self._choices))
+        add_internal(choicevar)
         for i in range(0, len(self._items)):
             if choicevar == i:
                 return self._items[i]

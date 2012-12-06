@@ -210,6 +210,12 @@ def symeq(a, b):
         return symand([symeq(aa, bb) for (aa, bb) in zip(a, b)])
     return a == b
 
+def exists(vars, e):
+    return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e)))
+
+def forall(vars, e):
+    return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e)))
+
 #
 # Conversions to Z3 types and wrapper types
 #

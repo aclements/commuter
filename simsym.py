@@ -408,6 +408,20 @@ def combine(rvs):
         combined.append((cond, rv))
     return combined
 
+def check(e):
+    global solver
+    clearsolver = False
+    if solver is None:
+        solver = z3.Solver()
+        clearsolver = True
+    solver.push()
+    solver.add(unwrap(e))
+    c = solver.check()
+    solver.pop()
+    if clearsolver:
+        solver = None
+    return c
+
 #
 # Helpers for tracking "internal" variables
 #

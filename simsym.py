@@ -409,6 +409,18 @@ def combine(rvs):
     return combined
 
 #
+# Helpers for tracking "internal" variables
+#
+
+internal_vars = {None: SInt.any('__dummy')}
+
+def add_internal(v):
+    internal_vars[str(v)] = v
+
+def internals():
+    return [v for _, v in internal_vars.iteritems()]
+
+#
 # Utilities
 #
 

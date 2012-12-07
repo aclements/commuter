@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+import struct
 
 filenames = ['0', '1', '2', '3', '4', '5']
 
@@ -23,11 +24,22 @@ def getdir(vars):
         ino = ino2
     dir[fn] = ino
 
-  return dir
-
-def build_dir(dir):
+  ino_to_data = vars.get('Fs.idata', [0])
+  idata = {}
   for ino in set(dir.values()):
-    os.close(os.open('__i%d' % ino, os.O_CREAT | os.O_EXCL | os.O_RDWR))
+    data = ino_to_data[-1]
+    for ino2, data2 in ino_to_data[:-1]:
+      if ino == ino2:
+        data = data2
+    idata[ino] = data
+
+  return dir, idata
+
+def build_dir(dir, idata):
+  for ino in set(dir.values()):
+    fd = os.open('__i%d' % ino, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+    os.write(fd, struct.pack('b', idata[ino]))
+    os.close(fd)
   for fn, ino in dir.iteritems():
     os.link('__i%d' % ino, fn)
   for ino in set(dir.values()):
@@ -44,7 +56,6 @@ for t in d['Fs']:
   calls = t['calls']
   vars = t['vars']
 
-  dir = getdir(vars)
-  build_dir(dir)
+  dir, idata = getdir(vars)
+  build_dir(dir, idata)
   clean_dir(dir)
-

@@ -5,6 +5,57 @@ import os
 import z3
 import types
 
+class _Region(object):
+    """A mutable N-dimensional (where N may be 0) array of primitive
+    symbolic values, indexed by N-tuples of primitive symbolic values.
+    Internally, all symbolic values are constructed via regions.  For
+    individual primitive types, the constructed region will be
+    0-dimensional.  Compound types recursively break down into
+    primitive types and track separate regions for each contained
+    primitive type."""
+
+    __slots__ = ["_dims", "_v", "_ctor"]
+
+    def __init__(self, name, indexTypes, valueType):
+        self._dims = len(indexTypes)
+        if self._dims == 0:
+            self._v = z3.Const(name, valueType._z3_sort)
+        elif self._dims == 1:
+            self._v = z3.Array(name, indexTypes[0]._z3_sort, valueType._z3_sort)
+        else:
+            # Use a tuple type for the index
+            sname = name + ".idx"
+            sort = z3.Datatype(sname)
+            sort.declare(sname, *[("%s!%d" % (sname, i), typ._z3_sort)
+                                  for i, typ in enumerate(indexTypes)])
+            sort = sort.create()
+            self._v = z3.Array(name, sort, valueType._z3_sort)
+            self._ctor = getattr(sort, sname)
+
+    def select(self, idx):
+        if len(idx) != self._dims:
+            raise RuntimeError("Index length %d does not match dimensions %d" %
+                               (len(idx), self._dims))
+        if self._dims == 0:
+            return wrap(self._v)
+        elif self._dims == 1:
+            return wrap(self._v[unwrap(idx[0])])
+        else:
+            return wrap(self._v[self._ctor(*map(unwrap, idx))])
+
+    def store(self, idx, val):
+        if len(idx) != self._dims:
+            raise RuntimeError("Index length %d does not match dimensions %d" %
+                               (len(idx), self._dims))
+        # XXX Is the wrap/unwrap handling what we want here?
+        if self._dims == 0:
+            self._v = unwrap(val)
+        elif self._dims == 1:
+            self._v = z3.Store(self._v, unwrap(idx[0]), unwrap(val))
+        else:
+            self._v = z3.Store(self._v, self._ctor(*map(unwrap, idx)),
+                               unwrap(val))
+
 # This maintains a type hierarchy that parallels Z3's symbolic type
 # hierarchy.  Each type wraps the equivalent Z3 type and defers to the
 # Z3 methods for all symbolic operations (wrapping the results in the
@@ -49,6 +100,18 @@ class SymbolicVal(object):
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.
         return cls._wrap(z3.Const(name, cls._z3_sort))
+
+    @classmethod
+    def _make_region(cls, name, indexTypes):
+        return _Region(name, indexTypes, cls)
+
+    @classmethod
+    def _select(cls, region, idx):
+        return region.select(idx)
+
+    @staticmethod
+    def _store(region, idx, val):
+        region.store(idx, val)
 
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref methods.  The class
@@ -180,6 +243,137 @@ def %s(self):
         exec code in globals(), locals_dict
         fields[fname] = locals_dict[fname]
     return type(name, (STupleBase, SymbolicVal), fields)
+
+class SImmMapBase(SExpr):
+    # def __init__(self, ref):
+    #     if not isinstance(ref, z3.ArrayRef):
+    #         raise TypeError("SImmMapBase expected ArrayRef, got %s" %
+    #                         strtype(ref))
+    #     super(SImmMapBase, self).__init__(ref)
+
+    _z3_ref_type = z3.ArrayRef
+
+    @classmethod
+    def constVal(cls, value):
+        """Return a map where all keys map to 'value'."""
+        return cls(z3.K(cls._z3_sort, unwrap(value)))
+
+    __wrap__ = {("wrap", 1) : ["__getitem__"],
+                ("wrap", 2) : ["store"]}
+
+def timm_map(indexType, valueType):
+    """Return an immutable map type (a z3 "array") that maps from
+    values of indexType to values of valueType."""
+
+    sort = z3.ArraySort(indexType._z3_sort, valueType._z3_sort)
+    name = "SImmMap_%s_%s" % (indexType.__name__, valueType.__name__)
+    return type(name, (SImmMapBase, SymbolicVal), {"_z3_sort" : sort})
+
+#
+# Compound objects
+#
+
+# XXX Make Symbolic the root of all symbolic types; not just direct Z3
+# wrappers.  Symbolic types must implement any, _make_region, and
+# _select.  any can be generic.
+
+class SMapBase(object):
+    """The base type of symbolic mutable mapping types.  Objects of
+    this type map from some primitive type to some symbolic type
+    (including other mutable types).  They support slicing and slice
+    assignment."""
+
+    @classmethod
+    def any(cls, name):
+        return cls._select(cls._make_region(name, ()), ())
+
+    @classmethod
+    def _make_region(cls, name, indexTypes):
+        return cls._valueType._make_region(name, indexTypes + (cls._indexType,))
+
+    @classmethod
+    def _select(cls, subregion, idx):
+        obj = cls.__new__(cls)
+        obj._sub = subregion
+        obj._idx = idx
+        return obj
+
+    def __getitem__(self, idx):
+        """Return the value at index 'idx'."""
+        return self._valueType._select(self._sub, self._idx + (idx,))
+
+    def __setitem__(self, idx, val):
+        """Change the value at index 'idx'.  'val' must be a primitive
+        type; compound values cannot be assigned."""
+        # We can only assign if the value type is a primitive type,
+        # since we can't emulate reference semantics for compound
+        # types (but value and reference semantics converge for
+        # primitive types).
+        # XXX Rename PrimitiveVal or something?
+        if not issubclass(self._valueType, SymbolicVal):
+            raise TypeError("%s does not support item assignment" %
+                            strtype(self))
+        self._valueType._store(self._sub, self._idx + (idx,), val)
+
+def tmap(indexType, valueType):
+    """Return a type that represents mutable maps from 'indexType' to
+    'valueType'.  'indexType' must be a primitive type, but
+    'valueType' can be any symbolic type.  The returned type will be a
+    subclass of SMapBase; see it for details."""
+
+    # XXX We could accept a size and check indexes if indexType is an
+    # ordered sort
+    name = "SMap_%s_%s" % (indexType.__name__, valueType.__name__)
+    return type(name, (SMapBase,), {"_indexType" : indexType,
+                                    "_valueType" : valueType})
+
+class SStructBase(object):
+    """The base type of symbolic mutable structure types.  Structure
+    types have a fixed set of named fields of specified types."""
+
+    def __init__(self):
+        raise RuntimeError("%s cannot be constructed directly" % strtype(self))
+
+    @classmethod
+    def any(cls, name):
+        return cls._select(cls._make_region(name, ()), ())
+
+    @classmethod
+    def _make_region(cls, name, indexTypes):
+        subregions = {}
+        for fname, ftyp in cls._fields.items():
+            subregions[fname] = ftyp._make_region(name + "." + fname, indexTypes)
+        return subregions
+
+    @classmethod
+    def _select(cls, subregions, idx):
+        obj = cls.__new__(cls)
+        # Don't go through the overridden __setattr__.
+        object.__setattr__(obj, "_subregions", subregions)
+        object.__setattr__(obj, "_idx", idx)
+        return obj
+
+    def __getattr__(self, name):
+        if name not in self._fields:
+            raise AttributeError(name)
+        return self._fields[name]._select(self._subregions[name], self._idx)
+
+    def __setattr__(self, name, val):
+        if name not in self._fields:
+            raise AttributeError(name)
+        if not issubclass(self._fields[name], SymbolicVal):
+            raise TypeError("%s does not support item assignment" %
+                            strtype(self))
+        self._fields[name]._store(self._subregions[name], self._idx, val)
+
+def tstruct(**fields):
+    """Return a mutable structure type with the given fields.
+    'fields' must be a dictionary mapping from names to symbolic
+    types."""
+
+    name = "SStruct_" + "_".join(fields.keys())
+    type_fields = {"__slots__": [], "_fields": fields}
+    return type(name, (SStructBase,), type_fields)
 
 #
 # Constructors

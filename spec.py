@@ -5,6 +5,7 @@ import z3printer
 import errno
 import collections
 import itertools
+import sys
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -227,6 +228,8 @@ def projected_call(pname, pf, method):
     wrapped.__name__ = '%s:%s' % (method.__name__, pname)
     return wrapped
 
+print_cond = not ('-p' in sys.argv)
+
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
     projected_calls = list(calls)
@@ -265,7 +268,10 @@ for (base, ncomb, projections, calls) in tests:
             if simsym.check(simsym.symnot(cond)) == z3.unsat:
                 s = 'any state'
             else:
-                scond = simsym.simplify(cond)
-                s = '\n    ' + str(scond).replace('\n', '\n    ')
+                if print_cond:
+                    scond = simsym.simplify(cond)
+                    s = '\n    ' + str(scond).replace('\n', '\n    ')
+                else:
+                    s = 'sometimes'
             print '  %s: %s' % (msg, s)
     print

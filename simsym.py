@@ -77,19 +77,6 @@ class Symbolic(object):
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
 
-    @classmethod
-    def _wrap(cls, z3ref):
-        """Construct an instance of 'cls' wrapping the given Z3 ref
-        object."""
-        # XXX Merge this in to MetaZ3Wrapper
-        if not isinstance(z3ref, cls.__ref_type__):
-            raise TypeError("%s expected %s, got %s" %
-                            (cls.__name__, cls.__ref_type__.__name__,
-                             strtype(z3ref)))
-        obj = cls.__new__(cls)
-        obj._v = z3ref
-        return obj
-
 class SymbolicVal(object):
     """A symbolic value with a specific type (or "sort" in z3
     terminology).  A subclass of SymbolicVal must have a _z3_sort
@@ -140,6 +127,18 @@ class MetaZ3Wrapper(type):
                 classdict[method] = locals_dict[method]
 
         return type.__new__(cls, classname, bases, classdict)
+
+    def _wrap(cls, z3ref):
+        """Construct an instance of 'cls' wrapping the given Z3 ref
+        object."""
+
+        if not isinstance(z3ref, cls.__ref_type__):
+            raise TypeError("%s expected %s, got %s" %
+                            (cls.__name__, cls.__ref_type__.__name__,
+                             strtype(z3ref)))
+        obj = cls.__new__(cls)
+        obj._v = z3ref
+        return obj
 
 class SExpr(Symbolic):
     __metaclass__ = MetaZ3Wrapper

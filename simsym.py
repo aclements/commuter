@@ -71,7 +71,7 @@ del z3_nonzero
 
 class Symbolic(object):
     """Root of the symbolic type wrapper hierarchy.  Subclasses must
-    provide a _z3_ref_type class field giving the Z3 ref type wrapped
+    provide a __ref_type__ class field giving the Z3 ref type wrapped
     by instances of the subclass."""
 
     def __init__(self):
@@ -81,9 +81,10 @@ class Symbolic(object):
     def _wrap(cls, z3ref):
         """Construct an instance of 'cls' wrapping the given Z3 ref
         object."""
-        if not isinstance(z3ref, cls._z3_ref_type):
+        # XXX Merge this in to MetaZ3Wrapper
+        if not isinstance(z3ref, cls.__ref_type__):
             raise TypeError("%s expected %s, got %s" %
-                            (cls.__name__, cls._z3_ref_type.__name__,
+                            (cls.__name__, cls.__ref_type__.__name__,
                              strtype(z3ref)))
         obj = cls.__new__(cls)
         obj._v = z3ref
@@ -114,48 +115,51 @@ class SymbolicVal(object):
         region.store(idx, val)
 
 class MetaZ3Wrapper(type):
-    """Metaclass to generate wrappers for Z3 ref methods.  The class
-    should have a __wrap__ dictionary mapping from (wrapper class
-    name, argument count) pairs to a list of method names to wrap.
-    This will generate all of the named methods, calling the
-    corresponding method on self._v, and wrapping the result using the
-    named wrapper class."""
+    """Metaclass to generate wrappers for Z3 ref object methods.  The
+    class should have a __ref_type__ field giving the Z3 ref type
+    wrapped by the class, and __wrap__ field giving a list of method
+    names to wrap.  For each method in __wrap__, the generated class
+    will have a corresponding method with the same signature that
+    unwraps all arguments, calls the Z3 method, and re-wraps the
+    result."""
 
     def __new__(cls, classname, bases, classdict):
         if "__wrap__" in classdict:
-            for (wrapper, nargs), methods in classdict.pop("__wrap__").items():
-                for method in methods:
-                    args = ["o%d" % i for i in range(nargs - 1)]
-                    code = "def %s(%s):\n" % (method, ",".join(["self"] + args))
-                    for o in args:
-                        code += " if isinstance(%s, Symbolic): %s=%s._v\n" % \
-                            (o, o, o)
-                    code += " return %s(self._v.%s(%s))" % \
-                        (wrapper or "", method, ",".join(args))
-                    locals_dict = {}
-                    exec code in globals(), locals_dict
-                    classdict[method] = locals_dict[method]
+            ref_type = classdict["__ref_type__"]
+            for method in classdict.pop("__wrap__"):
+                base_method = getattr(ref_type, method)
+                nargs = base_method.__func__.__code__.co_argcount
+                args = ["o%d" % i for i in range(nargs - 1)]
+                code = "def %s(%s):\n" % (method, ",".join(["self"] + args))
+                for o in args:
+                    code += " if isinstance(%s, Symbolic): %s=%s._v\n" % \
+                        (o, o, o)
+                code += " return wrap(self._v.%s(%s))" % (method, ",".join(args))
+                locals_dict = {}
+                exec code in globals(), locals_dict
+                classdict[method] = locals_dict[method]
 
         return type.__new__(cls, classname, bases, classdict)
 
 class SExpr(Symbolic):
-    _z3_ref_type = z3.ExprRef
-
     __metaclass__ = MetaZ3Wrapper
-    __wrap__ = {("wrap", 2): ["__eq__", "__ne__"],
-                (None, 1): ["__str__", "__repr__"]}
+    __ref_type__ = z3.ExprRef
+    __wrap__ = ["__eq__", "__ne__"]
+
+    def __str__(self):
+        return str(self._v)
+
+    def __repr__(self):
+        return repr(self._v)
 
 class SArith(SExpr):
-    _z3_ref_type = z3.ArithRef
-
-    __wrap__ = {("wrap", 2):
-                    ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
-                     "__sub__", "__truediv__",
-                     "__radd__", "__rdiv__", "__rmod__", "__rmul__", "__rpow__",
-                     "__rsub__", "__rtruediv__",
-                     "__ge__", "__gt__", "__le__", "__lt__"],
-                ("wrap", 1):
-                    ["__neg__", "__pos__"]}
+    __ref_type__ = z3.ArithRef
+    __wrap__ = ["__add__", "__div__", "__mod__", "__mul__", "__pow__",
+                "__sub__", "__truediv__",
+                "__radd__", "__rdiv__", "__rmod__", "__rmul__", "__rpow__",
+                "__rsub__", "__rtruediv__",
+                "__ge__", "__gt__", "__le__", "__lt__",
+                "__neg__", "__pos__"]
 
 class SInt(SArith, SymbolicVal):
     _z3_sort = z3.IntSort()
@@ -165,7 +169,7 @@ class SInt(SArith, SymbolicVal):
     # Z3's int sort.  wrap will use this for any integral expression.
 
 class SBool(SExpr, SymbolicVal):
-    _z3_ref_type = z3.BoolRef
+    __ref_type__ = z3.BoolRef
     _z3_sort = z3.BoolSort()
 
     def __nonzero__(self):
@@ -211,7 +215,7 @@ class SBool(SExpr, SymbolicVal):
         return rv
 
 class SEnumBase(SExpr):
-    _z3_ref_type = z3.DatatypeRef
+    __ref_type__ = z3.DatatypeRef
 
 def tenum(name, vals):
     """Return an enumeration type called 'name' with the given values.
@@ -228,7 +232,7 @@ def tenum(name, vals):
     return type(name, (SEnumBase, SymbolicVal), fields)
 
 class STupleBase(SExpr):
-    _z3_ref_type = z3.DatatypeRef
+    __ref_type__ = z3.DatatypeRef
 
 def ttuple(name, *types):
     """Return a named tuple type with the given fields.  Each 'type'
@@ -255,15 +259,13 @@ class SImmMapBase(SExpr):
     #                         strtype(ref))
     #     super(SImmMapBase, self).__init__(ref)
 
-    _z3_ref_type = z3.ArrayRef
+    __ref_type__ = z3.ArrayRef
+    __wrap__ = ["__getitem__"]
 
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
         return cls(z3.K(cls._z3_sort, unwrap(value)))
-
-    __wrap__ = {("wrap", 1) : ["__getitem__"],
-                ("wrap", 2) : ["store"]}
 
 def timm_map(indexType, valueType):
     """Return an immutable map type (a z3 "array") that maps from

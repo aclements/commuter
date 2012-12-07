@@ -230,7 +230,7 @@ def model_unwrap(e):
         return (str(e) == 'True')
     if isinstance(e, list):
         return [model_unwrap(x) for x in e]
-    raise Exception('%s: unknown value type %s' % (e, simsym.strtype(e)))
+    raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 tests = [
     (State, 3, {},
@@ -306,10 +306,14 @@ for (base, ncomb, projections, calls) in tests:
                 check, model = simsym.check(simsym.symand([cond, pc2]))
                 if check != z3.sat: continue
 
-                vars = {model_unwrap(k): model_unwrap(model[k]) for k in model}
-                testcase = {'calls': [c.__name__ for c in callset],
-                            'vars': vars}
-                module_testcases.append(testcase)
+                try:
+                    vars = {model_unwrap(k): model_unwrap(model[k]) for k in model}
+                    testcase = {'calls': [c.__name__ for c in callset],
+                                'vars': vars}
+                    module_testcases.append(testcase)
+                except Exception, e:
+                    print 'Dud model:', model
+                    print e
     print
     testcases[base.__name__] = module_testcases
 

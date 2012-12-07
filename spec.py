@@ -263,9 +263,9 @@ for (base, ncomb, projections, calls) in tests:
         for msg, cond in (('commute', pc2),
                           ('results diverge', pr2),
                           ('states diverge', ps2)):
-            if simsym.check(cond) == z3.unsat:
+            if simsym.check(cond)[0] == z3.unsat:
                 continue
-            if simsym.check(simsym.symnot(cond)) == z3.unsat:
+            if simsym.check(simsym.symnot(cond))[0] == z3.unsat:
                 s = 'any state'
             else:
                 if print_cond:

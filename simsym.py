@@ -417,10 +417,14 @@ def check(e):
     solver.push()
     solver.add(unwrap(e))
     c = solver.check()
+    if c == z3.sat:
+        m = solver.model()
+    else:
+        m = None
     solver.pop()
     if clearsolver:
         solver = None
-    return c
+    return (c, m)
 
 #
 # Helpers for tracking "internal" variables

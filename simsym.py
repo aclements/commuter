@@ -160,6 +160,10 @@ class SArith(SExpr):
 class SInt(SArith, SymbolicVal):
     _z3_sort = z3.IntSort()
 
+    # We're still wrapping ArithRef here (not IntNumRef).  This class
+    # exists separately from SArith so we have Python type to parallel
+    # Z3's int sort.  wrap will use this for any integral expression.
+
 class SBool(SExpr, SymbolicVal):
     _z3_ref_type = z3.BoolRef
     _z3_sort = z3.BoolSort()
@@ -439,6 +443,8 @@ def wrap(ref):
         raise TypeError("Not a bool, int, long, float, or z3.ExprRef")
 
     if isinstance(ref, z3.ArithRef):
+        if ref.is_int():
+            return SInt._wrap(ref)
         return SArith._wrap(ref)
     if isinstance(ref, z3.BoolRef):
         return SBool._wrap(ref)

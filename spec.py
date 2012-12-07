@@ -6,6 +6,8 @@ import errno
 import collections
 import itertools
 import sys
+import argparse
+import json
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -211,6 +213,25 @@ def test(base, *calls):
     except PreconditionFailure:
         return None
 
+def projected_call(pname, pf, method):
+    def wrapped(*args, **kwargs):
+        return pf(method(*args, **kwargs))
+    wrapped.__name__ = '%s:%s' % (method.__name__, pname)
+    return wrapped
+
+def model_unwrap(e):
+    if isinstance(e, z3.FuncDeclRef):
+        return e.name()
+    if isinstance(e, z3.IntNumRef):
+        return int(e.as_long())
+    if isinstance(e, z3.FuncInterp):
+        return [model_unwrap(x) for x in e.as_list()]
+    if isinstance(e, z3.BoolRef):
+        return (str(e) == 'True')
+    if isinstance(e, list):
+        return [model_unwrap(x) for x in e]
+    raise Exception('%s: unknown value type %s' % (e, simsym.strtype(e)))
+
 tests = [
     (State, 3, {},
      [State.sys_inc, State.sys_dec, State.sys_iszero]),
@@ -222,16 +243,21 @@ tests = [
      [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
 ]
 
-def projected_call(pname, pf, method):
-    def wrapped(*args, **kwargs):
-        return pf(method(*args, **kwargs))
-    wrapped.__name__ = '%s:%s' % (method.__name__, pname)
-    return wrapped
+parser = argparse.ArgumentParser()
+parser.add_argument('-c', '--print-conds', action='store_true')
+parser.add_argument('-t', '--test-file')
+args = parser.parse_args()
 
-print_cond = not ('-p' in sys.argv)
+print_cond = args.print_conds
+testcases = {}
+if args.test_file is None:
+    testfile = None
+else:
+    testfile = open(args.test_file, 'w')
 
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
+    module_testcases = []
     projected_calls = list(calls)
     for p in projections:
         for c in calls:
@@ -240,7 +266,7 @@ for (base, ncomb, projections, calls) in tests:
         print ' '.join([c.__name__ for c in callset])
         rvs = simsym.symbolic_apply(test, base, *callset)
         conds = collections.defaultdict(lambda: simsym.wrap(z3.BoolVal(False)))
-        for (cond, res) in simsym.combine(rvs):
+        for cond, res in simsym.combine(rvs):
             conds[res] = cond
 
         pc = simsym.simplify(conds[''])
@@ -274,4 +300,17 @@ for (base, ncomb, projections, calls) in tests:
                 else:
                     s = 'sometimes'
             print '  %s: %s' % (msg, s)
+
+        if testfile is not None:
+            for cond, ores in rvs:
+                check, model = simsym.check(simsym.symand([cond, pc2]))
+                if check != z3.sat: continue
+
+                vars = {model_unwrap(k): model_unwrap(model[k]) for k in model}
+                testcase = {'calls': [c.__name__ for c in callset],
+                            'vars': vars}
+                module_testcases.append(testcase)
     print
+    testcases[base.__name__] = module_testcases
+
+testfile.write(json.dumps(testcases, indent=2))

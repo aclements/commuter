@@ -9,7 +9,7 @@ class _Region(object):
     """A mutable N-dimensional (where N may be 0) array of symbolic
     constants, indexed by N-tuples of symbolic constants.  Internally,
     all symbolic values are constructed via regions.  For individual
-    constant types, the constructed region will be 0-dimensional.
+    constant values, the constructed region will be 0-dimensional.
     Compound types recursively break down into constant types and
     track separate regions for each contained constant type."""
 
@@ -46,7 +46,6 @@ class _Region(object):
         if len(idx) != self._dims:
             raise RuntimeError("Index length %d does not match dimensions %d" %
                                (len(idx), self._dims))
-        # XXX Is the wrap/unwrap handling what we want here?
         if self._dims == 0:
             self._v = unwrap(val)
         elif self._dims == 1:
@@ -114,11 +113,9 @@ class Symbolic(object):
 
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
-    immutable values.  Generally they are primitive types, such as
-    integers and booleans, but more complex types can also be
-    constants (e.g., an immutable symbolic tuple of constants).  A
-    subclass of SymbolicConst must have a __z3_sort__ class field
-    giving the z3.SortRef for the value's type."""
+    deeply immutable values such as primitive types.  A subclass of
+    SymbolicConst must have a __z3_sort__ class field giving the
+    z3.SortRef for the value's type."""
 
     @classmethod
     def _z3_sort(cls):
@@ -274,8 +271,8 @@ def tenum(name, vals):
     """Return a symbolic constant enumeration type called 'name' with
     the given values.  'vals' must be a list of strings or a string of
     space-separated names.  The returned type will have a class field
-    for each value and will inherit from 'SymbolicConst', giving it
-    access to class methods such as 'any'."""
+    corresponding to each concrete value and inherit from SEnumBase
+    and SymbolicConst."""
 
     if isinstance(vals, basestring):
         vals = vals.split()
@@ -289,7 +286,10 @@ class STupleBase(SExpr):
 
 def ttuple(name, *types):
     """Return a symbolic constant named tuple type with the given
-    fields.  Each 'type' argument must be a pair of name and type."""
+    fields.  Each 'type' argument must be a pair of name and type.
+    The returned type will inherit from STupleBase and SymbolicConst
+    and will have properties for retrieving each component of the
+    tuple."""
 
     sort = z3.Datatype(name)
     sort.declare(name, *[(fname, typ._z3_sort()) for fname, typ in types])
@@ -335,9 +335,8 @@ def tconstmap(indexType, valueType):
 
 class SMapBase(Symbolic):
     """The base type of symbolic mutable mapping types.  Objects of
-    this type map from values of symbolic constant type to values of
-    symbolic type (constant or mutable).  Maps support slicing and
-    slice assignment."""
+    this type map from symbolic constants to symbolic values (constant
+    or mutable).  Maps support slicing and slice assignment."""
 
     @classmethod
     def _make_region(cls, name, indexTypes):
@@ -368,10 +367,9 @@ class SMapBase(Symbolic):
         self._valueType._store(self._sub, self._idx + (idx,), val)
 
 def tmap(indexType, valueType):
-    """Return a type that represents mutable symbolic maps from
-    'indexType' to 'valueType'.  'indexType' must be a symbolic
-    constant type, but 'valueType' can be any symbolic type.  The
-    returned type will be a subclass of SMapBase; see it for details."""
+    """Return a subclass of SMapBase that maps from 'indexType' to
+    'valueType'.  'indexType' must be a symbolic constant type, but
+    'valueType' can be any symbolic type."""
 
     # XXX We could accept a size and check indexes if indexType is an
     # ordered sort
@@ -381,10 +379,8 @@ def tmap(indexType, valueType):
 
 class SStructBase(Symbolic):
     """The base type of symbolic mutable structure types.  Structure
-    types have a fixed set of named fields of specified types."""
-
-    def __init__(self):
-        raise RuntimeError("%s cannot be constructed directly" % strtype(self))
+    types have a fixed set of named fields, where the fields may have
+    different symbolic types."""
 
     @classmethod
     def _make_region(cls, name, indexTypes):
@@ -415,9 +411,9 @@ class SStructBase(Symbolic):
         self._fields[name]._store(self._subregions[name], self._idx, val)
 
 def tstruct(**fields):
-    """Return a mutable structure type with the given fields.
-    'fields' must be a dictionary mapping from names to symbolic
-    types."""
+    """Return a subclass of SStructBase for a struct type with the
+    given fields.  'fields' must be a dictionary mapping from names to
+    symbolic types."""
 
     name = "SStruct_" + "_".join(fields.keys())
     type_fields = {"__slots__": [], "_fields": fields}

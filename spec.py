@@ -318,4 +318,5 @@ for (base, ncomb, projections, calls) in tests:
     print
     testcases[base.__name__] = module_testcases
 
-testfile.write(json.dumps(testcases, indent=2))
+if testfile is not None:
+    testfile.write(json.dumps(testcases, indent=2))

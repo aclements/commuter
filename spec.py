@@ -52,9 +52,10 @@ class State(Struct):
 
 class Pipe(Struct):
     __slots__ = ['elems', 'nread']
+    ListOfInt = symtypes.tlist(simsym.SInt)
 
     def __init__(self):
-        self.elems = symtypes.anyListOfInt('Pipe.elems')
+        self.elems = self.ListOfInt.any('Pipe.elems')
         self.nread = simsym.SInt.any('Pipe.nread')
 
         simsym.assume(self.nread >= 0)

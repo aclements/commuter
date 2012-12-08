@@ -113,13 +113,5 @@ class SBag(object):
     def __ne__(self, o):
         return not self.__eq__(o)
 
-ListOfInt = tlist(SInt)
-def anyListOfInt(name):
-    return ListOfInt.any(name)
-
-ListOfBool = tlist(SBool)
-def anyListOfBool(name):
-    return ListOfBool.any(name)
-
 def anyDictOfIntToInt(name):
     return SDict(name, z3.IntSort(), z3.IntSort())

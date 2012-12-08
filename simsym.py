@@ -112,14 +112,13 @@ class Symbolic(object):
         components from the compound's component types."""
         raise NotImplementedError("_select is abstract")
 
-class SymbolicConst(object):
+class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
     immutable values.  Generally they are primitive types, such as
     integers and booleans, but more complex types can also be
     constants (e.g., an immutable symbolic tuple of constants).  A
     subclass of SymbolicConst must have a __z3_sort__ class field
-    giving the z3.SortRef for the value's type.  Subclasses must
-    inherit from SymbolicConst before inheriting from Symbol."""
+    giving the z3.SortRef for the value's type."""
 
     @classmethod
     def _z3_sort(cls):
@@ -215,14 +214,14 @@ class SArith(SExpr):
                 "__ge__", "__gt__", "__le__", "__lt__",
                 "__neg__", "__pos__"]
 
-class SInt(SymbolicConst, SArith):
+class SInt(SArith, SymbolicConst):
     __z3_sort__ = z3.IntSort()
 
     # We're still wrapping ArithRef here (not IntNumRef).  This class
     # exists separately from SArith so we have Python type to parallel
     # Z3's int sort.  wrap will use this for any integral expression.
 
-class SBool(SymbolicConst, SExpr):
+class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
     __z3_sort__ = z3.BoolSort()
 
@@ -283,7 +282,7 @@ def tenum(name, vals):
     sort, consts = z3.EnumSort(name, vals)
     fields = dict(zip(vals, consts))
     fields["__z3_sort__"] = sort
-    return type(name, (SymbolicConst, SEnumBase), fields)
+    return type(name, (SEnumBase, SymbolicConst), fields)
 
 class STupleBase(SExpr):
     __ref_type__ = z3.DatatypeRef
@@ -304,7 +303,7 @@ def %s(self):
         locals_dict = {}
         exec code in globals(), locals_dict
         fields[fname] = locals_dict[fname]
-    return type(name, (SymbolicConst, STupleBase), fields)
+    return type(name, (STupleBase, SymbolicConst), fields)
 
 class SImmMapBase(SExpr):
     # def __init__(self, ref):
@@ -327,7 +326,7 @@ def timm_map(indexType, valueType):
 
     sort = z3.ArraySort(indexType._z3_sort(), valueType._z3_sort())
     name = "SImmMap_%s_%s" % (indexType.__name__, valueType.__name__)
-    return type(name, (SymbolicConst, SImmMapBase), {"__z3_sort__" : sort})
+    return type(name, (SImmMapBase, SymbolicConst), {"__z3_sort__" : sort})
 
 #
 # Compound objects

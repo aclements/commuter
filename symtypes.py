@@ -1,11 +1,12 @@
 import z3
 from simsym import *
 
-class SList(object):
-    def __init__(self, name, valSort):
-        self._vals = z3.Array(name, z3.IntSort(), valSort)
-        self._len = wrap(z3.Int(name + '.len'))
-        assume(self._len >= 0)
+class SListBase(Symbolic):
+    @classmethod
+    def any(cls, name):
+        obj = super(SListBase, cls).any(name)
+        assume(obj._len >= 0)
+        return obj
 
     def __check_idx(self, idx):
         if idx < 0:
@@ -13,25 +14,13 @@ class SList(object):
         if idx >= self.len():
             raise IndexError("SList index out of range: %r >= %r" %
                              (idx, self._len))
-        return unwrap(idx)
+        return idx
 
     def __getitem__(self, idx):
-        return wrap(self._vals[self.__check_idx(idx)])
+        return self._vals[self.__check_idx(idx)]
 
     def __setitem__(self, idx, val):
-        self._vals = z3.Store(self._vals, self.__check_idx(idx), unwrap(val))
-
-    def __eq__(self, o):
-        if not isinstance(o, SList):
-            return NotImplemented
-        return wrap(z3.And(unwrap(self._len == o._len),
-                                 self._vals == o._vals))
-
-    def __ne__(self, o):
-        r = self == o
-        if r is NotImplemented:
-            return NotImplemented
-        return wrap(z3.Not(unwrap(r)))
+        self._vals[self.__check_idx(idx)] = val
 
     def len(self):
         # Overriding __len__ isn't useful because the len() builtin
@@ -42,6 +31,11 @@ class SList(object):
         l = self.len()
         self._len += 1
         self[l] = val
+
+def tlist(valueType):
+    name = "SList_" + valueType.__name__
+    base = tstruct(_vals = tmap(SInt, valueType), _len = SInt)
+    return type(name, (base, SListBase), {})
 
 class SDict(object):
     def __init__(self, name, keySort, valSort):
@@ -119,11 +113,13 @@ class SBag(object):
     def __ne__(self, o):
         return not self.__eq__(o)
 
+ListOfInt = tlist(SInt)
 def anyListOfInt(name):
-    return SList(name, z3.IntSort())
+    return ListOfInt.any(name)
 
+ListOfBool = tlist(SBool)
 def anyListOfBool(name):
-    return SList(name, z3.BoolSort())
+    return ListOfBool.any(name)
 
 def anyDictOfIntToInt(name):
     return SDict(name, z3.IntSort(), z3.IntSort())

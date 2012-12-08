@@ -371,8 +371,13 @@ class SMapBase(Symbolic):
         return cls._valueType._eq_region(s1, s2)
 
     def __eq__(self, o):
-        if type(self) != type(o):
+        if not isinstance(o, SMapBase):
             return NotImplemented
+        if type(self) != type(o):
+            # Don't simply return NotImplemented or Python == will
+            # return False, masking bugs.
+            raise TypeError("Cannot compare incompatible map types %s and %s"%
+                            (strtype(self), strtype(o)))
         if self._idx == () and o._idx == ():
             return self._eq_region(self._sub, o._sub)
         # Because we use tuple indexing, we need to explicitly
@@ -437,8 +442,13 @@ class SStructBase(Symbolic):
                        for fname, ftyp in cls._fields.items()])
 
     def __eq__(self, o):
-        if type(self) != type(o):
+        if not isinstance(o, SStructBase):
             return NotImplemented
+        if type(self) != type(o):
+            # Don't simply return NotImplemented or Python == will
+            # return False, masking bugs.
+            raise TypeError("Cannot compare incompatible struct types %s and %s"%
+                            (strtype(self), strtype(o)))
         if self._idx == () and o._idx == ():
             return self._eq_region(self._subregions, o._subregions)
         return symand([getattr(self, fname) == getattr(o, fname)

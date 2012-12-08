@@ -18,17 +18,17 @@ class _Region(object):
     def __init__(self, name, indexTypes, valueType):
         self._dims = len(indexTypes)
         if self._dims == 0:
-            self._v = z3.Const(name, valueType.__z3_sort__)
+            self._v = z3.Const(name, valueType._z3_sort())
         elif self._dims == 1:
-            self._v = z3.Array(name, indexTypes[0].__z3_sort__, valueType.__z3_sort__)
+            self._v = z3.Array(name, indexTypes[0]._z3_sort(), valueType._z3_sort())
         else:
             # Use a tuple type for the index
             sname = name + ".idx"
             sort = z3.Datatype(sname)
-            sort.declare(sname, *[("%s!%d" % (sname, i), typ.__z3_sort__)
+            sort.declare(sname, *[("%s!%d" % (sname, i), typ._z3_sort())
                                   for i, typ in enumerate(indexTypes)])
             sort = sort.create()
-            self._v = z3.Array(name, sort, valueType.__z3_sort__)
+            self._v = z3.Array(name, sort, valueType._z3_sort())
             self._ctor = getattr(sort, sname)
 
     def select(self, idx):
@@ -76,20 +76,32 @@ class Symbolic(object):
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
 
+    @classmethod
+    def _z3_sort(cls):
+        """Return the Z3 sort represented by this class or raise an
+        exception if this class does not represent symbolic
+        constants."""
+        raise TypeError("%s is symbolic, but not constant" % strtype(cls))
+
 class SymbolicConst(object):
     """The base class for symbolic constants.  Symbolic constants are
     immutable values.  Generally they are primitive types, such as
     integers and booleans, but more complex types can also be
     constants (e.g., an immutable symbolic tuple of constants).  A
     subclass of SymbolicConst must have a __z3_sort__ class field
-    giving the z3.SortRef for the value's type."""
+    giving the z3.SortRef for the value's type.  Subclasses must
+    inherit from SymbolicConst before inheriting from Symbol."""
+
+    @classmethod
+    def _z3_sort(cls):
+        return cls.__z3_sort__
 
     @classmethod
     def any(cls, name):
         """Return a symbolic constant of unknown value."""
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.
-        return cls._wrap(z3.Const(name, cls.__z3_sort__))
+        return cls._wrap(z3.Const(name, cls._z3_sort()))
 
     @classmethod
     def _make_region(cls, name, indexTypes):
@@ -162,14 +174,14 @@ class SArith(SExpr):
                 "__ge__", "__gt__", "__le__", "__lt__",
                 "__neg__", "__pos__"]
 
-class SInt(SArith, SymbolicConst):
+class SInt(SymbolicConst, SArith):
     __z3_sort__ = z3.IntSort()
 
     # We're still wrapping ArithRef here (not IntNumRef).  This class
     # exists separately from SArith so we have Python type to parallel
     # Z3's int sort.  wrap will use this for any integral expression.
 
-class SBool(SExpr, SymbolicConst):
+class SBool(SymbolicConst, SExpr):
     __ref_type__ = z3.BoolRef
     __z3_sort__ = z3.BoolSort()
 
@@ -230,7 +242,7 @@ def tenum(name, vals):
     sort, consts = z3.EnumSort(name, vals)
     fields = dict(zip(vals, consts))
     fields["__z3_sort__"] = sort
-    return type(name, (SEnumBase, SymbolicConst), fields)
+    return type(name, (SymbolicConst, SEnumBase), fields)
 
 class STupleBase(SExpr):
     __ref_type__ = z3.DatatypeRef
@@ -240,7 +252,7 @@ def ttuple(name, *types):
     fields.  Each 'type' argument must be a pair of name and type."""
 
     sort = z3.Datatype(name)
-    sort.declare(name, *[(fname, typ.__z3_sort__) for fname, typ in types])
+    sort.declare(name, *[(fname, typ._z3_sort()) for fname, typ in types])
     sort = sort.create()
     fields = {"__z3_sort__" : sort}
     for fname, typ in types:
@@ -251,7 +263,7 @@ def %s(self):
         locals_dict = {}
         exec code in globals(), locals_dict
         fields[fname] = locals_dict[fname]
-    return type(name, (STupleBase, SymbolicConst), fields)
+    return type(name, (SymbolicConst, STupleBase), fields)
 
 class SImmMapBase(SExpr):
     # def __init__(self, ref):
@@ -266,15 +278,15 @@ class SImmMapBase(SExpr):
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
-        return cls(z3.K(cls.__z3_sort__, unwrap(value)))
+        return cls(z3.K(cls._z3_sort(), unwrap(value)))
 
 def timm_map(indexType, valueType):
     """Return an immutable map type (a z3 "array") that maps from
     values of indexType to values of valueType."""
 
-    sort = z3.ArraySort(indexType.__z3_sort__, valueType.__z3_sort__)
+    sort = z3.ArraySort(indexType._z3_sort(), valueType._z3_sort())
     name = "SImmMap_%s_%s" % (indexType.__name__, valueType.__name__)
-    return type(name, (SImmMapBase, SymbolicConst), {"__z3_sort__" : sort})
+    return type(name, (SymbolicConst, SImmMapBase), {"__z3_sort__" : sort})
 
 #
 # Compound objects

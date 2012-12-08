@@ -55,12 +55,6 @@ class _Region(object):
             self._v = z3.Store(self._v, self._ctor(*map(unwrap, idx)),
                                unwrap(val))
 
-# This maintains a type hierarchy that parallels Z3's symbolic type
-# hierarchy.  Each type wraps the equivalent Z3 type and defers to the
-# Z3 methods for all symbolic operations (wrapping the results in the
-# appropriate wrapper type).  However, these types add methods
-# specific to symbolic execution; most notably __nonzero__.
-
 # Monkey-patch __nonzero__ on Z3 types to make sure we don't
 # accidentally call it instead of our wrappers.
 def z3_nonzero(self):
@@ -149,6 +143,18 @@ class SymbolicConst(object):
     @staticmethod
     def _store(region, idx, val):
         region.store(idx, val)
+
+#
+# Z3 wrappers
+#
+
+# We construct a type hierarchy that parallels Z3's expression type
+# hierarchy.  Each type wraps the equivalent Z3 type and defers to the
+# Z3 methods for all symbolic operations (unwrapping the arguments and
+# re-wrapping the results).  However, these types add methods specific
+# to symbolic execution; most notably __nonzero__.  The leaves of this
+# type hierarchy also provide Python types corresponding to Z3 sorts
+# that we care about.
 
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref object methods.  The

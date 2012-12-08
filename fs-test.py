@@ -5,7 +5,7 @@ import struct
 import errno
 import itertools
 
-filenames = ['0', '1', '2', '3', '4', '5']
+filenames = [str(x) for x in range(0, 15)]
 
 def getdir(vars):
   files = set()
@@ -105,7 +105,9 @@ class FsRunner:
 
   @staticmethod
   def rename(which, vars):
-    print 'rename', which
+    srcfnidx = vars.get('Fs.rename[%s].src' % which, 0)
+    dstfnidx = vars.get('Fs.rename[%s].dst' % which, 0)
+    os.rename(filenames[srcfnidx], filenames[dstfnidx])
 
 def run_calls(idxcalls, vars):
   r = {}

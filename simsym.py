@@ -6,30 +6,29 @@ import z3
 import types
 
 class _Region(object):
-    """A mutable N-dimensional (where N may be 0) array of primitive
-    symbolic values, indexed by N-tuples of primitive symbolic values.
-    Internally, all symbolic values are constructed via regions.  For
-    individual primitive types, the constructed region will be
-    0-dimensional.  Compound types recursively break down into
-    primitive types and track separate regions for each contained
-    primitive type."""
+    """A mutable N-dimensional (where N may be 0) array of symbolic
+    constants, indexed by N-tuples of symbolic constants.  Internally,
+    all symbolic values are constructed via regions.  For individual
+    constant types, the constructed region will be 0-dimensional.
+    Compound types recursively break down into constant types and
+    track separate regions for each contained constant type."""
 
     __slots__ = ["_dims", "_v", "_ctor"]
 
     def __init__(self, name, indexTypes, valueType):
         self._dims = len(indexTypes)
         if self._dims == 0:
-            self._v = z3.Const(name, valueType._z3_sort)
+            self._v = z3.Const(name, valueType.__z3_sort__)
         elif self._dims == 1:
-            self._v = z3.Array(name, indexTypes[0]._z3_sort, valueType._z3_sort)
+            self._v = z3.Array(name, indexTypes[0].__z3_sort__, valueType.__z3_sort__)
         else:
             # Use a tuple type for the index
             sname = name + ".idx"
             sort = z3.Datatype(sname)
-            sort.declare(sname, *[("%s!%d" % (sname, i), typ._z3_sort)
+            sort.declare(sname, *[("%s!%d" % (sname, i), typ.__z3_sort__)
                                   for i, typ in enumerate(indexTypes)])
             sort = sort.create()
-            self._v = z3.Array(name, sort, valueType._z3_sort)
+            self._v = z3.Array(name, sort, valueType.__z3_sort__)
             self._ctor = getattr(sort, sname)
 
     def select(self, idx):
@@ -77,17 +76,20 @@ class Symbolic(object):
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
 
-class SymbolicVal(object):
-    """A symbolic value with a specific type (or "sort" in z3
-    terminology).  A subclass of SymbolicVal must have a _z3_sort
-    class field giving the z3.SortRef for the value's type."""
+class SymbolicConst(object):
+    """The base class for symbolic constants.  Symbolic constants are
+    immutable values.  Generally they are primitive types, such as
+    integers and booleans, but more complex types can also be
+    constants (e.g., an immutable symbolic tuple of constants).  A
+    subclass of SymbolicConst must have a __z3_sort__ class field
+    giving the z3.SortRef for the value's type."""
 
     @classmethod
     def any(cls, name):
         """Return a symbolic constant of unknown value."""
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.
-        return cls._wrap(z3.Const(name, cls._z3_sort))
+        return cls._wrap(z3.Const(name, cls.__z3_sort__))
 
     @classmethod
     def _make_region(cls, name, indexTypes):
@@ -160,16 +162,16 @@ class SArith(SExpr):
                 "__ge__", "__gt__", "__le__", "__lt__",
                 "__neg__", "__pos__"]
 
-class SInt(SArith, SymbolicVal):
-    _z3_sort = z3.IntSort()
+class SInt(SArith, SymbolicConst):
+    __z3_sort__ = z3.IntSort()
 
     # We're still wrapping ArithRef here (not IntNumRef).  This class
     # exists separately from SArith so we have Python type to parallel
     # Z3's int sort.  wrap will use this for any integral expression.
 
-class SBool(SExpr, SymbolicVal):
+class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
-    _z3_sort = z3.BoolSort()
+    __z3_sort__ = z3.BoolSort()
 
     def __nonzero__(self):
         solver = get_solver()
@@ -217,39 +219,39 @@ class SEnumBase(SExpr):
     __ref_type__ = z3.DatatypeRef
 
 def tenum(name, vals):
-    """Return an enumeration type called 'name' with the given values.
-    'vals' must be a list of strings or a string of space-separated
-    names.  The returned type will have a class field for each value.
-    Instantiating the resulting type will return a symbolic enum that
-    can take on any of the enumerated values."""
+    """Return a symbolic constant enumeration type called 'name' with
+    the given values.  'vals' must be a list of strings or a string of
+    space-separated names.  The returned type will have a class field
+    for each value and will inherit from 'SymbolicConst', giving it
+    access to class methods such as 'any'."""
 
     if isinstance(vals, basestring):
         vals = vals.split()
     sort, consts = z3.EnumSort(name, vals)
     fields = dict(zip(vals, consts))
-    fields["_z3_sort"] = sort
-    return type(name, (SEnumBase, SymbolicVal), fields)
+    fields["__z3_sort__"] = sort
+    return type(name, (SEnumBase, SymbolicConst), fields)
 
 class STupleBase(SExpr):
     __ref_type__ = z3.DatatypeRef
 
 def ttuple(name, *types):
-    """Return a named tuple type with the given fields.  Each 'type'
-    argument must be a pair of name and type."""
+    """Return a symbolic constant named tuple type with the given
+    fields.  Each 'type' argument must be a pair of name and type."""
 
     sort = z3.Datatype(name)
-    sort.declare(name, *[(fname, typ._z3_sort) for fname, typ in types])
+    sort.declare(name, *[(fname, typ.__z3_sort__) for fname, typ in types])
     sort = sort.create()
-    fields = {"_z3_sort" : sort}
+    fields = {"__z3_sort__" : sort}
     for fname, typ in types:
         code = """\
 @property
 def %s(self):
-    return wrap(self._z3_sort.%s(self._v))""" % (fname, fname)
+    return wrap(self.__z3_sort__.%s(self._v))""" % (fname, fname)
         locals_dict = {}
         exec code in globals(), locals_dict
         fields[fname] = locals_dict[fname]
-    return type(name, (STupleBase, SymbolicVal), fields)
+    return type(name, (STupleBase, SymbolicConst), fields)
 
 class SImmMapBase(SExpr):
     # def __init__(self, ref):
@@ -264,15 +266,15 @@ class SImmMapBase(SExpr):
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
-        return cls(z3.K(cls._z3_sort, unwrap(value)))
+        return cls(z3.K(cls.__z3_sort__, unwrap(value)))
 
 def timm_map(indexType, valueType):
     """Return an immutable map type (a z3 "array") that maps from
     values of indexType to values of valueType."""
 
-    sort = z3.ArraySort(indexType._z3_sort, valueType._z3_sort)
+    sort = z3.ArraySort(indexType.__z3_sort__, valueType.__z3_sort__)
     name = "SImmMap_%s_%s" % (indexType.__name__, valueType.__name__)
-    return type(name, (SImmMapBase, SymbolicVal), {"_z3_sort" : sort})
+    return type(name, (SImmMapBase, SymbolicConst), {"__z3_sort__" : sort})
 
 #
 # Compound objects
@@ -284,9 +286,9 @@ def timm_map(indexType, valueType):
 
 class SMapBase(object):
     """The base type of symbolic mutable mapping types.  Objects of
-    this type map from some primitive type to some symbolic type
-    (including other mutable types).  They support slicing and slice
-    assignment."""
+    this type map from values of symbolic constant type to values of
+    symbolic type (constant or mutable).  Maps support slicing and
+    slice assignment."""
 
     @classmethod
     def any(cls, name):
@@ -315,16 +317,16 @@ class SMapBase(object):
         # types (but value and reference semantics converge for
         # primitive types).
         # XXX Rename PrimitiveVal or something?
-        if not issubclass(self._valueType, SymbolicVal):
+        if not issubclass(self._valueType, SymbolicConst):
             raise TypeError("%s does not support item assignment" %
                             strtype(self))
         self._valueType._store(self._sub, self._idx + (idx,), val)
 
 def tmap(indexType, valueType):
-    """Return a type that represents mutable maps from 'indexType' to
-    'valueType'.  'indexType' must be a primitive type, but
-    'valueType' can be any symbolic type.  The returned type will be a
-    subclass of SMapBase; see it for details."""
+    """Return a type that represents mutable symbolic maps from
+    'indexType' to 'valueType'.  'indexType' must be a symbolic
+    constant type, but 'valueType' can be any symbolic type.  The
+    returned type will be a subclass of SMapBase; see it for details."""
 
     # XXX We could accept a size and check indexes if indexType is an
     # ordered sort
@@ -366,7 +368,7 @@ class SStructBase(object):
     def __setattr__(self, name, val):
         if name not in self._fields:
             raise AttributeError(name)
-        if not issubclass(self._fields[name], SymbolicVal):
+        if not issubclass(self._fields[name], SymbolicConst):
             raise TypeError("%s does not support item assignment" %
                             strtype(self))
         self._fields[name]._store(self._subregions[name], self._idx, val)

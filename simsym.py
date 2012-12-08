@@ -305,28 +305,29 @@ def %s(self):
         fields[fname] = locals_dict[fname]
     return type(name, (STupleBase, SymbolicConst), fields)
 
-class SImmMapBase(SExpr):
-    # def __init__(self, ref):
-    #     if not isinstance(ref, z3.ArrayRef):
-    #         raise TypeError("SImmMapBase expected ArrayRef, got %s" %
-    #                         strtype(ref))
-    #     super(SImmMapBase, self).__init__(ref)
-
+class SConstMapBase(SExpr):
     __ref_type__ = z3.ArrayRef
     __wrap__ = ["__getitem__"]
 
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
-        return cls(z3.K(cls._z3_sort(), unwrap(value)))
+        return cls._wrap(z3.K(cls._z3_sort(), unwrap(value)))
 
-def timm_map(indexType, valueType):
+    def store(self, index, value):
+        """Return a new map that is identical for this map except that
+        'index' will map to 'value'."""
+        return self._wrap(z3.Store(unwrap(self), unwrap(index), unwrap(value)))
+
+def tconstmap(indexType, valueType):
     """Return an immutable map type (a z3 "array") that maps from
-    values of indexType to values of valueType."""
+    symbolic constants of 'indexType' to symbolic constants of
+    'valueType'.  The returned type will inherit from SConstMapBase
+    and SymbolicConst."""
 
     sort = z3.ArraySort(indexType._z3_sort(), valueType._z3_sort())
-    name = "SImmMap_%s_%s" % (indexType.__name__, valueType.__name__)
-    return type(name, (SImmMapBase, SymbolicConst), {"__z3_sort__" : sort})
+    name = "SConstMap_%s_%s" % (indexType.__name__, valueType.__name__)
+    return type(name, (SConstMapBase, SymbolicConst), {"__z3_sort__" : sort})
 
 #
 # Compound objects

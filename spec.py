@@ -303,6 +303,7 @@ for (base, ncomb, projections, calls) in tests:
 
         if testfile is not None:
             for cond, ores in rvs:
+                if ores is None: continue
                 check, model = simsym.check(simsym.symand([cond, pc2]))
                 if check != z3.sat: continue
 

@@ -531,7 +531,6 @@ def ast_cleanup(a):
 #
 
 solver = None
-assumptions = None
 schedq = []
 cursched = None
 curschedidx = None
@@ -569,12 +568,10 @@ def simplify(expr):
         s = wrap(z3.simplify(z3.And(*[z3.And(*g) for g in subgoals])))
     return s
 
-def require(e):
+def assume(e):
     """Declare symbolic expression e to be True."""
 
     if e is True:
-        return
-    if any(unwrap(e).eq(a) for a in assumptions):
         return
 
     solver = get_solver()
@@ -584,10 +581,6 @@ def require(e):
         raise RuntimeError("Unsatisfiable assumption %s" % e)
     elif sat != z3.sat:
         raise RuntimeError("Uncheckable assumption %s" % e)
-
-def assume(e):
-    require(e)
-    assumptions.append(unwrap(e))
 
 def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  The return value
@@ -605,13 +598,10 @@ def symbolic_apply(fn, *args):
         curschedidx = 0
 
         global solver
-        global assumptions
         solver = z3.Solver()
-        assumptions = []
         try:
             rv = fn(*args)
-            condlist = [a for a in solver.assertions()
-                        if not any(a.eq(u) for u in assumptions)]
+            condlist = [a for a in solver.assertions()]
             cond = wrap(z3.And(*([z3.BoolVal(True)] + condlist)))
             rvs.append((cond, rv))
         except Exception as e:
@@ -622,7 +612,6 @@ def symbolic_apply(fn, *args):
             raise
         finally:
             solver = None
-            assumptions = None
     return rvs
 
 def combine(rvs):

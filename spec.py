@@ -269,9 +269,9 @@ for (base, ncomb, projections, calls) in tests:
         for cond, res in simsym.combine(rvs):
             conds[res] = cond
 
-        pc = simsym.simplify(conds[''])
-        pr = simsym.simplify(simsym.symor([conds['r'], conds['rs']]))
-        ps = simsym.simplify(conds['s'])
+        pc = conds['']
+        pr = simsym.symor([conds['r'], conds['rs']])
+        ps = conds['s']
 
         ex_pc = simsym.exists(simsym.internals(), pc)
         nex_pc = simsym.symnot(ex_pc)

@@ -69,9 +69,16 @@ z3.ExprRef.__nonzero__ = z3_nonzero
 del z3_nonzero
 
 class Symbolic(object):
-    """Root of the symbolic type wrapper hierarchy.  Subclasses must
-    provide a __ref_type__ class field giving the Z3 ref type wrapped
-    by instances of the subclass."""
+    """Base class of symbolic types.  Symbolic types come in two
+    groups: constant and mutable.  Symbolic constants are deeply
+    immutable.  Generally they are primitive types, such as integers
+    and booleans, but more complex types can also be constants (e.g.,
+    an immutable symbolic tuple of constants).  Furthermore, types
+    representing symbolic constants have a specific Z3 sort.  Mutable
+    symbolic values are used for compound and container types like
+    maps and structs.
+
+    Subclasses must implement _make_region and _select."""
 
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
@@ -82,6 +89,34 @@ class Symbolic(object):
         exception if this class does not represent symbolic
         constants."""
         raise TypeError("%s is symbolic, but not constant" % strtype(cls))
+
+    @classmethod
+    def any(cls, name):
+        """Return a symbolic value whose concrete value is unknown."""
+        return cls._select(cls._make_region(name, ()), ())
+
+    @classmethod
+    def _make_region(cls, name, indexTypes):
+        """Construct a region or regions for storing an instance of
+        this type.  Compound and collection types should recursively
+        call the _make_region methods of their component types.
+        'name' is the name given to this object; for compound types,
+        the names of subregions must be derived from 'name'.
+        'indexTypes' is the tuple of index types used to reach this
+        object; for collection types, the index of the subregion must
+        be an extension of 'indexTypes'.  The value returned by this
+        method is opaque to the caller (it need not be an instance of
+        _Region) and will be passed back to the _select method to
+        retrieve values."""
+        raise NotImplementedError("_make_region is abstract")
+
+    @classmethod
+    def _select(cls, region, index):
+        """Return the value at 'index' of 'region'.  'region' will be
+        a value returned by 'cls's _make_region method.  For compound
+        and collection types, this should recursively select
+        components from the compound's component types."""
+        raise NotImplementedError("_select is abstract")
 
 class SymbolicConst(object):
     """The base class for symbolic constants.  Symbolic constants are
@@ -98,9 +133,9 @@ class SymbolicConst(object):
 
     @classmethod
     def any(cls, name):
-        """Return a symbolic constant of unknown value."""
         # Const returns the most specific z3.*Ref type it can based on
-        # the sort.
+        # the sort.  This is equivalent to Symbolic.any, but jumps
+        # through fewer hoops.
         return cls._wrap(z3.Const(name, cls._z3_sort()))
 
     @classmethod
@@ -292,19 +327,11 @@ def timm_map(indexType, valueType):
 # Compound objects
 #
 
-# XXX Make Symbolic the root of all symbolic types; not just direct Z3
-# wrappers.  Symbolic types must implement any, _make_region, and
-# _select.  any can be generic.
-
-class SMapBase(object):
+class SMapBase(Symbolic):
     """The base type of symbolic mutable mapping types.  Objects of
     this type map from values of symbolic constant type to values of
     symbolic type (constant or mutable).  Maps support slicing and
     slice assignment."""
-
-    @classmethod
-    def any(cls, name):
-        return cls._select(cls._make_region(name, ()), ())
 
     @classmethod
     def _make_region(cls, name, indexTypes):
@@ -346,16 +373,12 @@ def tmap(indexType, valueType):
     return type(name, (SMapBase,), {"_indexType" : indexType,
                                     "_valueType" : valueType})
 
-class SStructBase(object):
+class SStructBase(Symbolic):
     """The base type of symbolic mutable structure types.  Structure
     types have a fixed set of named fields of specified types."""
 
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
-
-    @classmethod
-    def any(cls, name):
-        return cls._select(cls._make_region(name, ()), ())
 
     @classmethod
     def _make_region(cls, name, indexTypes):

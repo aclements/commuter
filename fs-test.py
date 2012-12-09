@@ -106,7 +106,7 @@ class FsRunner:
       {
         int fd = open("%s", 0x%x, 0666);
         if (fd < 0)
-          return -errno;
+          return xerrno(fd);
         close(fd);
         return 0;
       }
@@ -120,7 +120,7 @@ class FsRunner:
       {
         int fd = open("%s", O_RDONLY);
         if (fd < 0)
-          return -errno;
+          return xerrno(fd);
         char c;
         ssize_t cc = read(fd, &c, 1);
         close(fd);
@@ -140,7 +140,7 @@ class FsRunner:
       {
         int fd = open("%s", O_WRONLY | O_TRUNC);
         if (fd < 0)
-          return -errno;
+          return xerrno(fd);
         char c = %d;
         ssize_t cc = write(fd, &c, 1);
         close(fd);
@@ -221,6 +221,14 @@ outprog.write("""
 #include <stdio.h>
 #include <unistd.h>
 #include "fstest.h"
+
+static int xerrno(int r) {
+#ifdef XV6_USER
+  return r;
+#else
+  return -errno;
+#endif
+}
 """)
 
 for tidx in setupcode:

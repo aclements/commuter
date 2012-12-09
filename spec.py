@@ -104,16 +104,20 @@ class Fs(Struct):
         self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree >= 0)
-        fn = simsym.unwrap(simsym.SInt.any('fn'))
-        simsym.assume(z3.ForAll(fn,
-                         z3.Implies(self.fn_to_ino._valid[fn],
-                                    self.ino_to_data._valid[self.fn_to_ino._map[fn]])))
+        fn = simsym.SInt.any('fn')
+        # Note that, if we try to simply index into fn_to_ino, its
+        # __getitem__ won't have access to the supposition that
+        # fn_to_ino contains fn, so we use _map directly.
+        simsym.assume(simsym.forall(
+                fn, simsym.implies(self.fn_to_ino.contains(fn),
+                                   self.ino_to_data.contains(self.fn_to_ino._map[fn]))))
 
     def iused(self, ino):
-        fn = simsym.unwrap(simsym.SInt.any('fn'))
-        return simsym.wrap(z3.Exists(fn,
-                              z3.And(self.fn_to_ino._valid[fn],
-                                     self.fn_to_ino._map[fn] == simsym.unwrap(ino))))
+        fn = simsym.SInt.any('fn')
+        # See __init__ above for why we use _map directly.
+        return simsym.exists(
+            fn, simsym.symand([self.fn_to_ino.contains(fn),
+                               self.fn_to_ino._map[fn] == ino]))
 
     def idecref(self, ino):
         if not self.iused(ino):

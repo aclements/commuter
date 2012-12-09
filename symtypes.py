@@ -37,41 +37,27 @@ def tlist(valueType):
     base = tstruct(_vals = tmap(SInt, valueType), _len = SInt)
     return type(name, (base, SListBase), {})
 
-class SDict(object):
-    def __init__(self, name, keySort, valSort):
-        self._map = z3.Array(name, keySort, valSort)
-        self._valid = z3.Array(name + '.valid', keySort, z3.BoolSort())
-
+class SDictBase(Symbolic):
     def __getitem__(self, key):
-        key = unwrap(key)
-        if wrap(self._valid[key]):
-            return wrap(self._map[key])
+        if self._valid[key]:
+            return self._map[key]
         raise KeyError(key)
 
     def __setitem__(self, key, val):
-        key, val = unwrap(key), unwrap(val)
-        self._valid = z3.Store(self._valid, key, True)
-        self._map = z3.Store(self._map, key, val)
+        self._valid[key] = True
+        self._map[key] = val
 
     def __delitem__(self, key):
-        key = unwrap(key)
-        self._valid = z3.Store(self._valid, key, False)
+        self._valid[key] = False
 
     def contains(self, key):
-        key = unwrap(key)
-        return wrap(self._valid[key])
+        return self._valid[key]
 
-    def __eq__(self, o):
-        if not isinstance(o, SDict):
-            return NotImplemented
-        return wrap(z3.And(unwrap(self._valid == o._valid),
-                                 unwrap(self._map == o._map)))
-
-    def __ne__(self, o):
-        r = self == o
-        if r is NotImplemented:
-            return NotImplemented
-        return wrap(z3.Not(unwrap(r)))
+def tdict(keyType, valueType):
+    name = "SDict_" + keyType.__name__ + "_" + valueType.__name__
+    base = tstruct(_map = tmap(keyType, valueType),
+                   _valid = tmap(keyType, SBool))
+    return type(name, (base, SDictBase), {})
 
 class SBag(object):
     def __init__(self, name):
@@ -113,5 +99,6 @@ class SBag(object):
     def __ne__(self, o):
         return not self.__eq__(o)
 
+DictOfIntToInt = tdict(SInt, SInt)
 def anyDictOfIntToInt(name):
-    return SDict(name, z3.IntSort(), z3.IntSort())
+    return DictOfIntToInt.any(name)

@@ -505,6 +505,9 @@ def symeq(a, b):
         return symand([symeq(aa, bb) for (aa, bb) in zip(a, b)])
     return a == b
 
+def implies(a, b):
+    return wrap(z3.Implies(unwrap(a), unwrap(b)))
+
 def exists(vars, e):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]

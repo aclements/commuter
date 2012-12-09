@@ -71,7 +71,8 @@ class Symbolic(object):
     symbolic values are used for compound and container types like
     maps and structs.
 
-    Subclasses must implement _make_region and _select."""
+    Subclasses must implement _make_region, _select, and
+    _eq_region."""
 
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
@@ -111,6 +112,18 @@ class Symbolic(object):
         components from the compound's component types."""
         raise NotImplementedError("_select is abstract")
 
+    @classmethod
+    def _eq_region(cls, r1, r2):
+        """Return a SBool that is True if r1 and r2 are equal, where
+        r1 and r2 are value returned by _make_region."""
+        raise NotImplementedError("_eq_region is abstract")
+
+    def __ne__(self, o):
+        r = self == o
+        if r is NotImplemented:
+            return NotImplemented
+        return symnot(r)
+
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
     deeply immutable values such as primitive types.  A subclass of
@@ -139,6 +152,10 @@ class SymbolicConst(Symbolic):
     @staticmethod
     def _store(region, idx, val):
         region.store(idx, val)
+
+    @classmethod
+    def _eq_region(cls, r1, r2):
+        return wrap(r1._v == r2._v)
 
 #
 # Z3 wrappers
@@ -349,6 +366,23 @@ class SMapBase(Symbolic):
         obj._idx = idx
         return obj
 
+    @classmethod
+    def _eq_region(cls, s1, s2):
+        return cls._valueType._eq_region(s1, s2)
+
+    def __eq__(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        if self._idx == () and o._idx == ():
+            return self._eq_region(self._sub, o._sub)
+        # Because we use tuple indexing, we need to explicitly
+        # quantify over the free dimensions (in the special case
+        # above, Z3 does this internally).  If higher-dimensional
+        # regions were implemented with nested arrays, we could do
+        # something more natural here.
+        x = Const("x", self._indexType)
+        return z3.ForAll([x], self[x] == o[x])
+
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
         return self._valueType._select(self._sub, self._idx + (idx,))
@@ -396,6 +430,19 @@ class SStructBase(Symbolic):
         object.__setattr__(obj, "_subregions", subregions)
         object.__setattr__(obj, "_idx", idx)
         return obj
+
+    @classmethod
+    def _eq_region(cls, sr1, sr2):
+        return symand([ftyp._eq_region(sr1[fname], sr2[fname])
+                       for fname, ftyp in cls._fields.items()])
+
+    def __eq__(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        if self._idx == () and o._idx == ():
+            return self._eq_region(self._subregions, o._subregions)
+        return symand([getattr(self, fname) == getattr(o, fname)
+                       for fname in self._fields])
 
     def __getattr__(self, name):
         if name not in self._fields:

@@ -98,7 +98,3 @@ class SBag(object):
 
     def __ne__(self, o):
         return not self.__eq__(o)
-
-DictOfIntToInt = tdict(SInt, SInt)
-def anyDictOfIntToInt(name):
-    return DictOfIntToInt.any(name)

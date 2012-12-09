@@ -97,10 +97,12 @@ class UPipe(Struct):
 
 class Fs(Struct):
     __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
+    FilenameToInode = symtypes.tdict(simsym.SInt, simsym.SInt)
+    InodeToData = symtypes.tdict(simsym.SInt, simsym.SInt)
 
     def __init__(self):
-        self.fn_to_ino = symtypes.anyDictOfIntToInt('Fs.dir')
-        self.ino_to_data = symtypes.anyDictOfIntToInt('Fs.idata')
+        self.fn_to_ino = self.FilenameToInode.any('Fs.dir')
+        self.ino_to_data = self.InodeToData.any('Fs.idata')
         self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree >= 0)

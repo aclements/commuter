@@ -506,9 +506,13 @@ def symeq(a, b):
     return a == b
 
 def exists(vars, e):
+    if not isinstance(vars, (list, tuple)):
+        vars = [vars]
     return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e)))
 
 def forall(vars, e):
+    if not isinstance(vars, (list, tuple)):
+        vars = [vars]
     return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e)))
 
 #

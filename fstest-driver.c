@@ -16,9 +16,12 @@ main(int ac, char** av)
     fstests[i].cleanup();
 
     if (ra0 == rb0 && ra1 == rb1) {
-      printf("test %d: commutes\n", i);
+      printf("test %d: commutes: %s->%d %s->%d\n",
+             i, fstests[i].call0name, ra0, fstests[i].call1name, ra1);
     } else {
-      printf("test %d: diverges: %d %d vs %d %d\n", i, ra0, ra1, rb0, rb1);
+      printf("test %d: diverges: %s->%d %s->%d vs %s->%d %s->%d\n",
+             i, fstests[i].call0name, ra0, fstests[i].call1name, ra1,
+                fstests[i].call0name, rb0, fstests[i].call1name, rb1);
     }
   }
 }

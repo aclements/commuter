@@ -48,7 +48,7 @@ def build_dir(dir, idata):
 
     ccode = ccode + """
       {
-        int fd = open("%s", O_CREAT | O_EXCL | O_RDWR);
+        int fd = open("%s", O_CREAT | O_EXCL | O_RDWR, 0666);
         char c = %d;
         write(fd, &c, 1);
         close(fd);
@@ -104,7 +104,7 @@ class FsRunner:
       flags = flags | os.O_TRUNC
     cc[0] = cc[0] + """
       {
-        int fd = open("%s", 0x%x);
+        int fd = open("%s", 0x%x, 0666);
         if (fd < 0)
           return -errno;
         close(fd);
@@ -136,6 +136,17 @@ class FsRunner:
   def write(which, vars, cc):
     fnidx = vars['Fs.write[%s].fn' % which]
     d = vars.get('Fs.write[%s].data' % which, 0)
+    cc[0] = cc[0] + """
+      {
+        int fd = open("%s", O_WRONLY | O_TRUNC);
+        if (fd < 0)
+          return -errno;
+        char c = %d;
+        ssize_t cc = write(fd, &c, 1);
+        close(fd);
+        return cc;
+      }
+      """ % (filenames[fnidx], d)
     fd = os.open(filenames[fnidx], os.O_WRONLY | os.O_TRUNC)
     os.write(fd, struct.pack('b', d))
     os.close(fd)
@@ -143,18 +154,27 @@ class FsRunner:
   @staticmethod
   def unlink(which, vars, cc):
     fnidx = vars['Fs.unlink[%s].fn' % which]
+    cc[0] = cc[0] + """
+      return unlink("%s");
+      """ % filenames[fnidx]
     os.unlink(filenames[fnidx])
 
   @staticmethod
   def link(which, vars, cc):
     oldfnidx = vars.get('Fs.link[%s].oldfn' % which, 0)
     newfnidx = vars.get('Fs.link[%s].newfn' % which, 0)
+    cc[0] = cc[0] + """
+      return link("%s", "%s");
+      """ % (filenames[oldfnidx], filenames[newfnidx])
     os.link(filenames[oldfnidx], filenames[newfnidx])
 
   @staticmethod
   def rename(which, vars, cc):
     srcfnidx = vars.get('Fs.rename[%s].src' % which, 0)
     dstfnidx = vars.get('Fs.rename[%s].dst' % which, 0)
+    cc[0] = cc[0] + """
+      return rename("%s", "%s");
+      """ % (filenames[srcfnidx], filenames[dstfnidx])
     os.rename(filenames[srcfnidx], filenames[dstfnidx])
 
 def run_calls(idxcalls, vars):
@@ -171,10 +191,12 @@ outprog = open(sys.argv[2], 'w')
 setupcode = {}
 testcode = collections.defaultdict(dict)
 cleanupcode = ''
+tidxcalls = []
 
 for tidx, t in enumerate(d['Fs']):
   calls = t['calls']
   vars = t['vars']
+  tidxcalls.append(calls)
 
   dir, idata = getdir(vars)
   enumcalls = enumerate(calls)
@@ -196,6 +218,8 @@ outprog.write("""
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
+#include <unistd.h>
 #include "fstest.h"
 """)
 
@@ -224,8 +248,8 @@ outprog.write("""
   """)
 for tidx in setupcode:
   outprog.write("""
-    { &setup_%d, &test_%d_0, &test_%d_1, &cleanup },
-    """ % (tidx, tidx, tidx))
+    { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },
+    """ % (tidx, tidx, tidx, tidxcalls[tidx][0], tidxcalls[tidx][1]))
 outprog.write("""
     { 0, 0, 0 }
   };

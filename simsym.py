@@ -525,11 +525,13 @@ def forall(vars, e):
 def unwrap(val):
     """Convert a value to a Z3 value.
 
-    If val is a simsym.Symbolic, returns the wrapped Z3 value.
+    If val is a simsym.SExpr, returns the wrapped Z3 value.
     Otherwise, simply returns val."""
 
-    if isinstance(val, Symbolic):
+    if isinstance(val, SExpr):
         return val._v
+    if isinstance(val, Symbolic):
+        raise TypeError("Can't unwrap %r; no corresponding Z3 value" % val)
     return val
 
 def wrap(ref):

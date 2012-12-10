@@ -329,7 +329,7 @@ class SConstMapBase(SExpr):
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
-        return cls._wrap(z3.K(cls._z3_sort(), unwrap(value)))
+        return cls._wrap(z3.K(cls._z3_sort().domain(), unwrap(value)))
 
     def store(self, index, value):
         """Return a new map that is identical for this map except that

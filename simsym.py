@@ -15,21 +15,33 @@ class _Region(object):
 
     __slots__ = ["_dims", "_v", "_ctor"]
 
-    def __init__(self, name, indexTypes, valueType):
+    def __init__(self, name, indexTypes, valueType, init=None):
         self._dims = len(indexTypes)
         if self._dims == 0:
-            self._v = z3.Const(name, valueType._z3_sort())
-        elif self._dims == 1:
-            self._v = z3.Array(name, indexTypes[0]._z3_sort(), valueType._z3_sort())
+            if init is None:
+                self._v = z3.Const(name, valueType._z3_sort())
+            else:
+                self._v = init
+            return
+
+        if self._dims == 1:
+            indexSort = indexTypes[0]._z3_sort()
         else:
             # Use a tuple type for the index
+            if name is None:
+                # XXX Make up a sort name?
+                raise NotImplementedError("Multi-dimensional constant arrays")
             sname = name + ".idx"
-            sort = z3.Datatype(sname)
-            sort.declare(sname, *[("%s!%d" % (sname, i), typ._z3_sort())
-                                  for i, typ in enumerate(indexTypes)])
-            sort = sort.create()
-            self._v = z3.Array(name, sort, valueType._z3_sort())
-            self._ctor = getattr(sort, sname)
+            dt = z3.Datatype(sname)
+            dt.declare(sname, *[("%s!%d" % (sname, i), typ._z3_sort())
+                                for i, typ in enumerate(indexTypes)])
+            indexSort = dt.create()
+            self._ctor = getattr(indexSort, sname)
+
+        if init is None:
+            self._v = z3.Array(name, indexSort, valueType._z3_sort())
+        else:
+            self._v = z3.K(indexSort, unwrap(init))
 
     def select(self, idx):
         if len(idx) != self._dims:
@@ -87,10 +99,10 @@ class Symbolic(object):
     @classmethod
     def any(cls, name):
         """Return a symbolic value whose concrete value is unknown."""
-        return cls._select(cls._make_region(name, ()), ())
+        return cls._select(cls._make_region(name, (), None), ())
 
     @classmethod
-    def _make_region(cls, name, indexTypes):
+    def _make_region(cls, name, indexTypes, init):
         """Construct a region or regions for storing an instance of
         this type.  Compound and collection types should recursively
         call the _make_region methods of their component types.
@@ -98,7 +110,9 @@ class Symbolic(object):
         the names of subregions must be derived from 'name'.
         'indexTypes' is the tuple of index types used to reach this
         object; for collection types, the index of the subregion must
-        be an extension of 'indexTypes'.  The value returned by this
+        be an extension of 'indexTypes'.  'init', if not None, must be
+        an instance of 'cls' or convertible to it and will be used as
+        the initial value of the region.  The value returned by this
         method is opaque to the caller (it need not be an instance of
         _Region) and will be passed back to the _select method to
         retrieve values."""
@@ -142,8 +156,8 @@ class SymbolicConst(Symbolic):
         return cls._wrap(z3.Const(name, cls._z3_sort()))
 
     @classmethod
-    def _make_region(cls, name, indexTypes):
-        return _Region(name, indexTypes, cls)
+    def _make_region(cls, name, indexTypes, init):
+        return _Region(name, indexTypes, cls, init)
 
     @classmethod
     def _select(cls, region, idx):
@@ -356,8 +370,26 @@ class SMapBase(Symbolic):
     or mutable).  Maps support slicing and slice assignment."""
 
     @classmethod
-    def _make_region(cls, name, indexTypes):
-        return cls._valueType._make_region(name, indexTypes + (cls._indexType,))
+    def constVal(cls, value):
+        """Return a map where all keys initially map to 'value'."""
+        # XXX Should this simply be the role of __init__ in Symbolic
+        # subclasses?
+        return cls._select(cls._valueType._make_region(
+                None, (cls._indexType,), value), ())
+
+    @classmethod
+    def _make_region(cls, name, indexTypes, init):
+        if init is not None:
+            if indexTypes == () and init._idx == ():
+                return init._sub
+            # XXX Ugh, what a mess.  With tuple-indexed regions,
+            # there's no easy way to express this.  This and the
+            # equality mess and the problem of naming region index
+            # tuples suggests we should use nested array regions
+            # instead.
+            raise NotImplementedError("Initialized SMapBase._make_region")
+        return cls._valueType._make_region(
+            name, indexTypes + (cls._indexType,), None)
 
     @classmethod
     def _select(cls, subregion, idx):
@@ -422,10 +454,33 @@ class SStructBase(Symbolic):
     different symbolic types."""
 
     @classmethod
-    def _make_region(cls, name, indexTypes):
+    def constVal(cls, __name=None, **fields):
+        """Return a struct instance with specified field values.  Any
+        fields omitted from 'fields' will be unspecified.  If any
+        fields are omitted, the first positional argument must be
+        supplied to name the symbolic constants for the omitted
+        fields."""
+
+        init = {fname: None for fname in cls._fields}
+        for fname, fval in fields.items():
+            if fname not in init:
+                raise AttributeError("Unknown struct field %r" % fname)
+            init[fname] = fval
+        if __name is None and any(init[fname] is None for fname in cls._fields):
+            raise ValueError("Name required for partially specified struct")
+        return cls._select(cls._make_region(__name, (), init), ())
+
+    @classmethod
+    def _make_region(cls, name, indexTypes, init):
+        # init may be either a struct instance or a field dictionary.
+        # Normalize it to a field dictionary.
+        if isinstance(init, cls):
+            init = {fname: getattr(init, fname) for fname in cls._fields}
         subregions = {}
         for fname, ftyp in cls._fields.items():
-            subregions[fname] = ftyp._make_region(name + "." + fname, indexTypes)
+            subregions[fname] = ftyp._make_region(
+                None if name is None else name + "." + fname, indexTypes,
+                None if init is None else init[fname])
         return subregions
 
     @classmethod

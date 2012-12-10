@@ -59,6 +59,34 @@ def tdict(keyType, valueType):
                    _valid = tmap(keyType, SBool))
     return type(name, (base, SDictBase), {})
 
+class SSetBase(Symbolic):
+    @classmethod
+    def empty(cls):
+        return cls.constVal(_bmap = cls._mapType.constVal(False))
+
+    @classmethod
+    def all(cls):
+        return cls.constVal(_bmap = cls._mapType.constVal(True))
+
+    def add(self, val):
+        self._bmap = self._bmap.store(val, True)
+
+    def clear(self, val):
+        self._bmap = self._mapType.constVal(False)
+
+    def discard(self, val):
+        self._bmap = self._bmap.store(val, False)
+
+    def contains(self, val):
+        return self._bmap[val]
+
+def tset(valueType):
+    """Return a set type with the given value type."""
+    name = "SSet_" + valueType.__name__
+    mapType = tmap(valueType, SBool)
+    base = tstruct(_bmap = mapType)
+    return type(name, (base, SSetBase), {"_mapType": mapType})
+
 class SBag(object):
     def __init__(self, name):
         self._name_prefix = name

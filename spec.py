@@ -18,7 +18,6 @@ class Struct(object):
     def __eq__(self, o):
         if self.__class__ != o.__class__:
             return NotImplemented
-        # XXX Should this indicate what field is not equal?
         fieldeqs = [getattr(self, field) == getattr(o, field)
                     for field in self.__slots__]
         return simsym.symand(fieldeqs)

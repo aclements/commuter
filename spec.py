@@ -226,17 +226,46 @@ def projected_call(pname, pf, method):
     wrapped.__name__ = '%s:%s' % (method.__name__, pname)
     return wrapped
 
-def model_unwrap(e):
+def fnmap(x, fnlist):
+    for f in fnlist:
+        match = False
+        fl = f.as_list()
+        for fk, fv in fl[:-1]:
+            if fk.eq(x):
+                x = fv
+                match = True
+        if not match:
+            x = fl[-1]
+    return x
+
+def var_unwrap(e, fnlist, modelctx):
+    if z3.is_var(e) and z3.get_var_index(e) == 0:
+        fn0 = fnlist[0].as_list()
+        retlist = []
+        for fkey, fval in fn0[:-1]:
+            retlist.append([fkey, fnmap(fval, fnlist[1:])])
+        retlist.append(fnmap(fn0[-1], fnlist[1:]))
+        return retlist
+    if e.num_args() != 1:
+        raise Exception('cannot var_unwrap: %s' % str(e))
+    arg = e.arg(0)
+    f = e.decl()
+    return var_unwrap(arg, [modelctx[f]] + fnlist, modelctx)
+
+def model_unwrap(e, modelctx):
     if isinstance(e, z3.FuncDeclRef):
         return e.name()
     if isinstance(e, z3.IntNumRef):
         return int(e.as_long())
     if isinstance(e, z3.FuncInterp):
-        return [model_unwrap(x) for x in e.as_list()]
+        elist = e.as_list()
+        if len(elist) == 1 and isinstance(elist[0], z3.ArithRef) and not isinstance(elist[0], z3.IntNumRef):
+            elist = var_unwrap(elist[0], [], modelctx)
+        return [model_unwrap(x, modelctx) for x in elist]
     if isinstance(e, z3.BoolRef):
         return (str(e) == 'True')
     if isinstance(e, list):
-        return [model_unwrap(x) for x in e]
+        return [model_unwrap(x, modelctx) for x in e]
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 tests = [
@@ -314,14 +343,10 @@ for (base, ncomb, projections, calls) in tests:
                 check, model = simsym.check(simsym.symand([cond, pc2]))
                 if check != z3.sat: continue
 
-                try:
-                    vars = {model_unwrap(k): model_unwrap(model[k]) for k in model}
-                    testcase = {'calls': [c.__name__ for c in callset],
-                                'vars': vars}
-                    module_testcases.append(testcase)
-                except Exception, e:
-                    print 'Dud model:', model
-                    print e
+                vars = {model_unwrap(k, model): model_unwrap(model[k], model) for k in model}
+                testcase = {'calls': [c.__name__ for c in callset],
+                            'vars': vars}
+                module_testcases.append(testcase)
     print
     testcases[base.__name__] = module_testcases
 

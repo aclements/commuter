@@ -10,15 +10,15 @@ filenames = [str(x) for x in range(0, 15)]
 
 def getdir(vars):
   files = set()
-  if vars['Fs.dir.valid'][-1]:
+  if vars['Fs.dir._valid'][-1]:
     files.update(filenames)
-  for fnidx, exists in vars['Fs.dir.valid'][:-1]:
+  for fnidx, exists in vars['Fs.dir._valid'][:-1]:
     if not exists:
       if filenames[fnidx] in files: files.remove(filenames[fnidx])
     else:
       files.add(filenames[fnidx])
 
-  fnidx_to_ino = vars.get('Fs.dir', [0])
+  fnidx_to_ino = vars.get('Fs.dir._map', [0])
   dir = {}
   for fn in files:
     ino = fnidx_to_ino[-1]
@@ -27,7 +27,7 @@ def getdir(vars):
         ino = ino2
     dir[fn] = ino
 
-  ino_to_data = vars.get('Fs.idata', [0])
+  ino_to_data = vars.get('Fs.idata._map', [0])
   idata = {}
   for ino in set(dir.values()):
     data = ino_to_data[-1]

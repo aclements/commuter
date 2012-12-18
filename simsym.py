@@ -73,6 +73,12 @@ def z3_nonzero(self):
 z3.ExprRef.__nonzero__ = z3_nonzero
 del z3_nonzero
 
+anon_idx = 0
+def anon_name():
+    global anon_idx
+    anon_idx += 1
+    return 'anon%d' % anon_idx
+
 class Symbolic(object):
     """Base class of symbolic types.  Symbolic types come in two
     groups: constant and mutable.  Symbolic constants are deeply
@@ -97,8 +103,10 @@ class Symbolic(object):
         raise TypeError("%s is symbolic, but not constant" % strtype(cls))
 
     @classmethod
-    def any(cls, name):
+    def any(cls, name=None):
         """Return a symbolic value whose concrete value is unknown."""
+        if name is None:
+            name = anon_name()
         return cls._select(cls._make_region(name, (), None), ())
 
     @classmethod
@@ -149,10 +157,12 @@ class SymbolicConst(Symbolic):
         return cls.__z3_sort__
 
     @classmethod
-    def any(cls, name):
+    def any(cls, name=None):
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.  This is equivalent to Symbolic.any, but jumps
         # through fewer hoops.
+        if name is None:
+            name = anon_name()
         return cls._wrap(z3.Const(name, cls._z3_sort()))
 
     @classmethod
@@ -417,7 +427,7 @@ class SMapBase(Symbolic):
         # above, Z3 does this internally).  If higher-dimensional
         # regions were implemented with nested arrays, we could do
         # something more natural here.
-        x = wrap(z3.Const("x", self._indexType.__z3_sort__))
+        x = self._indexType.any()
         return forall(x, self[x] == o[x])
 
     def __getitem__(self, idx):

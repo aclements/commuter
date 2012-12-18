@@ -285,6 +285,40 @@ def model_unwrap(e, modelctx):
         return positions[0]
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
+def same_assignments(model):
+    # Based on http://stackoverflow.com/questions/11867611
+    conds = [simsym.wrap(z3.BoolVal(True))]
+    uninterp_sorts = []
+    uninterp_pairs = []
+    for decl in model:
+        val = model[decl]
+        if decl.arity() > 0:
+            # Unclear what to do about functions in a model.
+            continue
+        # XXX hack to discard non-interesting variables
+        if '!' in str(decl):
+            continue
+        dconst = decl()
+        dsort = dconst.sort()
+        if dsort in [z3.IntSort(), z3.BoolSort()]:
+            conds.append(dconst == val)
+        elif dsort.kind() == z3.Z3_UNINTERPRETED_SORT:
+            if dsort not in uninterp_sorts: uninterp_sorts.append(dsort)
+            uninterp_pairs.append((dsort, dconst, val))
+        elif dsort.kind() == z3.Z3_ARRAY_SORT:
+            pass
+        else:
+            raise Exception('unknown sort %s kind %d in %s' %
+                            (dsort, dsort.kind(), decl))
+    for s in uninterp_sorts:
+        for k1, v1 in [(k, v) for s2, k, v in uninterp_pairs if s2 == s]:
+            for k2, v2 in [(k, v) for s2, k, v in uninterp_pairs if s2 == s]:
+                if v1.eq(v2):
+                    conds.append(k1 == k2)
+                else:
+                    conds.append(k1 != k2)
+    return simsym.symand(conds)
+
 tests = [
     (State, 3, {},
      [State.sys_inc, State.sys_dec, State.sys_iszero]),
@@ -357,13 +391,19 @@ for (base, ncomb, projections, calls) in tests:
         if testfile is not None:
             for cond, ores in rvs:
                 if ores is None: continue
-                check, model = simsym.check(simsym.symand([cond, pc2]))
-                if check != z3.sat: continue
+                e = simsym.symand([cond, pc2])
+                while True:
+                    check, model = simsym.check(e)
+                    if check != z3.sat: break
 
-                vars = {model_unwrap(k, model): model_unwrap(model[k], model) for k in model}
-                testcase = {'calls': [c.__name__ for c in callset],
-                            'vars': vars}
-                module_testcases.append(testcase)
+                    vars = {model_unwrap(k, model): model_unwrap(model[k], model)
+                            for k in model}
+                    testcase = {'calls': [c.__name__ for c in callset],
+                                'vars': vars}
+                    module_testcases.append(testcase)
+
+                    notsame = simsym.symnot(same_assignments(model))
+                    e = simsym.symand([e, notsame])
     print
     testcases[base.__name__] = module_testcases
 

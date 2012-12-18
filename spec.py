@@ -94,9 +94,12 @@ class UPipe(Struct):
             self.nitem = self.nitem - 1
             return e
 
+class SFn(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('Fn')
+
 class Fs(Struct):
     __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
-    FilenameToInode = symtypes.tdict(simsym.SInt, simsym.SInt)
+    FilenameToInode = symtypes.tdict(SFn, simsym.SInt)
     InodeToData = symtypes.tdict(simsym.SInt, simsym.SInt)
 
     def __init__(self):
@@ -105,7 +108,7 @@ class Fs(Struct):
         self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree >= 0)
-        fn = simsym.SInt.any('fn')
+        fn = SFn.any('fn')
         # Note that, if we try to simply index into fn_to_ino, its
         # __getitem__ won't have access to the supposition that
         # fn_to_ino contains fn, so we use _map directly.
@@ -114,7 +117,7 @@ class Fs(Struct):
                                    self.ino_to_data.contains(self.fn_to_ino._map[fn]))))
 
     def iused(self, ino):
-        fn = simsym.SInt.any('fn')
+        fn = SFn.any('fn')
         # See __init__ above for why we use _map directly.
         return simsym.exists(
             fn, simsym.symand([self.fn_to_ino.contains(fn),
@@ -125,7 +128,7 @@ class Fs(Struct):
             self.numifree = self.numifree + 1
 
     def open(self, which):
-        fn = simsym.SInt.any('Fs.open[%s].fn' % which)
+        fn = SFn.any('Fs.open[%s].fn' % which)
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
         excl = simsym.SBool.any('Fs.open[%s].excl' % which)
         trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
@@ -148,8 +151,8 @@ class Fs(Struct):
         return ('ok',)
 
     def rename(self, which):
-        src = simsym.SInt.any('Fs.rename[%s].src' % which)
-        dst = simsym.SInt.any('Fs.rename[%s].dst' % which)
+        src = SFn.any('Fs.rename[%s].src' % which)
+        dst = SFn.any('Fs.rename[%s].dst' % which)
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):
@@ -163,7 +166,7 @@ class Fs(Struct):
         return ('ok',)
 
     def unlink(self, which):
-        fn = simsym.SInt.any('Fs.unlink[%s].fn' % which)
+        fn = SFn.any('Fs.unlink[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
@@ -172,8 +175,8 @@ class Fs(Struct):
         return ('ok',)
 
     def link(self, which):
-        oldfn = simsym.SInt.any('Fs.link[%s].oldfn' % which)
-        newfn = simsym.SInt.any('Fs.link[%s].newfn' % which)
+        oldfn = SFn.any('Fs.link[%s].oldfn' % which)
+        newfn = SFn.any('Fs.link[%s].newfn' % which)
         if not self.fn_to_ino.contains(oldfn):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(newfn):
@@ -182,14 +185,14 @@ class Fs(Struct):
         return ('ok',)
 
     def read(self, which):
-        fn = simsym.SInt.any('Fs.read[%s].fn' % which)
+        fn = SFn.any('Fs.read[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         return ('data', self.ino_to_data[ino])
 
     def write(self, which):
-        fn = simsym.SInt.any('Fs.write[%s].fn' % which)
+        fn = SFn.any('Fs.write[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
@@ -252,6 +255,8 @@ def var_unwrap(e, fnlist, modelctx):
     return var_unwrap(arg, [modelctx[f]] + fnlist, modelctx)
 
 def model_unwrap(e, modelctx):
+    if e is None:
+        return None
     if isinstance(e, z3.FuncDeclRef):
         return e.name()
     if isinstance(e, z3.IntNumRef):
@@ -265,6 +270,11 @@ def model_unwrap(e, modelctx):
         return (str(e) == 'True')
     if isinstance(e, list):
         return [model_unwrap(x, modelctx) for x in e]
+    if isinstance(e, z3.ExprRef) and e.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
+        univ = modelctx.get_universe(e.sort())
+        positions = [i for i, v in enumerate(univ) if v.eq(e)]
+        assert(len(positions) == 1)
+        return positions[0]
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 tests = [

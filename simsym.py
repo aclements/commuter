@@ -417,8 +417,8 @@ class SMapBase(Symbolic):
         # above, Z3 does this internally).  If higher-dimensional
         # regions were implemented with nested arrays, we could do
         # something more natural here.
-        x = Const("x", self._indexType)
-        return z3.ForAll([x], self[x] == o[x])
+        x = wrap(z3.Const("x", self._indexType.__z3_sort__))
+        return forall(x, self[x] == o[x])
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""

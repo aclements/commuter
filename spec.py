@@ -307,6 +307,8 @@ def same_assignments(model):
             if dsort not in uninterp_sorts: uninterp_sorts.append(dsort)
             uninterp_pairs.append((dsort, dconst, val))
         elif dsort.kind() == z3.Z3_ARRAY_SORT:
+            # XXX treat arrays like uninterpreted sorts to construct
+            # different initial states?
             pass
         else:
             raise Exception('unknown sort %s kind %d in %s' %

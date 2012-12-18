@@ -115,6 +115,7 @@ class Fs(Struct):
         self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree >= 0)
+        simsym.assume(self.numifree < 3)
         fn = SFn.any('fn')
         # Note that, if we try to simply index into fn_to_ino, its
         # __getitem__ won't have access to the supposition that

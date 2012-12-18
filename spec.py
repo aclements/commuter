@@ -97,10 +97,13 @@ class UPipe(Struct):
 class SFn(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Fn')
 
+class SIno(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('Ino')
+
 class Fs(Struct):
     __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
-    FilenameToInode = symtypes.tdict(SFn, simsym.SInt)
-    InodeToData = symtypes.tdict(simsym.SInt, simsym.SInt)
+    FilenameToInode = symtypes.tdict(SFn, SIno)
+    InodeToData = symtypes.tdict(SIno, simsym.SInt)
 
     def __init__(self):
         self.fn_to_ino = self.FilenameToInode.any('Fs.dir')
@@ -136,7 +139,7 @@ class Fs(Struct):
             if not self.fn_to_ino.contains(fn):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
-                ino = simsym.SInt.any('Fs.open[%s].ialloc' % which)
+                ino = SIno.any('Fs.open[%s].ialloc' % which)
                 simsym.add_internal(ino)
                 simsym.assume(simsym.symnot(self.iused(ino)))
                 self.numifree = self.numifree - 1
@@ -263,7 +266,7 @@ def model_unwrap(e, modelctx):
         return int(e.as_long())
     if isinstance(e, z3.FuncInterp):
         elist = e.as_list()
-        if len(elist) == 1 and isinstance(elist[0], z3.ArithRef) and not isinstance(elist[0], z3.IntNumRef):
+        if len(elist) == 1 and elist[0].num_args() > 0:
             elist = var_unwrap(elist[0], [], modelctx)
         return [model_unwrap(x, modelctx) for x in elist]
     if isinstance(e, z3.BoolRef):
@@ -273,7 +276,8 @@ def model_unwrap(e, modelctx):
     if isinstance(e, z3.ExprRef) and e.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
         univ = modelctx.get_universe(e.sort())
         positions = [i for i, v in enumerate(univ) if v.eq(e)]
-        assert(len(positions) == 1)
+        if len(positions) != 1:
+            raise Exception('could not find %s in %s' % (str(e), str(univ)))
         return positions[0]
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 

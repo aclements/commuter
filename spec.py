@@ -100,10 +100,14 @@ class SFn(simsym.SExpr, simsym.SymbolicConst):
 class SIno(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Ino')
 
+class SData(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('Data')
+
 class Fs(Struct):
     __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
     FilenameToInode = symtypes.tdict(SFn, SIno)
-    InodeToData = symtypes.tdict(SIno, simsym.SInt)
+    InodeToData = symtypes.tdict(SIno, SData)
+    data_empty = SData.any('Data.empty')
 
     def __init__(self):
         self.fn_to_ino = self.FilenameToInode.any('Fs.dir')
@@ -143,14 +147,14 @@ class Fs(Struct):
                 simsym.add_internal(ino)
                 simsym.assume(simsym.symnot(self.iused(ino)))
                 self.numifree = self.numifree - 1
-                self.ino_to_data[ino] = 0
+                self.ino_to_data[ino] = self.data_empty
                 self.fn_to_ino[fn] = ino
             else:
                 if excl: return ('err', errno.EEXIST)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         if trunc:
-            self.ino_to_data[self.fn_to_ino[fn]] = 0
+            self.ino_to_data[self.fn_to_ino[fn]] = self.data_empty
         return ('ok',)
 
     def rename(self, which):
@@ -199,7 +203,7 @@ class Fs(Struct):
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
-        data = simsym.SInt.any('Fs.write[%s].data' % which)
+        data = SData.any('Fs.write[%s].data' % which)
         self.ino_to_data[ino] = data
         return ('ok',)
 

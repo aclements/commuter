@@ -107,7 +107,9 @@ class Symbolic(object):
         """Return a symbolic value whose concrete value is unknown."""
         if name is None:
             name = anon_name()
-        return cls._select(cls._make_region(name, (), None), ())
+        obj = cls._select(cls._make_region(name, (), None), ())
+        assume(cls._assumptions(obj))
+        return obj
 
     @classmethod
     def _make_region(cls, name, indexTypes, init):
@@ -133,6 +135,14 @@ class Symbolic(object):
         and collection types, this should recursively select
         components from the compound's component types."""
         raise NotImplementedError("_select is abstract")
+
+    @classmethod
+    def _assumptions(cls, obj):
+        """Return the assumptions for 'obj' returned by _select."""
+        return obj.init_assumptions()
+
+    def init_assumptions(self):
+        return wrap(z3.BoolVal(True))
 
     @classmethod
     def _eq_region(cls, r1, r2):
@@ -409,6 +419,12 @@ class SMapBase(Symbolic):
         return obj
 
     @classmethod
+    def _assumptions(cls, obj):
+        x = cls._indexType.any()
+        return symand([obj.init_assumptions(),
+                       forall(x, cls._valueType._assumptions(obj[x]))])
+
+    @classmethod
     def _eq_region(cls, s1, s2):
         return cls._valueType._eq_region(s1, s2)
 
@@ -500,6 +516,12 @@ class SStructBase(Symbolic):
         object.__setattr__(obj, "_subregions", subregions)
         object.__setattr__(obj, "_idx", idx)
         return obj
+
+    @classmethod
+    def _assumptions(cls, obj):
+        return symand([obj.init_assumptions()] +
+                      [ftyp._assumptions(obj.__getattr__(fname))
+                       for fname, ftyp in cls._fields.items()])
 
     @classmethod
     def _eq_region(cls, sr1, sr2):

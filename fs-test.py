@@ -210,7 +210,7 @@ for tidx, t in enumerate(d['Fs']):
     cleanupcode = cleanup()
 
   if any([r != rvs[0] for r in rvs]):
-    print 'non-commutative:', calls
+    print 'non-commutative test %d:' % tidx, calls
     print rvs
     print 'vars:', vars
 

@@ -118,7 +118,7 @@ class FsRunner:
     fnidx = vars['Fs.read[%s].fn' % which]
     cc[0] = cc[0] + """
       {
-        int fd = open("%s", O_RDONLY);
+        int fd = open("%s", O_RDONLY | O_ANYFD);
         if (fd < 0)
           return xerrno(fd);
         char c;
@@ -138,7 +138,7 @@ class FsRunner:
     d = vars.get('Fs.write[%s].data' % which, 0)
     cc[0] = cc[0] + """
       {
-        int fd = open("%s", O_WRONLY | O_TRUNC);
+        int fd = open("%s", O_WRONLY | O_TRUNC | O_ANYFD);
         if (fd < 0)
           return xerrno(fd);
         char c = %d;
@@ -221,6 +221,10 @@ outprog.write("""
 #include <stdio.h>
 #include <unistd.h>
 #include "fstest.h"
+
+#ifndef XV6_USER
+#define O_ANYFD 0
+#endif
 
 static int xerrno(int r) {
 #ifdef XV6_USER

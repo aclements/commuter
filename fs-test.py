@@ -95,23 +95,25 @@ class FsRunner:
   @staticmethod
   def open(which, vars, cc):
     fnidx = vars['Fs.open[%s].fn' % which]
-    flags = os.O_RDWR
+    flags = ['O_RDWR']
     if vars.get('Fs.open[%s].excl' % which, True):
-      flags = flags | os.O_EXCL
+      flags.append('O_EXCL')
     if vars.get('Fs.open[%s].creat' % which, True):
-      flags = flags | os.O_CREAT
+      flags.append('O_CREAT')
     if vars.get('Fs.open[%s].trunc' % which, True):
-      flags = flags | os.O_TRUNC
+      flags.append('O_TRUNC')
     cc[0] = cc[0] + """
       {
-        int fd = open("%s", 0x%x, 0666);
+        int fd = open("%s", %s, 0666);
         if (fd < 0)
           return xerrno(fd);
         close(fd);
         return 0;
       }
-      """ % (filenames[fnidx], flags)
-    os.close(os.open(filenames[fnidx], flags))
+      """ % (filenames[fnidx], ' | '.join(flags))
+    flagvals = [getattr(os, flagname) for flagname in flags]
+    flagval = reduce(lambda x, y: x | y, flagvals, 0)
+    os.close(os.open(filenames[fnidx], flagval))
 
   @staticmethod
   def read(which, vars, cc):

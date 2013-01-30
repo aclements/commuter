@@ -104,7 +104,8 @@ class FsRunner:
       flags.append('O_TRUNC')
     cc[0] = cc[0] + """
       {
-        int fd = open("%s", %s, 0666);
+        int fd = open("%s", %s | O_ANYFD, 0666);
+        /* XXX O_ANYFD because model has no notion of lowest-FD yet */
         if (fd < 0)
           return xerrno(fd);
         close(fd);

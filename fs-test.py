@@ -186,6 +186,12 @@ def run_calls(idxcalls, vars):
     r[idx] = FsRunner.run_method(c, chr(idx + ord('a')), vars)
   return r
 
+def pretty_print_vars(d):
+  r = ''
+  for k in sorted(d):
+    r = r + '%s: %s\n' % (k, d[k])
+  return r
+
 with open(sys.argv[1]) as f:
   d = json.loads(f.read())
 
@@ -240,10 +246,16 @@ static int xerrno(int r) {
 
 for tidx in setupcode:
   outprog.write("""
+    /* symbolic test case:
+     * calls: %s
+     * vars:  %s
+     */
     static void setup_%d(void) {
       %s
     }
-    """ % (tidx, setupcode[tidx]))
+    """ % (str(d['Fs'][tidx]['calls']),
+           pretty_print_vars(d['Fs'][tidx]['vars']).replace('\n', '\n     *        '),
+           tidx, setupcode[tidx]))
 
   for callidx in testcode[tidx]:
     outprog.write("""

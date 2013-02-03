@@ -47,25 +47,20 @@ def build_dir(dir, idata):
     os.close(fd)
 
     ccode = ccode + """
-      {
-        int fd = open("%s", O_CREAT | O_EXCL | O_RDWR, 0666);
-        char c = %d;
-        write(fd, &c, 1);
-        close(fd);
-      }
-      """ % (ifn, idata[ino])
+  {
+    int fd = open("%s", O_CREAT | O_EXCL | O_RDWR, 0666);
+    char c = %d;
+    write(fd, &c, 1);
+    close(fd);
+  }""" % (ifn, idata[ino])
   for fn, ino in dir.iteritems():
     ifn = '__i%d' % ino
     os.link(ifn, fn)
-    ccode = ccode + """
-      link("%s", "%s");
-      """ % (ifn, fn)
+    ccode = ccode + """\n  link("%s", "%s");""" % (ifn, fn)
   for ino in set(dir.values()):
     ifn = '__i%d' % ino
     os.unlink(ifn)
-    ccode = ccode + """
-      unlink("%s");
-      """ % ifn
+    ccode = ccode + """\n  unlink("%s");""" % ifn
   return ccode
 
 def cleanup():
@@ -76,9 +71,7 @@ def cleanup():
     except OSError, err:
       if err.errno != errno.ENOENT:
         raise
-    ccode = ccode + """
-      unlink("%s");
-      """ % fn
+    ccode = ccode + """\n  unlink("%s");""" % fn
   return ccode
 
 class FsRunner:
@@ -103,15 +96,14 @@ class FsRunner:
     if vars.get('Fs.open[%s].trunc' % which, True):
       flags.append('O_TRUNC')
     cc[0] = cc[0] + """
-      {
-        int fd = open("%s", %s | O_ANYFD, 0666);
-        /* XXX O_ANYFD because model has no notion of lowest-FD yet */
-        if (fd < 0)
-          return xerrno(fd);
-        close(fd);
-        return 0;
-      }
-      """ % (filenames[fnidx], ' | '.join(flags))
+  {
+    int fd = open("%s", %s | O_ANYFD, 0666);
+    /* XXX O_ANYFD because model has no notion of lowest-FD yet */
+    if (fd < 0)
+      return xerrno(fd);
+    close(fd);
+    return 0;
+  }""" % (filenames[fnidx], ' | '.join(flags))
     flagvals = [getattr(os, flagname) for flagname in flags]
     flagval = reduce(lambda x, y: x | y, flagvals, 0)
     os.close(os.open(filenames[fnidx], flagval))
@@ -120,16 +112,15 @@ class FsRunner:
   def read(which, vars, cc):
     fnidx = vars['Fs.read[%s].fn' % which]
     cc[0] = cc[0] + """
-      {
-        int fd = open("%s", O_RDONLY | O_ANYFD);
-        if (fd < 0)
-          return xerrno(fd);
-        char c;
-        ssize_t cc = read(fd, &c, 1);
-        close(fd);
-        return (cc > 0) ? c : INT_MIN;
-      }
-      """ % filenames[fnidx]
+  {
+    int fd = open("%s", O_RDONLY | O_ANYFD);
+    if (fd < 0)
+      return xerrno(fd);
+    char c;
+    ssize_t cc = read(fd, &c, 1);
+    close(fd);
+    return (cc > 0) ? c : INT_MIN;
+  }""" % filenames[fnidx]
     fd = os.open(filenames[fnidx], os.O_RDONLY)
     d = os.read(fd, 4096)
     os.close(fd)
@@ -140,16 +131,15 @@ class FsRunner:
     fnidx = vars['Fs.write[%s].fn' % which]
     d = vars.get('Fs.write[%s].data' % which, 0)
     cc[0] = cc[0] + """
-      {
-        int fd = open("%s", O_WRONLY | O_TRUNC | O_ANYFD);
-        if (fd < 0)
-          return xerrno(fd);
-        char c = %d;
-        ssize_t cc = write(fd, &c, 1);
-        close(fd);
-        return cc;
-      }
-      """ % (filenames[fnidx], d)
+  {
+    int fd = open("%s", O_WRONLY | O_TRUNC | O_ANYFD);
+    if (fd < 0)
+      return xerrno(fd);
+    char c = %d;
+    ssize_t cc = write(fd, &c, 1);
+    close(fd);
+    return cc;
+  }""" % (filenames[fnidx], d)
     fd = os.open(filenames[fnidx], os.O_WRONLY | os.O_TRUNC)
     os.write(fd, struct.pack('b', d))
     os.close(fd)
@@ -157,27 +147,23 @@ class FsRunner:
   @staticmethod
   def unlink(which, vars, cc):
     fnidx = vars['Fs.unlink[%s].fn' % which]
-    cc[0] = cc[0] + """
-      return unlink("%s");
-      """ % filenames[fnidx]
+    cc[0] = cc[0] + """\n  return unlink("%s");""" % filenames[fnidx]
     os.unlink(filenames[fnidx])
 
   @staticmethod
   def link(which, vars, cc):
     oldfnidx = vars.get('Fs.link[%s].oldfn' % which, 0)
     newfnidx = vars.get('Fs.link[%s].newfn' % which, 0)
-    cc[0] = cc[0] + """
-      return link("%s", "%s");
-      """ % (filenames[oldfnidx], filenames[newfnidx])
+    cc[0] = cc[0] + """\n  return link("%s", "%s");""" % \
+                    (filenames[oldfnidx], filenames[newfnidx])
     os.link(filenames[oldfnidx], filenames[newfnidx])
 
   @staticmethod
   def rename(which, vars, cc):
     srcfnidx = vars.get('Fs.rename[%s].src' % which, 0)
     dstfnidx = vars.get('Fs.rename[%s].dst' % which, 0)
-    cc[0] = cc[0] + """
-      return rename("%s", "%s");
-      """ % (filenames[srcfnidx], filenames[dstfnidx])
+    cc[0] = cc[0] + """\n return rename("%s", "%s");""" % \
+                    (filenames[srcfnidx], filenames[dstfnidx])
     os.rename(filenames[srcfnidx], filenames[dstfnidx])
 
 def run_calls(idxcalls, vars):
@@ -246,39 +232,36 @@ static int xerrno(int r) {
 
 for tidx in setupcode:
   outprog.write("""
-    /* symbolic test case:
-     * calls: %s
-     * vars:  %s
-     */
-    static void setup_%d(void) {
-      %s
-    }
+/*
+ * calls: %s
+ * vars:  %s
+ */
+static void setup_%d(void) {%s
+}
     """ % (str(d['Fs'][tidx]['calls']),
-           pretty_print_vars(d['Fs'][tidx]['vars']).replace('\n', '\n     *        '),
+           pretty_print_vars(d['Fs'][tidx]['vars']).replace('\n', '\n *        '),
            tidx, setupcode[tidx]))
 
   for callidx in testcode[tidx]:
     outprog.write("""
-      static int test_%d_%d(void) {
-        %s
-      }
+static int test_%d_%d(void) {%s
+}
       """ % (tidx, callidx, testcode[tidx][callidx]))
 
 outprog.write("""
-  static void cleanup(void) {
-    %s
-  }
+static void cleanup(void) {%s
+}
   """ % cleanupcode)
 
 outprog.write("""
-  struct fstest fstests[] = {
+struct fstest fstests[] = {
   """)
 for tidx in setupcode:
   outprog.write("""
-    { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },
+  { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },
     """ % (tidx, tidx, tidx, tidxcalls[tidx][0], tidxcalls[tidx][1]))
 outprog.write("""
-    { 0, 0, 0 }
-  };
+  { 0, 0, 0 }
+};
   """)
 

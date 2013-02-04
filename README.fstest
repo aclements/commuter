@@ -1,0 +1,67 @@
+generating test cases:
+  XXX run spec.py to generate test.out (??)
+
+  # generate testgen.c:
+  ( cd x && python ../fs-test.py ../test.out ../testgen.c )
+
+  # copy testgen.c to xv6:
+  cp testgen.c ~/proj/xv6/lib/testgen.c
+
+check cache line sharing on xv6:
+  make mtrace.out
+  % fstest; halt
+  ../mtrace/mtrace-tools/mscan --check-testcases
+
+building an mtrace-friendly Linux kernel:
+  git clone -b mtrace-v3.8 git://pdos.csail.mit.edu/mosbench/pk.git
+  make defconfig
+  echo CONFIG_DEBUG_INFO=y >> .config
+  echo CONFIG_NR_CPUS=16 >> .config
+  make olddefconfig
+
+  [ shrinking the kernel: ]
+  echo CONFIG_PARTITION_ADVANCED=n >> .config
+  echo CONFIG_SUSPEND=n >> .config
+  echo CONFIG_HIBERNATION=n >> .config
+  echo CONFIG_ACPI=n >> .config
+  echo CONFIG_CPU_FREQ=n >> .config
+  echo CONFIG_YENTA=n >> .config
+  echo CONFIG_IPV6=n >> .config
+  echo CONFIG_NETFILTER=n >> .config
+  echo CONFIG_NET_SCHED=n >> .config
+  echo CONFIG_HAMRADIO=n >> .config
+  echo CONFIG_CFG80211=n >> .config
+  echo CONFIG_AGP=n >> .config
+  echo CONFIG_DRM=n >> .config
+  echo CONFIG_FB=n >> .config
+  echo CONFIG_SOUND=n >> .config
+  echo CONFIG_USB=n >> .config
+  echo CONFIG_I2C=n >> .config
+  echo CONFIG_HID=n >> .config
+  echo CONFIG_SECURITY_SELINUX=n >> .config
+  make olddefconfig
+
+  make -j4
+
+set up a Linux VM:
+  mkdir -p ~/tmp/linux-vm
+  cd ~/tmp/linux-vm
+  sudo ~/sp/hack/linux-vm/make-image.sh
+  ...
+
+check cache line sharing on Linux:
+  cd ~/proj/xv6
+  make HW=native
+  cp o.native/fstest /tmp/nfs-export
+
+  cd ~/tmp/linux-vm
+  ln -s pk/vmlinux mscan.kern
+
+  ./mtrace.sh
+  # cd /tmp
+  # /n/fstest 100
+  # halt -pf
+
+  nm -C -S mscan.kern > mscan.syms
+  ~/proj/mtrace/mtrace-tools/mscan --check-testcases
+

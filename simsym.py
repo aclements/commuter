@@ -4,6 +4,7 @@ import sys
 import os
 import z3
 import types
+import collections
 
 class _Region(object):
     """A mutable N-dimensional (where N may be 0) array of symbolic
@@ -569,13 +570,13 @@ def tstruct(**fields):
 
 def symand(exprlist):
     if any([isinstance(x, Symbolic) for x in exprlist]):
-        return wrap(z3.And(*[unwrap(x) for x in exprlist]))
+        return wrap(z3.And([unwrap(x) for x in exprlist]))
     else:
         return all(exprlist)
 
 def symor(exprlist):
     if any([isinstance(x, Symbolic) for x in exprlist]):
-        return wrap(z3.Or(*[unwrap(x) for x in exprlist]))
+        return wrap(z3.Or([unwrap(x) for x in exprlist]))
     else:
         return any(exprlist)
 
@@ -642,6 +643,11 @@ def wrap(ref):
     if isinstance(ref, z3.BoolRef):
         return SBool._wrap(ref)
     return SExpr._wrap(ref)
+
+def wraplist(reflist):
+    """Convert a list of values to a list of simsym.Symbolic things,
+    by calling wrap() on each item in the list."""
+    return [wrap(ref) for ref in reflist]
 
 #
 # AST matching code.  Unused because the simplifier aggressively
@@ -718,7 +724,7 @@ def simplify(expr):
     if len(subgoals[0]) == 0:
         s = wrap(z3.BoolVal(True))
     else:
-        s = wrap(z3.simplify(z3.And(*[z3.And(*g) for g in subgoals])))
+        s = wrap(z3.simplify(z3.And([z3.And(g) for g in subgoals])))
     return s
 
 def assume(e):
@@ -736,10 +742,10 @@ def assume(e):
         raise RuntimeError("Uncheckable assumption %s" % e)
 
 def symbolic_apply(fn, *args):
-    """Evaluate fn(*args) under symbolic execution.  The return value
-    of fn is ignored because it may have many return values."""
+    """Evaluate fn(*args) under symbolic execution.  Return a map of
+    return values to conditions under which that value is returned."""
 
-    rvs = []
+    rvs = collections.defaultdict(list)
     queue_schedule([])
 
     global schedq
@@ -754,9 +760,7 @@ def symbolic_apply(fn, *args):
         solver = z3.Solver()
         try:
             rv = fn(*args)
-            condlist = [a for a in solver.assertions()]
-            cond = wrap(z3.And(*([z3.BoolVal(True)] + condlist)))
-            rvs.append((cond, rv))
+            rvs[rv].append(symand(wraplist(solver.assertions())))
         except Exception as e:
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
@@ -765,30 +769,7 @@ def symbolic_apply(fn, *args):
             raise
         finally:
             solver = None
-    return rvs
-
-def combine(rvs):
-    """Given a set of return values from symbolic_apply, combine
-    the conditions for identical return values."""
-
-    combined = []
-    used = [False] * len(rvs)
-    for idx, (cond, rv) in enumerate(rvs):
-        if used[idx]:
-            continue
-        used[idx] = True
-        for idx2, (cond2, rv2) in enumerate(rvs):
-            if used[idx2]:
-                continue
-            solver = z3.Solver()
-            e = symnot(symeq(rv, rv2))
-            solver.add(unwrap(e))
-            c = solver.check()
-            if c == z3.unsat:
-                used[idx2] = True
-                cond = wrap(z3.Or(unwrap(cond), unwrap(cond2)))
-        combined.append((cond, rv))
-    return combined
+    return { val: symor(condlist) for val, condlist in rvs.items() }
 
 def check(e):
     global solver

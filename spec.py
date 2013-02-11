@@ -323,14 +323,23 @@ def same_assignments(model):
     return simsym.symand(conds)
 
 tests = [
-    (State, 3, {},
-     [State.sys_inc, State.sys_dec, State.sys_iszero]),
-    (Pipe,  3, {},
-     [Pipe.write, Pipe.read]),
-    (UPipe, 3, {},
-     [UPipe.u_write, UPipe.u_read]),
-    (Fs,    2, {'first': lambda(x): x[0]},
-     [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
+    # (State, 3, {},
+    #  [State.sys_inc, State.sys_dec, State.sys_iszero]),
+    # (Pipe,  3, {},
+    #  [Pipe.write, Pipe.read]),
+    # (UPipe, 3, {},
+    #  [UPipe.u_write, UPipe.u_read]),
+    # (Fs,    2, {'first': lambda(x): x[0]},
+    #  [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),
+
+    (Fs, 2, {}, [
+        Fs.open,
+        Fs.read,
+        Fs.write,
+        Fs.unlink,
+        Fs.link,
+        Fs.rename,
+     ]),
 ]
 
 parser = argparse.ArgumentParser()
@@ -348,16 +357,17 @@ else:
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
     module_testcases = []
+
     projected_calls = list(calls)
     for p in projections:
         for c in calls:
             projected_calls.append(projected_call(p, projections[p], c))
+
     for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
-        rvs = simsym.symbolic_apply(test, base, *callset)
         conds = collections.defaultdict(lambda: simsym.wrap(z3.BoolVal(False)))
-        for cond, res in simsym.combine(rvs):
-            conds[res] = cond
+        for result, cond in simsym.symbolic_apply(test, base, *callset).items():
+            conds[result] = cond
 
         pc = conds['']
         pr = simsym.symor([conds['r'], conds['rs']])
@@ -392,21 +402,35 @@ for (base, ncomb, projections, calls) in tests:
             print '  %s: %s' % (msg, s)
 
         if testfile is not None:
-            for cond, ores in rvs:
-                if ores is None: continue
+            for result, cond in conds.items():
+                ## Skip precondition failures
+                if result is None: continue
+
                 e = simsym.symand([cond, pc2])
                 while True:
                     check, model = simsym.check(e)
                     if check != z3.sat: break
 
-                    vars = {model_unwrap(k, model): model_unwrap(model[k], model)
-                            for k in model}
-                    testcase = {'calls': [c.__name__ for c in callset],
-                                'vars': vars}
-                    module_testcases.append(testcase)
+                    ## What should we do about variables that do not show up
+                    ## in the assignment (e.g., because they were eliminated
+                    ## due to combining multiple paths)?  One possibility, to
+                    ## generate more test cases, is to pick some default value
+                    ## for them (since the exact value does not matter).  Doing
+                    ## so will force this loop to iterate over all possible
+                    ## assignments, even to these "missing" variables.  Another
+                    ## possibility is to extract "interesting" variables from
+                    ## the raw symbolic expression returned by symbolic_apply().
+
+                    vars = { model_unwrap(k, model): model_unwrap(model[k], model)
+                             for k in model }
+                    module_testcases.append({
+                        'calls': [c.__name__ for c in callset],
+                        'vars':  vars,
+                    })
 
                     notsame = simsym.symnot(same_assignments(model))
                     e = simsym.symand([e, notsame])
+
     print
     testcases[base.__name__] = module_testcases
 

@@ -1,15 +1,16 @@
 generating test cases:
-  XXX run spec.py to generate test.out (??)
+  python spec.py -t test.out
 
   # generate testgen.c:
   ( cd x && python ../fs-test.py ../test.out ../testgen.c )
 
   # copy testgen.c to xv6:
-  cp testgen.c ~/proj/xv6/lib/testgen.c
+  cp testgen.c ~/proj/xv6/libutil/testgen.c
 
 check cache line sharing on xv6:
+  # enable MTRACE in param.h; maybe add -mtrace-calls to MTRACEOPTS
   make mtrace.out
-  % fstest; halt
+  % fstest -t; halt
   ../mtrace/mtrace-tools/mscan --check-testcases
 
 building an mtrace-friendly Linux kernel:
@@ -59,7 +60,7 @@ check cache line sharing on Linux:
 
   ./mtrace.sh
   # cd /tmp
-  # /n/fstest 100
+  # /n/fstest -t
   # halt -pf
 
   nm -C -S mscan.kern > mscan.syms

@@ -42,10 +42,6 @@ def build_dir(dir, idata):
   ccode = ''
   for ino in set(dir.values()):
     ifn = '__i%d' % ino
-    fd = os.open(ifn, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-    os.write(fd, struct.pack('b', idata[ino]))
-    os.close(fd)
-
     ccode = ccode + """
   {
     int fd = open("%s", O_CREAT | O_EXCL | O_RDWR, 0666);
@@ -53,24 +49,20 @@ def build_dir(dir, idata):
     write(fd, &c, 1);
     close(fd);
   }""" % (ifn, idata[ino])
+
   for fn, ino in dir.iteritems():
     ifn = '__i%d' % ino
-    os.link(ifn, fn)
     ccode = ccode + """\n  link("%s", "%s");""" % (ifn, fn)
+
   for ino in set(dir.values()):
     ifn = '__i%d' % ino
-    os.unlink(ifn)
     ccode = ccode + """\n  unlink("%s");""" % ifn
+
   return ccode
 
 def cleanup():
   ccode = ''
   for fn in filenames:
-    try:
-      os.unlink(fn)
-    except OSError, err:
-      if err.errno != errno.ENOENT:
-        raise
     ccode = ccode + """\n  unlink("%s");""" % fn
   return ccode
 
@@ -78,15 +70,10 @@ class FsRunner:
   @classmethod
   def run_method(cls, m, which, vars):
     f = getattr(cls, m)
-    ccode = ['']
-    try:
-      rv = f(which, vars, ccode)
-      return (rv, ccode[0])
-    except OSError, err:
-      return (('err', err.errno), ccode[0])
+    return f(which, vars)
 
   @staticmethod
-  def open(which, vars, cc):
+  def open(which, vars):
     fnidx = vars['Fs.open[%s].fn' % which]
     flags = ['O_RDWR']
     if vars.get('Fs.open[%s].excl' % which, True):
@@ -95,7 +82,7 @@ class FsRunner:
       flags.append('O_CREAT')
     if vars.get('Fs.open[%s].trunc' % which, True):
       flags.append('O_TRUNC')
-    cc[0] = cc[0] + """
+    return """
   {
     int fd = open("%s", %s | O_ANYFD, 0666);
     /* XXX O_ANYFD because model has no notion of lowest-FD yet */
@@ -104,14 +91,11 @@ class FsRunner:
     close(fd);
     return 0;
   }""" % (filenames[fnidx], ' | '.join(flags))
-    flagvals = [getattr(os, flagname) for flagname in flags]
-    flagval = reduce(lambda x, y: x | y, flagvals, 0)
-    os.close(os.open(filenames[fnidx], flagval))
 
   @staticmethod
-  def read(which, vars, cc):
+  def read(which, vars):
     fnidx = vars['Fs.read[%s].fn' % which]
-    cc[0] = cc[0] + """
+    return """
   {
     int fd = open("%s", O_RDONLY | O_ANYFD);
     if (fd < 0)
@@ -121,16 +105,12 @@ class FsRunner:
     close(fd);
     return (cc > 0) ? c : INT_MIN;
   }""" % filenames[fnidx]
-    fd = os.open(filenames[fnidx], os.O_RDONLY)
-    d = os.read(fd, 4096)
-    os.close(fd)
-    return d
 
   @staticmethod
-  def write(which, vars, cc):
+  def write(which, vars):
     fnidx = vars['Fs.write[%s].fn' % which]
     d = vars.get('Fs.write[%s].data' % which, 0)
-    cc[0] = cc[0] + """
+    return """
   {
     int fd = open("%s", O_WRONLY | O_TRUNC | O_ANYFD);
     if (fd < 0)
@@ -140,31 +120,25 @@ class FsRunner:
     close(fd);
     return cc;
   }""" % (filenames[fnidx], d)
-    fd = os.open(filenames[fnidx], os.O_WRONLY | os.O_TRUNC)
-    os.write(fd, struct.pack('b', d))
-    os.close(fd)
 
   @staticmethod
-  def unlink(which, vars, cc):
+  def unlink(which, vars):
     fnidx = vars['Fs.unlink[%s].fn' % which]
-    cc[0] = cc[0] + """\n  return unlink("%s");""" % filenames[fnidx]
-    os.unlink(filenames[fnidx])
+    return """\n  return unlink("%s");""" % filenames[fnidx]
 
   @staticmethod
-  def link(which, vars, cc):
+  def link(which, vars):
     oldfnidx = vars.get('Fs.link[%s].oldfn' % which, 0)
     newfnidx = vars.get('Fs.link[%s].newfn' % which, 0)
-    cc[0] = cc[0] + """\n  return link("%s", "%s");""" % \
-                    (filenames[oldfnidx], filenames[newfnidx])
-    os.link(filenames[oldfnidx], filenames[newfnidx])
+    return """\n  return link("%s", "%s");""" % \
+           (filenames[oldfnidx], filenames[newfnidx])
 
   @staticmethod
-  def rename(which, vars, cc):
+  def rename(which, vars):
     srcfnidx = vars.get('Fs.rename[%s].src' % which, 0)
     dstfnidx = vars.get('Fs.rename[%s].dst' % which, 0)
-    cc[0] = cc[0] + """\n return rename("%s", "%s");""" % \
-                    (filenames[srcfnidx], filenames[dstfnidx])
-    os.rename(filenames[srcfnidx], filenames[dstfnidx])
+    return """\n return rename("%s", "%s");""" % \
+           (filenames[srcfnidx], filenames[dstfnidx])
 
 def run_calls(idxcalls, vars):
   r = range(0, len(idxcalls))
@@ -185,29 +159,18 @@ outprog = open(sys.argv[2], 'w')
 
 setupcode = {}
 testcode = collections.defaultdict(dict)
-cleanupcode = ''
-tidxcalls = []
+cleanupcode = cleanup()
 
+print 'Number of test cases:', len(d['Fs'])
 for tidx, t in enumerate(d['Fs']):
   calls = t['calls']
   vars = t['vars']
-  tidxcalls.append(calls)
 
   dir, idata = getdir(vars)
-  enumcalls = enumerate(calls)
-  rvs = []
-  for ec in itertools.permutations(enumcalls):
-    setupcode[tidx] = build_dir(dir, idata)
-    rv = run_calls(ec, vars)
-    rvs.append([x[0] for x in rv])
-    for idx, call in ec:
-      testcode[tidx][idx] = rv[idx][1]
-    cleanupcode = cleanup()
-
-  if any([r != rvs[0] for r in rvs]):
-    print 'non-commutative test %d:' % tidx, calls
-    print rvs
-    print 'vars:', vars
+  setupcode[tidx] = build_dir(dir, idata)
+  for callidx, call in enumerate(calls):
+    code = FsRunner.run_method(call, chr(callidx + ord('a')), vars)
+    testcode[tidx][callidx] = code
 
 outprog.write("""
 #include <errno.h>
@@ -238,30 +201,30 @@ for tidx in setupcode:
  */
 static void setup_%d(void) {%s
 }
-    """ % (str(d['Fs'][tidx]['calls']),
-           pretty_print_vars(d['Fs'][tidx]['vars']).replace('\n', '\n *        '),
-           tidx, setupcode[tidx]))
+""" % (str(d['Fs'][tidx]['calls']),
+       pretty_print_vars(d['Fs'][tidx]['vars']).strip().replace('\n', '\n *        '),
+       tidx, setupcode[tidx]))
 
   for callidx in testcode[tidx]:
     outprog.write("""
 static int test_%d_%d(void) {%s
 }
-      """ % (tidx, callidx, testcode[tidx][callidx]))
+""" % (tidx, callidx, testcode[tidx][callidx]))
 
 outprog.write("""
 static void cleanup(void) {%s
 }
-  """ % cleanupcode)
+""" % cleanupcode)
 
 outprog.write("""
-struct fstest fstests[] = {
-  """)
+struct fstest fstests[] = {""")
 for tidx in setupcode:
   outprog.write("""
-  { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },
-    """ % (tidx, tidx, tidx, tidxcalls[tidx][0], tidxcalls[tidx][1]))
+  { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },""" \
+  % (tidx, tidx, tidx,
+     d['Fs'][tidx]['calls'][0],
+     d['Fs'][tidx]['calls'][1]))
 outprog.write("""
   { 0, 0, 0 }
 };
-  """)
-
+""")

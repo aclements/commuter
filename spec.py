@@ -208,6 +208,18 @@ class Fs(Struct):
         self.ino_to_data[ino] = data
         return ('ok',)
 
+    def stat(self, which):
+        fn = SFn.any('Fs.stat[%s].fn' % which)
+        if not self.fn_to_ino.contains(fn):
+            return ('err', errno.ENOENT)
+        ino = self.fn_to_ino[fn]
+        len = 0
+        if self.ino_to_data[ino] != self.data_empty: len = 1
+
+        ## XXX How to compute nlink?
+
+        return ('ok', ino, len)
+
 def test(base, *calls):
     try:
         all_s = []
@@ -339,6 +351,7 @@ tests = [
         Fs.unlink,
         Fs.link,
         Fs.rename,
+        Fs.stat,
      ]),
 ]
 

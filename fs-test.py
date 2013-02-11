@@ -140,6 +140,19 @@ class FsRunner:
     return """\n return rename("%s", "%s");""" % \
            (filenames[srcfnidx], filenames[dstfnidx])
 
+  @staticmethod
+  def stat(which, vars):
+    fnidx = vars['Fs.stat[%s].fn' % which]
+    return """
+  {
+    struct stat st;
+    int r = stat("%s", &st);
+    if (r < 0)
+      return xerrno(r);
+    /* Hack, to test for approximate equality */
+    return st.st_ino ^ st.st_nlink ^ st.st_size;
+  }""" % (filenames[fnidx])
+
 def run_calls(idxcalls, vars):
   r = range(0, len(idxcalls))
   for idx, c in idxcalls:
@@ -172,12 +185,13 @@ for tidx, t in enumerate(d['Fs']):
     code = FsRunner.run_method(call, chr(callidx + ord('a')), vars)
     testcode[tidx][callidx] = code
 
-outprog.write("""
+outprog.write("""\
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include "fstest.h"
 
 #ifndef XV6_USER

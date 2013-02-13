@@ -718,13 +718,16 @@ def str_state():
 
 def simplify(expr):
     t = z3.Repeat(z3.Then('propagate-values',
+                          ## ctx-solver-simplify is very slow; use the
+                          ## faster but less powerful ctx-simplify.
                           'ctx-simplify',
                           z3.With('simplify', expand_select_store=True)))
     subgoals = t(unwrap(expr))
     if len(subgoals[0]) == 0:
         s = wrap(z3.BoolVal(True))
     else:
-        s = wrap(z3.simplify(z3.And([z3.And(g) for g in subgoals])))
+        s = wrap(z3.simplify(unwrap(symand([symand(wraplist(g))
+                                            for g in subgoals]))))
     return s
 
 def assume(e):

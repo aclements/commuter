@@ -233,11 +233,11 @@ def test(base, *calls):
             all_s.append(s)
             all_r.append(r)
 
-        diverge = ''
+        diverge = ()
         if simsym.symor([all_r[0] != r for r in all_r[1:]]):
-            diverge = diverge + 'r'
+            diverge += ('results',)
         if simsym.symor([all_s[0] != s for s in all_s[1:]]):
-            diverge = diverge + 's'
+            diverge += ('state',)
         return diverge
     except PreconditionFailure:
         return None
@@ -360,12 +360,24 @@ parser.add_argument('-c', '--print-conds', action='store_true')
 parser.add_argument('-t', '--test-file')
 args = parser.parse_args()
 
-print_cond = args.print_conds
 testcases = {}
 if args.test_file is None:
     testfile = None
 else:
     testfile = open(args.test_file, 'w')
+
+def print_cond(msg, cond):
+    if simsym.check(cond)[0] == z3.unsat:
+        return
+    if simsym.check(simsym.symnot(cond))[0] == z3.unsat:
+        s = 'always'
+    else:
+        if args.print_conds:
+            scond = simsym.simplify(cond)
+            s = '\n    ' + str(scond).replace('\n', '\n    ')
+        else:
+            s = 'sometimes'
+    print '  %s: %s' % (msg, s)
 
 z3printer._PP.max_lines = float('inf')
 for (base, ncomb, projections, calls) in tests:
@@ -382,67 +394,44 @@ for (base, ncomb, projections, calls) in tests:
         for result, cond in simsym.symbolic_apply(test, base, *callset).items():
             conds[result] = cond
 
-        pc = conds['']
-        pr = simsym.symor([conds['r'], conds['rs']])
-        ps = conds['s']
+        # Internal variables help deal with situations where, for the same
+        # assignment of initial state + external inputs, two operations both
+        # can commute and can diverge (depending on internal choice, like the
+        # inode number for file creation).
+        commute = conds[()]
+        cannot_commute = simsym.symnot(simsym.exists(simsym.internals(), commute))
 
-        ex_pc = simsym.exists(simsym.internals(), pc)
-        nex_pc = simsym.symnot(ex_pc)
-        ex_pr = simsym.exists(simsym.internals(), pr)
-        nex_pr = simsym.symnot(ex_pr)
-        ps2 = simsym.symand([ps, nex_pc, nex_pr])
-
-        ps_ex_pr = simsym.symand([ps, ex_pr])
-        pr2 = simsym.symand([simsym.symor([pr, ps_ex_pr]), nex_pc])
-
-        ps_ex_pc = simsym.symand([ps, ex_pc])
-        pr_ex_pc = simsym.symand([pr, ex_pc])
-        pc2 = simsym.symor([pc, ps_ex_pc, pr_ex_pc])
-
-        for msg, cond in (('commute', pc2),
-                          ('results diverge', pr2),
-                          ('states diverge', ps2)):
-            if simsym.check(cond)[0] == z3.unsat:
-                continue
-            if simsym.check(simsym.symnot(cond))[0] == z3.unsat:
-                s = 'any state'
+        for diverge, cond in sorted(conds.items()):
+            if diverge == ():
+                print_cond('can commute', cond)
             else:
-                if print_cond:
-                    scond = simsym.simplify(cond)
-                    s = '\n    ' + str(scond).replace('\n', '\n    ')
-                else:
-                    s = 'sometimes'
-            print '  %s: %s' % (msg, s)
+                print_cond('cannot commute, %s can diverge' % ', '.join(diverge),
+                           simsym.symand([cond, cannot_commute]))
 
         if testfile is not None:
-            for result, cond in conds.items():
-                ## Skip precondition failures
-                if result is None: continue
+            e = commute
+            while True:
+                check, model = simsym.check(e)
+                if check != z3.sat: break
 
-                e = simsym.symand([cond, pc2])
-                while True:
-                    check, model = simsym.check(e)
-                    if check != z3.sat: break
+                ## What should we do about variables that do not show up
+                ## in the assignment (e.g., because they were eliminated
+                ## due to combining multiple paths)?  One possibility, to
+                ## generate more test cases, is to pick some default value
+                ## for them (since the exact value does not matter).  Doing
+                ## so will force this loop to iterate over all possible
+                ## assignments, even to these "missing" variables.  Another
+                ## possibility is to extract "interesting" variables from
+                ## the raw symbolic expression returned by symbolic_apply().
 
-                    ## What should we do about variables that do not show up
-                    ## in the assignment (e.g., because they were eliminated
-                    ## due to combining multiple paths)?  One possibility, to
-                    ## generate more test cases, is to pick some default value
-                    ## for them (since the exact value does not matter).  Doing
-                    ## so will force this loop to iterate over all possible
-                    ## assignments, even to these "missing" variables.  Another
-                    ## possibility is to extract "interesting" variables from
-                    ## the raw symbolic expression returned by symbolic_apply().
-
-                    vars = { model_unwrap(k, model): model_unwrap(model[k], model)
-                             for k in model }
-                    module_testcases.append({
-                        'calls': [c.__name__ for c in callset],
-                        'vars':  vars,
-                    })
-
-                    notsame = simsym.symnot(same_assignments(model))
-                    e = simsym.symand([e, notsame])
+                vars = { model_unwrap(k, model): model_unwrap(model[k], model)
+                         for k in model }
+                module_testcases.append({
+                    'calls': [c.__name__ for c in callset],
+                    'vars':  vars,
+                })
+                notsame = simsym.symnot(same_assignments(model))
+                e = simsym.symand([e, notsame])
 
     print
     testcases[base.__name__] = module_testcases

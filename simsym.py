@@ -730,8 +730,12 @@ def simplify(expr):
                                             for g in subgoals]))))
     return s
 
+assume_list = []
 def assume(e):
     """Declare symbolic expression e to be True."""
+
+    global assume_list
+    assume_list.append(e)
 
     if e is True:
         return

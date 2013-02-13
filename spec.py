@@ -369,7 +369,23 @@ else:
 def print_cond(msg, cond):
     if simsym.check(cond)[0] == z3.unsat:
         return
-    if simsym.check(simsym.symnot(cond))[0] == z3.unsat:
+
+    ## If the assumptions (i.e., calls to simsym.assume) imply the condition
+    ## is true, we say that condition always holds, and we can print "always".
+    ## It would be nice to print a clean condition that excludes assumptions,
+    ## even if the assumptions don't directly imply the condition, but that
+    ## would require finding the simplest expression for x such that
+    ##
+    ##   x AND simsym.assume_list = cond
+    ##
+    ## which seems hard to do using Z3.  In principle, this should be the
+    ## same as simplifying the 'c' expression below, but Z3 isn't good at
+    ## simplifying it.  We could keep the two kinds of constraints (i.e.,
+    ## explicit assumptions vs. symbolic execution control flow constraints)
+    ## separate in simsym, which will make them easier to disentangle..
+
+    c = simsym.implies(simsym.symand(simsym.assume_list), cond)
+    if simsym.check(simsym.symnot(c))[0] == z3.unsat:
         s = 'always'
     else:
         if args.print_conds:

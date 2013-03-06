@@ -303,12 +303,21 @@ class SBool(SExpr, SymbolicConst):
         global cursched
         global curschedidx
         if len(cursched) == curschedidx:
+            if len(cursched):
+                gnode = cursched[-1][1]
+            else:
+                gnode = curgraph.new_node()
+            gnode.set_label(self._v, get_caller())
+            tnode, fnode = curgraph.new_node(), curgraph.new_node()
+            curgraph.new_edge(gnode, tnode, "T")
+            curgraph.new_edge(gnode, fnode, "F")
+
             newsched = list(cursched)
-            cursched.append(True)
-            newsched.append(False)
+            cursched.append((True, tnode))
+            newsched.append((False, fnode))
             queue_schedule(newsched)
 
-        rv = cursched[curschedidx]
+        rv = cursched[curschedidx][0]
         if rv == True:
             solver.add(self._v)
         else:
@@ -686,11 +695,73 @@ def ast_cleanup(a):
     return a
 
 #
+# Execution graph visualization
+#
+
+class Graph(object):
+    def __init__(self):
+        self.__nodes = []
+        self.__edges = []
+
+    def new_node(self):
+        self.__nodes.append(GraphNode())
+        return self.__nodes[-1]
+
+    def new_edge(self, n1, n2, label):
+        self.__edges.append((n1, n2, label))
+
+    def show(self):
+        import subprocess, tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+            p = subprocess.Popen(["dot", "-Tpdf"], stdin=subprocess.PIPE,
+                                 stdout=f)
+            self.to_dot(p.stdin)
+            p.stdin.close()
+            p.wait()
+            subprocess.check_call(["evince", f.name])
+
+    def to_dot(self, fp=sys.stdout):
+        print >>fp, "digraph G {"
+        #print >>fp, "rankdir=LR;"
+        for n in self.__nodes:
+            print >>fp, "n%s [label=%s,shape=box];" % \
+                (id(n), self.__dot_quote(n.str_label()))
+        for n1, n2, label in self.__edges:
+            print >>fp, "n%s -> n%s [label=%s];" % \
+                (id(n1), id(n2), self.__dot_quote(str(label)))
+        print >>fp, "}"
+
+    def __dot_quote(self, s):
+        return '"' + (s.replace("\\", "\\\\")
+                      .replace("\n", "\\l")
+                      .replace("\"", "\\\"")) + '"'
+
+class GraphNode(object):
+    def __init__(self):
+        self._label = ["?"]
+
+    def set_label(self, *parts):
+        self._label = parts
+
+    def str_label(self):
+        res = []
+        for part in self._label:
+            if isinstance(part, Symbolic):
+                res.append(str(z3.simplify(unwrap(part))))
+            else:
+                res.append(str(part))
+        res = "\n".join(res).splitlines()
+        if len(res) > 10:
+            res = res[:5] + [".. %d more lines .." % (len(res) - 9)] + res[-4:]
+        return "\n".join(res)
+
+#
 # Symbolic executor
 #
 
 solver = None
 schedq = []
+curgraph = None
 cursched = None
 curschedidx = None
 
@@ -741,6 +812,25 @@ def assume(e):
         return
 
     solver = get_solver()
+
+    # Update the schedule and execution graph.  (We wouldn't need to
+    # track assumptions in the schedule except that we want to avoid
+    # duplicate nodes in the execution graph.)
+    global cursched, curschedidx
+    if len(cursched) == curschedidx:
+        if len(cursched):
+            gnode = cursched[-1][1]
+        else:
+            gnode = curgraph.new_node()
+        gnode.set_label(e, get_caller())
+        nextnode = curgraph.new_node()
+        curgraph.new_edge(gnode, nextnode, "")
+
+        cursched.append((None, nextnode))
+
+    assert cursched[curschedidx][0] is None
+    curschedidx = curschedidx + 1
+
     solver.add(unwrap(e))
     sat = solver.check()
     if sat == z3.unsat:
@@ -755,6 +845,9 @@ def symbolic_apply(fn, *args):
     rvs = collections.defaultdict(list)
     queue_schedule([])
 
+    global curgraph
+    curgraph = Graph()
+
     global schedq
     while len(schedq) > 0:
         global cursched
@@ -768,14 +861,20 @@ def symbolic_apply(fn, *args):
         try:
             rv = fn(*args)
             rvs[rv].append(symand(wraplist(solver.assertions())))
+            if len(cursched):
+                cursched[-1][1].set_label(rv)
         except Exception as e:
+            if len(cursched):
+                cursched[-1][1].set_label("Exception: " + str(e))
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
             else:
                 e.args = e.args + (str_state(),)
+            curgraph.show()
             raise
         finally:
             solver = None
+#    curgraph.show()
     return { val: symor(condlist) for val, condlist in rvs.items() }
 
 def check(e):
@@ -817,3 +916,9 @@ def strtype(x):
         return x.__class__.__name__
     else:
         return type(x).__name__
+
+def get_caller():
+    import inspect
+    cur = inspect.currentframe()
+    caller = inspect.getouterframes(cur, 3)
+    return "%s:%s" % (os.path.basename(caller[2][1]), caller[2][2])

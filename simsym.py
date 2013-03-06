@@ -280,7 +280,8 @@ class SBool(SExpr, SymbolicConst):
         solver.add(self._v)
         c = solver.check()
         if c == z3.unknown:
-            raise RuntimeError('Undecidable constraints')
+            raise RuntimeError('Uncheckable constraint %s:\n%s' %
+                               (solver.reason_unknown(), z3.simplify(self._v)))
         canTrue = (c == z3.sat)
         solver.pop()
 
@@ -288,7 +289,9 @@ class SBool(SExpr, SymbolicConst):
         solver.add(z3.Not(self._v))
         c = solver.check()
         if c == z3.unknown:
-            raise RuntimeError('Undecidable constraints')
+            raise RuntimeError('Uncheckable constraint %s:\n%s' %
+                               (solver.reason_unknown(),
+                                z3.simplify(z3.Not(self._v))))
         canFalse = (c == z3.sat)
         solver.pop()
 

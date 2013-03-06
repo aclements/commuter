@@ -161,6 +161,8 @@ class Fs(Struct):
     def rename(self, which):
         src = SFn.any('Fs.rename[%s].src' % which)
         dst = SFn.any('Fs.rename[%s].dst' % which)
+        if src == dst:
+            return ('ok',)
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):

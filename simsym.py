@@ -811,7 +811,17 @@ def assume(e):
     if e is True:
         return
 
+    # Is this assumption already implied?  This isn't strictly
+    # necessary, but it cleans up generated expressions and the
+    # execution graph.  It also sometimes lets z3 decide a path
+    # condition that it otherwise can't (which is probably a z3 bug).
     solver = get_solver()
+    solver.push()
+    solver.add(unwrap(symnot(e)))
+    sat = solver.check()
+    solver.pop()
+    if sat == z3.unsat:
+        return
 
     # Update the schedule and execution graph.  (We wouldn't need to
     # track assumptions in the schedule except that we want to avoid

@@ -270,6 +270,11 @@ class SInt(SArith, SymbolicConst):
     # exists separately from SArith so we have Python type to parallel
     # Z3's int sort.  wrap will use this for any integral expression.
 
+class UncheckableConstraintError(RuntimeError):
+    def __init__(self, expr, reason):
+        RuntimeError.__init__(
+            self, 'Uncheckable constraint %s:\n%s' % (reason, z3.simplify(expr)))
+
 class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
     __z3_sort__ = z3.BoolSort()
@@ -283,19 +288,13 @@ class SBool(SExpr, SymbolicConst):
             solver.push()
             solver.add(self._v)
             canTrue = solver.check()
-            if canTrue == z3.unknown:
-                raise RuntimeError(
-                    'Uncheckable constraint %s:\n%s' %
-                    (solver.reason_unknown(), z3.simplify(self._v)))
+            canTrueReason = solver.reason_unknown()
             solver.pop()
 
             solver.push()
             solver.add(z3.Not(self._v))
             canFalse = solver.check()
-            if canFalse == z3.unknown:
-                raise RuntimeError(
-                    'Uncheckable constraint %s:\n%s' %
-                    (solver.reason_unknown(), z3.simplify(z3.Not(self._v))))
+            canFalseReason = solver.reason_unknown()
             solver.pop()
 
             if canTrue == z3.unsat and canFalse == z3.unsat:
@@ -315,16 +314,28 @@ class SBool(SExpr, SymbolicConst):
                 curgraph.new_edge(gnode, fnode, "F")
 
                 newsched = list(cursched)
-                cursched.append((True, tnode))
-                newsched.append((False, fnode))
+                if canTrue == z3.sat:
+                    cursched.append((True, tnode))
+                else:
+                    cursched.append((UncheckableConstraintError(
+                                self._v, canTrueReason), tnode))
+                if canFalse == z3.sat:
+                    newsched.append((False, fnode))
+                else:
+                    newsched.append((UncheckableConstraintError(
+                                z3.Not(self._v), canFalseReason), fnode))
                 queue_schedule(newsched)
 
         # Follow the schedule (which we may have just extended)
         rv = cursched[curschedidx][0]
         if rv == True:
             solver.add(self._v)
-        else:
+        elif rv == False:
             solver.add(z3.Not(self._v))
+        elif isinstance(rv, UncheckableConstraintError):
+            raise rv
+        else:
+            raise RuntimeError("Bad schedule entry %r" % cursched[curschedidx])
         #assert solver.check() == z3.sat
         curschedidx = curschedidx + 1
         return rv

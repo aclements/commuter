@@ -210,12 +210,24 @@ class SBool(SExpr, SymbolicConst):
             solver.add(self._v)
             canTrue = solver.check()
             canTrueReason = solver.reason_unknown()
+            if canTrue == z3.unknown:
+                # Stack operations change how Z3 "compiles" formulas,
+                # so it's possible it can solve it in isolation.
+                s2 = z3.Solver()
+                s2.add(*solver.assertions())
+                canTrue = s2.check()
+                canTrueReason = s2.reason_unknown()
             solver.pop()
 
             solver.push()
             solver.add(z3.Not(self._v))
             canFalse = solver.check()
             canFalseReason = solver.reason_unknown()
+            if canFalse == z3.unknown:
+                s2 = z3.Solver()
+                s2.add(*solver.assertions())
+                canFalse = s2.check()
+                canFalseReason = s2.reason_unknown()
             solver.pop()
 
             if canTrue == z3.unsat and canFalse == z3.unsat:
@@ -742,6 +754,11 @@ def assume(e):
 
     solver.add(unwrap(e))
     sat = solver.check()
+    if sat == z3.unknown:
+        s2 = z3.Solver()
+        s2.add(*solver.assertions())
+        sat = s2.check()
+
     if sat == z3.unsat:
         raise RuntimeError("Unsatisfiable assumption %s" % e)
     elif sat != z3.sat:

@@ -620,15 +620,17 @@ def symeq(a, b):
 def implies(a, b):
     return wrap(z3.Implies(unwrap(a), unwrap(b)))
 
-def exists(vars, e):
+def exists(vars, e, patterns=[]):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]
-    return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e)))
+    return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e),
+                          patterns=map(unwrap, patterns)))
 
-def forall(vars, e):
+def forall(vars, e, patterns=[]):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]
-    return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e)))
+    return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e),
+                          patterns=map(unwrap, patterns)))
 
 #
 # Conversions to Z3 types and wrapper types

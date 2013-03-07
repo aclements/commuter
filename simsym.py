@@ -890,6 +890,9 @@ def symbolic_apply(fn, *args):
             rv = fn(*args)
             rvs[rv].append(symand(wraplist(solver.assertions())))
             cursched[-1][1].set_label(rv)
+        except UncheckableConstraintError as e:
+            cursched[-1][1].set_label("Exception: " + str(e))
+            print str(e)
         except Exception as e:
             cursched[-1][1].set_label("Exception: " + str(e))
             if len(e.args) == 1:

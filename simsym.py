@@ -308,7 +308,7 @@ class SBool(SExpr, SymbolicConst):
             else:
                 # Both are possible; take both paths
                 gnode = cursched[-1][1]
-                gnode.set_label(self._v, get_caller())
+                gnode.set_label(self, get_caller())
                 tnode, fnode = curgraph.new_node(), curgraph.new_node()
                 curgraph.new_edge(gnode, tnode, "T")
                 curgraph.new_edge(gnode, fnode, "F")

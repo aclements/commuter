@@ -276,55 +276,56 @@ class SBool(SExpr, SymbolicConst):
 
     def __nonzero__(self):
         solver = get_solver()
-        solver.push()
-        solver.add(self._v)
-        c = solver.check()
-        if c == z3.unknown:
-            raise RuntimeError('Uncheckable constraint %s:\n%s' %
-                               (solver.reason_unknown(), z3.simplify(self._v)))
-        canTrue = (c == z3.sat)
-        solver.pop()
 
-        solver.push()
-        solver.add(z3.Not(self._v))
-        c = solver.check()
-        if c == z3.unknown:
-            raise RuntimeError('Uncheckable constraint %s:\n%s' %
-                               (solver.reason_unknown(),
-                                z3.simplify(z3.Not(self._v))))
-        canFalse = (c == z3.sat)
-        solver.pop()
-
-        if canTrue and not canFalse:
-            return True
-        if canFalse and not canTrue:
-            return False
-        if not canTrue and not canFalse:
-            raise RuntimeError("Branch contradiction")
-
-        # Both are possible; take both paths
-        global cursched
-        global curschedidx
+        global cursched, curschedidx
         if len(cursched) == curschedidx:
-            if len(cursched):
-                gnode = cursched[-1][1]
+            # We've reached the end of replay; extend the schedule
+            solver.push()
+            solver.add(self._v)
+            canTrue = solver.check()
+            if canTrue == z3.unknown:
+                raise RuntimeError(
+                    'Uncheckable constraint %s:\n%s' %
+                    (solver.reason_unknown(), z3.simplify(self._v)))
+            solver.pop()
+
+            solver.push()
+            solver.add(z3.Not(self._v))
+            canFalse = solver.check()
+            if canFalse == z3.unknown:
+                raise RuntimeError(
+                    'Uncheckable constraint %s:\n%s' %
+                    (solver.reason_unknown(), z3.simplify(z3.Not(self._v))))
+            solver.pop()
+
+            if canTrue == z3.unsat and canFalse == z3.unsat:
+                raise RuntimeError("Branch contradiction")
+
+            # Extend the schedule
+            if canTrue == z3.sat and canFalse == z3.unsat:
+                cursched.append((True, cursched[-1][1]))
+            elif canTrue == z3.unsat and canFalse == z3.sat:
+                cursched.append((False, cursched[-1][1]))
             else:
-                gnode = curgraph.new_node()
-            gnode.set_label(self._v, get_caller())
-            tnode, fnode = curgraph.new_node(), curgraph.new_node()
-            curgraph.new_edge(gnode, tnode, "T")
-            curgraph.new_edge(gnode, fnode, "F")
+                # Both are possible; take both paths
+                gnode = cursched[-1][1]
+                gnode.set_label(self._v, get_caller())
+                tnode, fnode = curgraph.new_node(), curgraph.new_node()
+                curgraph.new_edge(gnode, tnode, "T")
+                curgraph.new_edge(gnode, fnode, "F")
 
-            newsched = list(cursched)
-            cursched.append((True, tnode))
-            newsched.append((False, fnode))
-            queue_schedule(newsched)
+                newsched = list(cursched)
+                cursched.append((True, tnode))
+                newsched.append((False, fnode))
+                queue_schedule(newsched)
 
+        # Follow the schedule (which we may have just extended)
         rv = cursched[curschedidx][0]
         if rv == True:
             solver.add(self._v)
         else:
             solver.add(z3.Not(self._v))
+        #assert solver.check() == z3.sat
         curschedidx = curschedidx + 1
         return rv
 
@@ -855,11 +856,14 @@ def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  Return a map of
     return values to conditions under which that value is returned."""
 
-    rvs = collections.defaultdict(list)
-    queue_schedule([])
-
     global curgraph
     curgraph = Graph()
+
+    rvs = collections.defaultdict(list)
+    # Prime the schedule with a root node.  We skip this during
+    # execution, but it means we can always use graph node
+    # cursched[-1][1].
+    queue_schedule([(None, curgraph.new_node())])
 
     global schedq
     while len(schedq) > 0:
@@ -867,18 +871,16 @@ def symbolic_apply(fn, *args):
         cursched = schedq.pop()
 
         global curschedidx
-        curschedidx = 0
+        curschedidx = 1
 
         global solver
         solver = z3.Solver()
         try:
             rv = fn(*args)
             rvs[rv].append(symand(wraplist(solver.assertions())))
-            if len(cursched):
-                cursched[-1][1].set_label(rv)
+            cursched[-1][1].set_label(rv)
         except Exception as e:
-            if len(cursched):
-                cursched[-1][1].set_label("Exception: " + str(e))
+            cursched[-1][1].set_label("Exception: " + str(e))
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
             else:

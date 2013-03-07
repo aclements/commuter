@@ -739,8 +739,9 @@ class Graph(object):
         print >>fp, "digraph G {"
         #print >>fp, "rankdir=LR;"
         for n in self.__nodes:
-            print >>fp, "n%s [label=%s,shape=box];" % \
-                (id(n), self.__dot_quote(n.str_label()))
+            print >>fp, "n%s [label=%s,color=%s,shape=box];" % \
+                (id(n), self.__dot_quote(n.str_label()),
+                 self.__dot_quote(n._color))
         for n1, n2, label in self.__edges:
             print >>fp, "n%s -> n%s [label=%s];" % \
                 (id(n1), id(n2), self.__dot_quote(str(label)))
@@ -754,9 +755,13 @@ class Graph(object):
 class GraphNode(object):
     def __init__(self):
         self._label = ["?"]
+        self._color = "black"
 
     def set_label(self, *parts):
         self._label = parts
+
+    def set_color(self, color):
+        self._color = color
 
     def str_label(self):
         res = []
@@ -892,9 +897,11 @@ def symbolic_apply(fn, *args):
             cursched[-1][1].set_label(rv)
         except UncheckableConstraintError as e:
             cursched[-1][1].set_label("Exception: " + str(e))
+            cursched[-1][1].set_color("red")
             print str(e)
         except Exception as e:
             cursched[-1][1].set_label("Exception: " + str(e))
+            cursched[-1][1].set_color("red")
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
             else:

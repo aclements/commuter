@@ -430,7 +430,9 @@ for (base, ncomb, projections, calls) in tests:
             e = commute
             while True:
                 check, model = simsym.check(e)
-                if check != z3.sat: break
+                if check == z3.unsat: break
+                if check == z3.unknown:
+                    raise Exception('Cannot enumerate: %s' % str(e))
 
                 ## What should we do about variables that do not show up
                 ## in the assignment (e.g., because they were eliminated

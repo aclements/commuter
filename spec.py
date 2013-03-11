@@ -114,15 +114,8 @@ class Fs(Struct):
         self.ino_to_data = self.InodeToData.any('Fs.idata')
         self.numifree = simsym.SInt.any('Fs.numifree')
 
-        simsym.assume(self.numifree >= 0)
         simsym.assume(self.numifree < 3)
         fn = SFn.any('fn')
-        # Note that, if we try to simply index into fn_to_ino, its
-        # __getitem__ won't have access to the supposition that
-        # fn_to_ino contains fn, so we use _map directly.
-        simsym.assume(simsym.forall(
-                fn, simsym.implies(self.fn_to_ino.contains(fn),
-                                   self.ino_to_data.contains(self.fn_to_ino._map[fn]))))
 
     def iused(self, ino):
         fn = SFn.any('fn')
@@ -144,6 +137,7 @@ class Fs(Struct):
             if not self.fn_to_ino.contains(fn):
                 if self.numifree == 0:
                     return ('err', errno.ENOSPC)
+                simsym.assume(self.numifree > 0)
                 ino = SIno.any('Fs.open[%s].ialloc' % which)
                 simsym.add_internal(ino)
                 simsym.assume(simsym.symnot(self.iused(ino)))
@@ -199,6 +193,7 @@ class Fs(Struct):
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
+        simsym.assume(self.ino_to_data.contains(ino))
         return ('data', self.ino_to_data[ino])
 
     def write(self, which):
@@ -207,6 +202,7 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         data = SData.any('Fs.write[%s].data' % which)
+        simsym.assume(self.ino_to_data.contains(ino))
         self.ino_to_data[ino] = data
         return ('ok',)
 
@@ -216,6 +212,7 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         len = 0
+        simsym.assume(self.ino_to_data.contains(ino))
         if self.ino_to_data[ino] != self.data_empty: len = 1
 
         ## XXX How to compute nlink?

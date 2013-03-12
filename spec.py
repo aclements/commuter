@@ -107,15 +107,12 @@ SFilenameToInode = symtypes.tdict(SFn, SIno)
 SInodeToData = symtypes.tdict(SIno, SData)
 
 class Fs(Struct):
-    __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
+    __slots__ = ['fn_to_ino', 'ino_to_data']
     data_empty = SData.any('Data.empty')
 
     def __init__(self):
         self.fn_to_ino = SFilenameToInode.any('Fs.dir')
         self.ino_to_data = SInodeToData.any('Fs.idata')
-        self.numifree = simsym.SInt.any('Fs.numifree')
-
-        simsym.assume(self.numifree < 3)
 
     def iused(self, ino):
         fn = SFn.any('fn')
@@ -126,10 +123,6 @@ class Fs(Struct):
             fn, simsym.symand([self.fn_to_ino.contains(fn),
                                self.fn_to_ino._map[fn] == ino]))
 
-    def idecref(self, ino):
-        if not self.iused(ino):
-            self.numifree = self.numifree + 1
-
     def open(self, which):
         fn = SFn.any('Fs.open[%s].fn' % which)
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
@@ -137,13 +130,9 @@ class Fs(Struct):
         trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
-                if self.numifree == 0:
-                    return ('err', errno.ENOSPC)
-                simsym.assume(self.numifree > 0)
                 ino = SIno.any('Fs.open[%s].ialloc' % which)
                 simsym.add_internal(ino)
                 simsym.assume(simsym.symnot(self.iused(ino)))
-                self.numifree = self.numifree - 1
                 self.ino_to_data[ino] = self.data_empty
                 self.fn_to_ino[fn] = ino
             else:
@@ -167,8 +156,6 @@ class Fs(Struct):
             dstino = None
         self.fn_to_ino[dst] = self.fn_to_ino[src]
         del self.fn_to_ino[src]
-        if dstino is not None:
-            self.idecref(dstino)
         return ('ok',)
 
     def unlink(self, which):
@@ -177,7 +164,6 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         ino = self.fn_to_ino[fn]
         del self.fn_to_ino[fn]
-        self.idecref(ino)
         return ('ok',)
 
     def link(self, which):

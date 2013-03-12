@@ -97,24 +97,25 @@ class UPipe(Struct):
 class SFn(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Fn')
 
-class SIno(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('Ino')
+class SInum(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('Inum')
 
 class SData(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Data')
 
-SFilenameToInode = symtypes.tdict(SFn, SIno)
-SInodeToData = symtypes.tdict(SIno, SData)
-SFd = simsym.tstruct(ino = SIno, off = simsym.SInt)
+SFilenameToInode = symtypes.tdict(SFn, SInum)
+SFd = simsym.tstruct(ino = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
+SInode = simsym.tstruct(data = SData, nlink = simsym.SInt)
+SIMap = symtypes.tdict(SInum, SInode)
 
 class Fs(Struct):
-    __slots__ = ['fn_to_ino', 'ino_to_data', 'fd_map']
+    __slots__ = ['fn_to_ino', 'i_map', 'fd_map']
     data_empty = SData.any('Data.empty')
 
     def __init__(self):
         self.fn_to_ino = SFilenameToInode.any('Fs.dir')
-        self.ino_to_data = SInodeToData.any('Fs.idata')
+        self.i_map = SIMap.any('Fs.imap')
         self.fd_map = SFdMap.any('Fs.fdmap')
 
     def iused(self, ino):
@@ -139,17 +140,22 @@ class Fs(Struct):
         anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
-                ino = SIno.any('Fs.open[%s].ialloc' % which)
-                simsym.add_internal(ino)
-                simsym.assume(simsym.symnot(self.iused(ino)))
-                self.ino_to_data[ino] = self.data_empty
-                self.fn_to_ino[fn] = ino
+                inum = SInum.any('Fs.open[%s].ialloc' % which)
+                simsym.add_internal(inum)
+                simsym.assume(simsym.symnot(self.iused(inum)))
+
+                idata = SInode.any()
+                idata.data = self.data_empty
+                idata.nlink = 1
+                self.i_map[inum] = idata
+                self.fn_to_ino[fn] = inum
             else:
                 if excl: return ('err', errno.EEXIST)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
         if trunc:
-            self.ino_to_data[self.fn_to_ino[fn]] = self.data_empty
+            simsym.assume(self.i_map.contains(self.fn_to_ino[fn]))
+            self.i_map[self.fn_to_ino[fn]].data = self.data_empty
 
         fd = simsym.SInt.any('Fs.open[%s].fd' % which)
         simsym.add_internal(fd)
@@ -179,19 +185,24 @@ class Fs(Struct):
         if not self.fn_to_ino.contains(src):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(dst):
-            dstino = self.fn_to_ino[dst]
+            dstinum = self.fn_to_ino[dst]
         else:
-            dstino = None
+            dstinum = None
         self.fn_to_ino[dst] = self.fn_to_ino[src]
         del self.fn_to_ino[src]
+        if dstinum is not None:
+            simsym.assume(self.i_map.contains(dstinum))
+            self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
         return ('ok',)
 
     def unlink(self, which):
         fn = SFn.any('Fs.unlink[%s].fn' % which)
         if not self.fn_to_ino.contains(fn):
             return ('err', errno.ENOENT)
-        ino = self.fn_to_ino[fn]
+        inum = self.fn_to_ino[fn]
         del self.fn_to_ino[fn]
+        simsym.assume(self.i_map.contains(inum))
+        self.i_map[inum].nlink = self.i_map[inum].nlink - 1
         return ('ok',)
 
     def link(self, which):
@@ -201,35 +212,36 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         if self.fn_to_ino.contains(newfn):
             return ('err', errno.EEXIST)
-        self.fn_to_ino[newfn] = self.fn_to_ino[oldfn]
+        inum = self.fn_to_ino[oldfn]
+        self.fn_to_ino[newfn] = inum
+        simsym.assume(self.i_map.contains(inum))
+        self.i_map[inum].nlink = self.i_map[inum].nlink + 1
         return ('ok',)
 
     def read(self, which):
         fd = simsym.SInt.any('Fs.read[%s].fd' % which)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
-        ino = self.fd_map[fd].ino
-        simsym.assume(self.ino_to_data.contains(ino))
-        return ('data', self.ino_to_data[ino])
+        inum = self.fd_map[fd].ino
+        simsym.assume(self.i_map.contains(inum))
+        return ('data', self.i_map[inum].data)
 
     def write(self, which):
         fd = simsym.SInt.any('Fs.write[%s].fd' % which)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
-        ino = self.fd_map[fd].ino
+        inum = self.fd_map[fd].ino
         data = SData.any('Fs.write[%s].data' % which)
-        simsym.assume(self.ino_to_data.contains(ino))
-        self.ino_to_data[ino] = data
+        simsym.assume(self.i_map.contains(inum))
+        self.i_map[inum].data = data
         return ('ok',)
 
-    def istat(self, ino):
+    def istat(self, inum):
         len = 0
-        simsym.assume(self.ino_to_data.contains(ino))
-        if self.ino_to_data[ino] != self.data_empty: len = 1
-
-        ## XXX How to compute nlink?
-
-        return ('ok', ino, len)
+        simsym.assume(self.i_map.contains(inum))
+        if self.i_map[inum].data != self.data_empty: len = 1
+        nlink = self.i_map[inum].nlink
+        return ('ok', inum, len, nlink)
 
     def stat(self, which):
         fn = SFn.any('Fs.stat[%s].fn' % which)

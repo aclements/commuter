@@ -156,13 +156,13 @@ class Fs(Struct):
         simsym.assume(fd >= 0)
         simsym.assume(simsym.symnot(self.fd_map.contains(fd)))
 
-        ## Lowest FD:
-        if not anyfd:
-            otherfd = simsym.SInt.any()
-            simsym.assume(simsym.symnot(simsym.exists(otherfd,
+        ## Lowest FD
+        otherfd = simsym.SInt.any()
+        simsym.assume(simsym.symor([anyfd,
+            simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
                                otherfd < fd,
-                               self.fd_map.contains(otherfd)]))))
+                               self.fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
         fd_data.ino = self.fn_to_ino[fn]
@@ -205,28 +205,24 @@ class Fs(Struct):
         return ('ok',)
 
     def read(self, which):
-        fn = SFn.any('Fs.read[%s].fn' % which)
-        if not self.fn_to_ino.contains(fn):
-            return ('err', errno.ENOENT)
-        ino = self.fn_to_ino[fn]
+        fd = simsym.SInt.any('Fs.read[%s].fd' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        ino = self.fd_map[fd].ino
         simsym.assume(self.ino_to_data.contains(ino))
         return ('data', self.ino_to_data[ino])
 
     def write(self, which):
-        fn = SFn.any('Fs.write[%s].fn' % which)
-        if not self.fn_to_ino.contains(fn):
-            return ('err', errno.ENOENT)
-        ino = self.fn_to_ino[fn]
+        fd = simsym.SInt.any('Fs.write[%s].fd' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        ino = self.fd_map[fd].ino
         data = SData.any('Fs.write[%s].data' % which)
         simsym.assume(self.ino_to_data.contains(ino))
         self.ino_to_data[ino] = data
         return ('ok',)
 
-    def stat(self, which):
-        fn = SFn.any('Fs.stat[%s].fn' % which)
-        if not self.fn_to_ino.contains(fn):
-            return ('err', errno.ENOENT)
-        ino = self.fn_to_ino[fn]
+    def istat(self, ino):
         len = 0
         simsym.assume(self.ino_to_data.contains(ino))
         if self.ino_to_data[ino] != self.data_empty: len = 1
@@ -234,6 +230,18 @@ class Fs(Struct):
         ## XXX How to compute nlink?
 
         return ('ok', ino, len)
+
+    def stat(self, which):
+        fn = SFn.any('Fs.stat[%s].fn' % which)
+        if not self.fn_to_ino.contains(fn):
+            return ('err', errno.ENOENT)
+        return self.istat(self.fn_to_ino[fn])
+
+    def fstat(self, which):
+        fd = simsym.SInt.any('Fs.fstat[%s].fd' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        return self.istat(self.fd_map[fd].ino)
 
 def test(base, *calls):
     try:
@@ -373,6 +381,7 @@ tests = [
         Fs.link,
         Fs.rename,
         Fs.stat,
+        Fs.fstat,
      ]),
 ]
 

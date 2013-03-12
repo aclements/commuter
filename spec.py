@@ -105,29 +105,38 @@ class SData(simsym.SExpr, simsym.SymbolicConst):
 
 SFilenameToInode = symtypes.tdict(SFn, SIno)
 SInodeToData = symtypes.tdict(SIno, SData)
+SFd = simsym.tstruct(ino = SIno, off = simsym.SInt)
+SFdMap = symtypes.tdict(simsym.SInt, SFd)
 
 class Fs(Struct):
-    __slots__ = ['fn_to_ino', 'ino_to_data']
+    __slots__ = ['fn_to_ino', 'ino_to_data', 'fd_map']
     data_empty = SData.any('Data.empty')
 
     def __init__(self):
         self.fn_to_ino = SFilenameToInode.any('Fs.dir')
         self.ino_to_data = SInodeToData.any('Fs.idata')
+        self.fd_map = SFdMap.any('Fs.fdmap')
 
     def iused(self, ino):
         fn = SFn.any('fn')
+        fd = simsym.SInt.any('fd')
         # Note that, if we try to simply index into fn_to_ino, its
         # __getitem__ won't have access to the supposition that
         # fn_to_ino contains fn, so we use _map directly.
-        return simsym.exists(
-            fn, simsym.symand([self.fn_to_ino.contains(fn),
-                               self.fn_to_ino._map[fn] == ino]))
+        return simsym.symor([
+            simsym.exists(fn,
+                simsym.symand([self.fn_to_ino.contains(fn),
+                               self.fn_to_ino._map[fn] == ino])),
+            simsym.exists(fd,
+                simsym.symand([self.fd_map.contains(fd),
+                               self.fd_map._map[fd].ino == ino]))])
 
     def open(self, which):
         fn = SFn.any('Fs.open[%s].fn' % which)
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
         excl = simsym.SBool.any('Fs.open[%s].excl' % which)
         trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
+        anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
         if creat:
             if not self.fn_to_ino.contains(fn):
                 ino = SIno.any('Fs.open[%s].ialloc' % which)
@@ -141,7 +150,26 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         if trunc:
             self.ino_to_data[self.fn_to_ino[fn]] = self.data_empty
-        return ('ok',)
+
+        fd = simsym.SInt.any('Fs.open[%s].fd' % which)
+        simsym.add_internal(fd)
+        simsym.assume(fd >= 0)
+        simsym.assume(simsym.symnot(self.fd_map.contains(fd)))
+
+        ## Lowest FD:
+        if not anyfd:
+            otherfd = simsym.SInt.any()
+            simsym.assume(simsym.symnot(simsym.exists(otherfd,
+                simsym.symand([otherfd >= 0,
+                               otherfd < fd,
+                               self.fd_map.contains(otherfd)]))))
+
+        fd_data = SFd.any()
+        fd_data.ino = self.fn_to_ino[fn]
+        fd_data.off = 0
+        self.fd_map[fd] = fd_data
+
+        return ('ok', fd)
 
     def rename(self, which):
         src = SFn.any('Fs.rename[%s].src' % which)

@@ -103,23 +103,25 @@ class SIno(simsym.SExpr, simsym.SymbolicConst):
 class SData(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Data')
 
+SFilenameToInode = symtypes.tdict(SFn, SIno)
+SInodeToData = symtypes.tdict(SIno, SData)
+
 class Fs(Struct):
     __slots__ = ['fn_to_ino', 'ino_to_data', 'numifree']
-    FilenameToInode = symtypes.tdict(SFn, SIno)
-    InodeToData = symtypes.tdict(SIno, SData)
     data_empty = SData.any('Data.empty')
 
     def __init__(self):
-        self.fn_to_ino = self.FilenameToInode.any('Fs.dir')
-        self.ino_to_data = self.InodeToData.any('Fs.idata')
+        self.fn_to_ino = SFilenameToInode.any('Fs.dir')
+        self.ino_to_data = SInodeToData.any('Fs.idata')
         self.numifree = simsym.SInt.any('Fs.numifree')
 
         simsym.assume(self.numifree < 3)
-        fn = SFn.any('fn')
 
     def iused(self, ino):
         fn = SFn.any('fn')
-        # See __init__ above for why we use _map directly.
+        # Note that, if we try to simply index into fn_to_ino, its
+        # __getitem__ won't have access to the supposition that
+        # fn_to_ino contains fn, so we use _map directly.
         return simsym.exists(
             fn, simsym.symand([self.fn_to_ino.contains(fn),
                                self.fn_to_ino._map[fn] == ino]))

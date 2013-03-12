@@ -239,6 +239,12 @@ def test(base, *calls):
             diverge += ('results',)
         if simsym.symor([all_s[0] != s for s in all_s[1:]]):
             diverge += ('state',)
+
+        ## XXX precisely keeping track of what diverges incurs overhead.
+        ## Avoid the needless book-keeping for now.
+        if len(diverge) == 0: return ()
+        return ('something',)
+
         return diverge
     except PreconditionFailure:
         return None

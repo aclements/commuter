@@ -196,6 +196,9 @@ class UncheckableConstraintError(RuntimeError):
         RuntimeError.__init__(
             self, 'Uncheckable constraint %s:\n%s' % (reason, z3.simplify(expr)))
 
+class UnsatisfiablePath(RuntimeError):
+    pass
+
 class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
     __z3_sort__ = z3.BoolSort()
@@ -760,7 +763,9 @@ def assume(e):
         sat = s2.check()
 
     if sat == z3.unsat:
-        raise RuntimeError("Unsatisfiable assumption %s" % e)
+        # print "Unsatisfiable path:"
+        # print solver.assertions()
+        raise UnsatisfiablePath()
     elif sat != z3.sat:
         raise RuntimeError("Uncheckable assumption %s" % e)
 
@@ -791,6 +796,9 @@ def symbolic_apply(fn, *args):
             rv = fn(*args)
             rvs[rv].append(symand(wraplist(solver.assertions())))
             cursched[-1][1].set_label(rv)
+        except UnsatisfiablePath:
+            cursched[-1][1].set_label("Unsatisfiable path")
+            cursched[-1][1].set_color("blue")
         except UncheckableConstraintError as e:
             cursched[-1][1].set_label("Exception: " + str(e))
             cursched[-1][1].set_color("red")

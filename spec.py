@@ -427,6 +427,12 @@ def same_assignments(model):
     uninterp_pairs = []
     for decl in model:
         val = model[decl]
+        if '!' in str(decl):
+            ## Do not mention internal variables in the same_assignments
+            ## condition, otherwise Z3 just happily keeps iterating on
+            ## these non-interesting variables to produce effectively
+            ## identical assignments.
+            continue
         if decl.arity() > 0:
             val_list = val.as_list()
             for valarg, valval in val_list[:-1]:
@@ -609,7 +615,8 @@ for (base, ncomb, projections, calls) in tests:
                 ## the raw symbolic expression returned by symbolic_apply().
 
                 vars = { model_unwrap(k, model): model_unwrap(model[k], model)
-                         for k in model }
+                         for k in model if '!' not in model_unwrap(k, model) }
+                # print 'New assignment:', vars
                 module_testcases.append({
                     'calls': [c.__name__ for c in callset],
                     'vars':  vars,

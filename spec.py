@@ -113,7 +113,7 @@ SInode = simsym.tstruct(data = SData,
                         # isdir = simsym.SBool,
                         # dirmap = SDirMap,
                        )
-SIMap = symtypes.tdict(SInum, SInode)
+SIMap = symtypes.tmap(SInum, SInode)
 ## XXX Directories impl:
 # SPathname = simsym.tstruct(last = SFn)
 ## XXX Non-directories impl:
@@ -143,18 +143,17 @@ class Fs(Struct):
         fn = SFn.any('fn')
         fd = simsym.SInt.any('fd')
 
-        # If we try to simply index into i_map or dirmap, its __getitem__
+        # If we try to simply index into dirmap, its __getitem__
         # won't have access to the supposition that it contains the right
         # key, and throw an exception.  Thus, we use _map directly.
         return simsym.symor([
             ## XXX Directories impl:
             # simsym.exists(dir,
             #     simsym.symand([
-            #         self.i_map.contains(dir),
-            #         self.i_map._map[dir].isdir,
+            #         self.i_map[dir].isdir,
             #         simsym.exists(fn,
-            #             simsym.symand([self.i_map._map[dir].dirmap.contains(fn),
-            #                            self.i_map._map[dir].dirmap._map[fn] == inum]))])),
+            #             simsym.symand([self.i_map[dir].dirmap.contains(fn),
+            #                            self.i_map[dir].dirmap._map[fn] == inum]))])),
 
             ## XXX Non-directories impl:
             simsym.exists(fn,
@@ -170,7 +169,6 @@ class Fs(Struct):
         return 0, self.root_dir, pn
 
         ## XXX Directories impl:
-        # simsym.assume(self.i_map.contains(self.root_inum))
         # simsym.assume(self.i_map[self.root_inum].isdir)
         # return self.root_inum, self.i_map[self.root_inum].dirmap, pn.last
 
@@ -197,7 +195,6 @@ class Fs(Struct):
         if not pndirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         if trunc:
-            simsym.assume(self.i_map.contains(pndirmap[pnlast]))
             self.i_map[pndirmap[pnlast]].data = self.data_empty
 
         fd = simsym.SInt.any('Fs.open[%s].fd' % which)
@@ -236,7 +233,6 @@ class Fs(Struct):
         dstdirmap[dstlast] = srcdirmap[srclast]
         del dstdirmap[dstlast]
         if dstinum is not None:
-            simsym.assume(self.i_map.contains(dstinum))
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
         return ('ok',)
 
@@ -247,7 +243,6 @@ class Fs(Struct):
             return ('err', errno.ENOENT)
         inum = dirmap[pnlast]
         del dirmap[pnlast]
-        simsym.assume(self.i_map.contains(inum))
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
         return ('ok',)
 
@@ -262,12 +257,10 @@ class Fs(Struct):
             return ('err', errno.EEXIST)
         inum = olddirmap[oldlast]
         newdirmap[newlast] = inum
-        simsym.assume(self.i_map.contains(inum))
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
         return ('ok',)
 
     def iread(self, inum, off):
-        simsym.assume(self.i_map.contains(inum))
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return ('eof',)
@@ -291,7 +284,6 @@ class Fs(Struct):
         return self.iread(self.fd_map[fd].inum, off)
 
     def iwrite(self, inum, off, databyte):
-        simsym.assume(self.i_map.contains(inum))
         simsym.assume(off >= 0)
         ## XXX Handle sparse files?
         simsym.assume(off <= self.i_map[inum].data._len)
@@ -320,7 +312,6 @@ class Fs(Struct):
         return self.iwrite(self.fd_map[fd].inum, off, databyte)
 
     def istat(self, inum):
-        simsym.assume(self.i_map.contains(inum))
         len = self.i_map[inum].data._len
         nlink = self.i_map[inum].nlink
         return ('ok', inum, len, nlink)

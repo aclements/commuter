@@ -829,7 +829,10 @@ def check(e):
     if c == z3.sat:
         m = solver.model()
     else:
-        m = None
+        if c == z3.unknown:
+            m = solver.reason_unknown()
+        else:
+            m = None
     solver.pop()
     if clearsolver:
         solver = None

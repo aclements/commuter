@@ -100,9 +100,10 @@ class SFn(simsym.SExpr, simsym.SymbolicConst):
 class SInum(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Inum')
 
-class SData(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('Data')
+class SDataByte(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('DataByte')
 
+SData = symtypes.tlist(SDataByte)
 SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
 SDirMap = symtypes.tdict(SFn, SInum)
@@ -121,15 +122,18 @@ SPathname = SFn
 class Fs(Struct):
     __slots__ = ['i_map',
                  'fd_map',
+                 'data_empty',
+
                  ## XXX Non-directories impl:
                  'root_dir',
                 ]
-    data_empty = SData.any('Data.empty')
     root_inum = SInum.any('Inum.root')
 
     def __init__(self):
         self.i_map = SIMap.any('Fs.imap')
         self.fd_map = SFdMap.any('Fs.fdmap')
+        self.data_empty = SData.any('Data.empty')
+        self.data_empty._len = 0
 
         ## XXX Non-directories impl:
         self.root_dir = SDirMap.any('Fs.rootdir')
@@ -262,28 +266,40 @@ class Fs(Struct):
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
         return ('ok',)
 
-    def read(self, which):
-        fd = simsym.SInt.any('Fs.read[%s].fd' % which)
+    def pread(self, which):
+        fd = simsym.SInt.any('Fs.pread[%s].fd' % which)
+        off = simsym.SInt.any('Fs.pread[%s].off' % which)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         inum = self.fd_map[fd].inum
         simsym.assume(self.i_map.contains(inum))
-        return ('data', self.i_map[inum].data)
+        simsym.assume(off >= 0)
+        if off >= self.i_map[inum].data._len:
+            return ('eof',)
+        return ('data', self.i_map[inum].data[off])
 
-    def write(self, which):
-        fd = simsym.SInt.any('Fs.write[%s].fd' % which)
+    def pwrite(self, which):
+        fd = simsym.SInt.any('Fs.pwrite[%s].fd' % which)
+        off = simsym.SInt.any('Fs.pwrite[%s].off' % which)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         inum = self.fd_map[fd].inum
-        data = SData.any('Fs.write[%s].data' % which)
+        data = SDataByte.any('Fs.write[%s].data' % which)
         simsym.assume(self.i_map.contains(inum))
-        self.i_map[inum].data = data
+        simsym.assume(off >= 0)
+
+        ## XXX Handle sparse files?
+        simsym.assume(off <= self.i_map[inum].data._len)
+
+        if off == self.i_map[inum].data._len:
+            self.i_map[inum].data.append(data)
+        else:
+            self.i_map[inum].data[off] = data
         return ('ok',)
 
     def istat(self, inum):
-        len = 0
         simsym.assume(self.i_map.contains(inum))
-        if self.i_map[inum].data != self.data_empty: len = 1
+        len = self.i_map[inum].data._len
         nlink = self.i_map[inum].nlink
         return ('ok', inum, len, nlink)
 
@@ -432,8 +448,8 @@ tests = [
 
     (Fs, 2, {}, [
         Fs.open,
-        Fs.read,
-        Fs.write,
+        Fs.pread,
+        Fs.pwrite,
         Fs.unlink,
         Fs.link,
         Fs.rename,

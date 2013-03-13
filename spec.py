@@ -407,8 +407,8 @@ def model_unwrap(e, modelctx):
         return int(e.as_long())
     if isinstance(e, z3.FuncInterp):
         elist = e.as_list()
-        if len(elist) == 1 and elist[0].num_args() > 0:
-            elist = var_unwrap(elist[0], [], modelctx)
+        # if len(elist) == 1 and elist[0].num_args() > 0:
+        #     elist = var_unwrap(elist[0], [], modelctx)
         return [model_unwrap(x, modelctx) for x in elist]
     if isinstance(e, z3.BoolRef):
         return (str(e) == 'True')
@@ -420,6 +420,18 @@ def model_unwrap(e, modelctx):
         if len(positions) != 1:
             raise Exception('could not find %s in %s' % (str(e), str(univ)))
         return positions[0]
+    if isinstance(e, z3.DatatypeRef):
+        return [e.decl().name()] + [model_unwrap(e.arg(i), modelctx)
+                             for i in range(0, e.num_args())]
+    if isinstance(e, z3.ArrayRef):
+        # print 'ArrayRef thing:', e
+        # print dir(e)
+        # print 'num_args:', e.num_args()
+        # print 'children:', e.children()
+        # print 'decl:', e.decl()
+        # print 'domain:', e.domain()
+        # print 'range:', e.range()
+        return ['XXX-as-array-something']
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 def same_assignments(model):
@@ -446,6 +458,8 @@ def same_assignments(model):
             # XXX treat arrays like uninterpreted sorts to construct
             # different initial states?
             pass
+        elif dsort.kind() == z3.Z3_DATATYPE_SORT:
+            conds.append(dconst == val)
         else:
             raise Exception('unknown sort %s kind %d in %s' %
                             (dsort, dsort.kind(), decl))
@@ -561,7 +575,9 @@ for (base, ncomb, projections, calls) in tests:
                 check, model = simsym.check(e)
                 if check == z3.unsat: break
                 if check == z3.unknown:
-                    raise Exception('Cannot enumerate: %s' % str(e))
+                    # raise Exception('Cannot enumerate: %s' % str(e))
+                    print 'Cannot enumerate, moving on..'
+                    break
 
                 ## What should we do about variables that do not show up
                 ## in the assignment (e.g., because they were eliminated

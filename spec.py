@@ -428,10 +428,16 @@ def same_assignments(model):
     for decl in model:
         val = model[decl]
         if decl.arity() > 0:
-            # Unclear what to do about functions in a model.
-            continue
-        # XXX hack to discard non-interesting variables
-        if '!' in str(decl):
+            val_list = val.as_list()
+            for valarg, valval in val_list[:-1]:
+                conds.append(decl(valarg) == valval)
+
+            domain_sorts = [decl.domain(i) for i in range(0, decl.arity())]
+            domain_anon = [z3.Const(simsym.anon_name(), s) for s in domain_sorts]
+            elsecond = z3.ForAll(domain_anon,
+                          z3.Or([decl(*domain_anon) == val_list[-1]] +
+                                [domain_anon[0] == x for x, _ in val_list[:-1]]))
+            conds.append(elsecond)
             continue
         dconst = decl()
         dsort = dconst.sort()

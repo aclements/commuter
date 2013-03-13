@@ -74,11 +74,11 @@ class Pipe(Struct):
 
 class UPipe(Struct):
     __slots__ = ['elems', 'nitem']
+    SItembag = symtypes.tbag(simsym.SInt)
 
     def __init__(self):
-        self.elems = symtypes.SBag('UPipe.items')
+        self.elems = self.SItembag.any('UPipe.items')
         self.nitem = simsym.SInt.any('UPipe.nitem')
-
         simsym.assume(self.nitem >= 0)
 
     def u_write(self, which):
@@ -90,7 +90,7 @@ class UPipe(Struct):
         if self.nitem == 0:
             return None
         else:
-            e = self.elems.choose()
+            e = self.elems.take()
             self.nitem = self.nitem - 1
             return e
 
@@ -425,7 +425,7 @@ tests = [
     #  [State.sys_inc, State.sys_dec, State.sys_iszero]),
     # (Pipe,  3, {},
     #  [Pipe.write, Pipe.read]),
-    # (UPipe, 3, {},
+    # (UPipe, 2, {},
     #  [UPipe.u_write, UPipe.u_read]),
     # (Fs,    2, {'first': lambda(x): x[0]},
     #  [Fs.open, Fs.read, Fs.write, Fs.unlink, Fs.link, Fs.rename]),

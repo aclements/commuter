@@ -84,42 +84,21 @@ def tset(valueType):
     base = tstruct(_bmap = mapType)
     return type(name, (base, SSetBase), {"_mapType": mapType})
 
-class SBag(object):
-    def __init__(self, name):
-        self._name_prefix = name
-        self._items = []
-        self._choices = 0
+class SBagBase(Symbolic):
+    def add(self, val):
+        assume(self._imap[val] >= 0)
+        self._imap[val] = self._imap[val] + 1
 
-    def add(self, v):
-        self._items.append(v)
+    def take(self):
+        v = self._valueType.any()
+        add_internal(v)
+        assume(self._imap[v] > 0)
+        self._imap[v] = self._imap[v] - 1
+        return v
 
-    def choose(self):
-        self._choices = self._choices + 1
-        choicevar = SInt.any('%s.choose.%d' % (self._name_prefix, self._choices))
-        add_internal(choicevar)
-        for i in range(0, len(self._items)):
-            if choicevar == i:
-                return self._items[i]
+def tbag(valueType):
+    name = "SBag_" + valueType.__name__
+    mapType = tmap(valueType, SInt)
+    base = tstruct(_imap = mapType)
+    return type(name, (base, SBagBase), {"_valueType": valueType})
 
-        # The bag also contains arbitrary other items
-        newvar = SInt.any('%s.someitem.%d' % (self._name_prefix, self._choices))
-        return newvar
-
-    def __eq__(self, o):
-        if not isinstance(o, SBag):
-            return False
-
-        ol = list(o._items)
-        for e1 in self._items:
-            found = False
-            for e2 in ol:
-                if e1 == e2:
-                    ol.remove(e2)
-                    found = True
-                    break
-            if not found:
-                return False
-        return True
-
-    def __ne__(self, o):
-        return not self.__eq__(o)

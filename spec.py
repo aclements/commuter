@@ -103,43 +103,82 @@ class SInum(simsym.SExpr, simsym.SymbolicConst):
 class SData(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Data')
 
-SFilenameToInode = symtypes.tdict(SFn, SInum)
 SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
-SInode = simsym.tstruct(data = SData, nlink = simsym.SInt)
+SDirMap = symtypes.tdict(SFn, SInum)
+SInode = simsym.tstruct(data = SData,
+                        nlink = simsym.SInt,
+                        ## XXX Directories impl:
+                        # isdir = simsym.SBool,
+                        # dirmap = SDirMap,
+                       )
 SIMap = symtypes.tdict(SInum, SInode)
+## XXX Directories impl:
+# SPathname = simsym.tstruct(last = SFn)
+## XXX Non-directories impl:
+SPathname = SFn
 
 class Fs(Struct):
-    __slots__ = ['fn_to_inum', 'i_map', 'fd_map']
+    __slots__ = ['i_map',
+                 'fd_map',
+                 ## XXX Non-directories impl:
+                 'root_dir',
+                ]
     data_empty = SData.any('Data.empty')
+    root_inum = SInum.any('Inum.root')
 
     def __init__(self):
-        self.fn_to_inum = SFilenameToInode.any('Fs.dir')
         self.i_map = SIMap.any('Fs.imap')
         self.fd_map = SFdMap.any('Fs.fdmap')
 
+        ## XXX Non-directories impl:
+        self.root_dir = SDirMap.any('Fs.rootdir')
+
     def iused(self, inum):
+        dir = SInum.any('dir')
         fn = SFn.any('fn')
         fd = simsym.SInt.any('fd')
-        # Note that, if we try to simply index into fn_to_inum, its
-        # __getitem__ won't have access to the supposition that
-        # fn_to_inum contains fn, so we use _map directly.
+
+        # If we try to simply index into i_map or dirmap, its __getitem__
+        # won't have access to the supposition that it contains the right
+        # key, and throw an exception.  Thus, we use _map directly.
         return simsym.symor([
+            ## XXX Directories impl:
+            # simsym.exists(dir,
+            #     simsym.symand([
+            #         self.i_map.contains(dir),
+            #         self.i_map._map[dir].isdir,
+            #         simsym.exists(fn,
+            #             simsym.symand([self.i_map._map[dir].dirmap.contains(fn),
+            #                            self.i_map._map[dir].dirmap._map[fn] == inum]))])),
+
+            ## XXX Non-directories impl:
             simsym.exists(fn,
-                simsym.symand([self.fn_to_inum.contains(fn),
-                               self.fn_to_inum._map[fn] == inum])),
+                simsym.symand([self.root_dir.contains(fn),
+                               self.root_dir._map[fn] == inum])),
+
             simsym.exists(fd,
                 simsym.symand([self.fd_map.contains(fd),
                                self.fd_map._map[fd].inum == inum]))])
 
+    def nameiparent(self, pn):
+        ## XXX Non-directories impl:
+        return 0, self.root_dir, pn
+
+        ## XXX Directories impl:
+        # simsym.assume(self.i_map.contains(self.root_inum))
+        # simsym.assume(self.i_map[self.root_inum].isdir)
+        # return self.root_inum, self.i_map[self.root_inum].dirmap, pn.last
+
     def open(self, which):
-        fn = SFn.any('Fs.open[%s].fn' % which)
+        pn = SPathname.any('Fs.open[%s].pn' % which)
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
         excl = simsym.SBool.any('Fs.open[%s].excl' % which)
         trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
         anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
+        _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
-            if not self.fn_to_inum.contains(fn):
+            if not pndirmap.contains(pnlast):
                 inum = SInum.any('Fs.open[%s].ialloc' % which)
                 simsym.add_internal(inum)
                 simsym.assume(simsym.symnot(self.iused(inum)))
@@ -148,14 +187,14 @@ class Fs(Struct):
                 idata.data = self.data_empty
                 idata.nlink = 1
                 self.i_map[inum] = idata
-                self.fn_to_inum[fn] = inum
+                pndirmap[pnlast] = inum
             else:
                 if excl: return ('err', errno.EEXIST)
-        if not self.fn_to_inum.contains(fn):
+        if not pndirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         if trunc:
-            simsym.assume(self.i_map.contains(self.fn_to_inum[fn]))
-            self.i_map[self.fn_to_inum[fn]].data = self.data_empty
+            simsym.assume(self.i_map.contains(pndirmap[pnlast]))
+            self.i_map[pndirmap[pnlast]].data = self.data_empty
 
         fd = simsym.SInt.any('Fs.open[%s].fd' % which)
         simsym.add_internal(fd)
@@ -171,49 +210,54 @@ class Fs(Struct):
                                self.fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
-        fd_data.inum = self.fn_to_inum[fn]
+        fd_data.inum = pndirmap[pnlast]
         fd_data.off = 0
         self.fd_map[fd] = fd_data
 
         return ('ok', fd)
 
     def rename(self, which):
-        src = SFn.any('Fs.rename[%s].src' % which)
-        dst = SFn.any('Fs.rename[%s].dst' % which)
-        if src == dst:
+        src = SPathname.any('Fs.rename[%s].src' % which)
+        dst = SPathname.any('Fs.rename[%s].dst' % which)
+        srcdiri, srcdirmap, srclast = self.nameiparent(src)
+        dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
+        if srcdiri == dstdiri and srclast == dstlast:
             return ('ok',)
-        if not self.fn_to_inum.contains(src):
+        if not srcdirmap.contains(srclast):
             return ('err', errno.ENOENT)
-        if self.fn_to_inum.contains(dst):
-            dstinum = self.fn_to_inum[dst]
+        if dstdirmap.contains(dstlast):
+            dstinum = dstdirmap[dstlast]
         else:
             dstinum = None
-        self.fn_to_inum[dst] = self.fn_to_inum[src]
-        del self.fn_to_inum[src]
+        dstdirmap[dstlast] = srcdirmap[srclast]
+        del dstdirmap[dstlast]
         if dstinum is not None:
             simsym.assume(self.i_map.contains(dstinum))
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
         return ('ok',)
 
     def unlink(self, which):
-        fn = SFn.any('Fs.unlink[%s].fn' % which)
-        if not self.fn_to_inum.contains(fn):
+        pn = SPathname.any('Fs.unlink[%s].fn' % which)
+        _, dirmap, pnlast = self.nameiparent(pn)
+        if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
-        inum = self.fn_to_inum[fn]
-        del self.fn_to_inum[fn]
+        inum = dirmap[pnlast]
+        del dirmap[pnlast]
         simsym.assume(self.i_map.contains(inum))
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
         return ('ok',)
 
     def link(self, which):
-        oldfn = SFn.any('Fs.link[%s].oldfn' % which)
-        newfn = SFn.any('Fs.link[%s].newfn' % which)
-        if not self.fn_to_inum.contains(oldfn):
+        oldpn = SPathname.any('Fs.link[%s].old' % which)
+        newpn = SPathname.any('Fs.link[%s].new' % which)
+        olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
+        newdiri, newdirmap, newlast = self.nameiparent(newpn)
+        if not olddirmap.contains(oldlast):
             return ('err', errno.ENOENT)
-        if self.fn_to_inum.contains(newfn):
+        if newdirmap.contains(newlast):
             return ('err', errno.EEXIST)
-        inum = self.fn_to_inum[oldfn]
-        self.fn_to_inum[newfn] = inum
+        inum = olddirmap[oldlast]
+        newdirmap[newlast] = inum
         simsym.assume(self.i_map.contains(inum))
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
         return ('ok',)
@@ -244,10 +288,11 @@ class Fs(Struct):
         return ('ok', inum, len, nlink)
 
     def stat(self, which):
-        fn = SFn.any('Fs.stat[%s].fn' % which)
-        if not self.fn_to_inum.contains(fn):
+        pn = SPathname.any('Fs.stat[%s].fn' % which)
+        _, dirmap, pnlast = self.nameiparent(pn)
+        if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
-        return self.istat(self.fn_to_inum[fn])
+        return self.istat(dirmap[pnlast])
 
     def fstat(self, which):
         fd = simsym.SInt.any('Fs.fstat[%s].fd' % which)

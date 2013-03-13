@@ -266,36 +266,58 @@ class Fs(Struct):
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
         return ('ok',)
 
-    def pread(self, which):
-        fd = simsym.SInt.any('Fs.pread[%s].fd' % which)
-        off = simsym.SInt.any('Fs.pread[%s].off' % which)
-        if not self.fd_map.contains(fd):
-            return ('err', errno.EBADF)
-        inum = self.fd_map[fd].inum
+    def iread(self, inum, off):
         simsym.assume(self.i_map.contains(inum))
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return ('eof',)
         return ('data', self.i_map[inum].data[off])
 
+    def read(self, which):
+        fd = simsym.SInt.any('Fs.read[%s].fd' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        off = self.fd_map[fd].off
+        r = self.iread(self.fd_map[fd].inum, off)
+        if r[0] == 'data':
+            self.fd_map[fd].off = off + 1
+        return r
+
+    def pread(self, which):
+        fd = simsym.SInt.any('Fs.pread[%s].fd' % which)
+        off = simsym.SInt.any('Fs.pread[%s].off' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        return self.iread(self.fd_map[fd].inum, off)
+
+    def iwrite(self, inum, off, databyte):
+        simsym.assume(self.i_map.contains(inum))
+        simsym.assume(off >= 0)
+        ## XXX Handle sparse files?
+        simsym.assume(off <= self.i_map[inum].data._len)
+
+        if off == self.i_map[inum].data._len:
+            self.i_map[inum].data.append(databyte)
+        else:
+            self.i_map[inum].data[off] = databyte
+        return ('ok',)
+
+    def write(self, which):
+        fd = simsym.SInt.any('Fs.write[%s].fd' % which)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        databyte = SDataByte.any('Fs.write[%s].data' % which)
+        off = self.fd_map[fd].off
+        self.fd_map[fd].off = off + 1
+        return self.iwrite(self.fd_map[fd].inum, off, databyte)
+
     def pwrite(self, which):
         fd = simsym.SInt.any('Fs.pwrite[%s].fd' % which)
         off = simsym.SInt.any('Fs.pwrite[%s].off' % which)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
-        inum = self.fd_map[fd].inum
-        data = SDataByte.any('Fs.write[%s].data' % which)
-        simsym.assume(self.i_map.contains(inum))
-        simsym.assume(off >= 0)
-
-        ## XXX Handle sparse files?
-        simsym.assume(off <= self.i_map[inum].data._len)
-
-        if off == self.i_map[inum].data._len:
-            self.i_map[inum].data.append(data)
-        else:
-            self.i_map[inum].data[off] = data
-        return ('ok',)
+        databyte = SDataByte.any('Fs.pwrite[%s].databyte' % which)
+        return self.iwrite(self.fd_map[fd].inum, off, databyte)
 
     def istat(self, inum):
         simsym.assume(self.i_map.contains(inum))
@@ -450,6 +472,8 @@ tests = [
         Fs.open,
         Fs.pread,
         Fs.pwrite,
+        Fs.read,
+        Fs.write,
         Fs.unlink,
         Fs.link,
         Fs.rename,
@@ -459,7 +483,8 @@ tests = [
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-c', '--print-conds', action='store_true')
+parser.add_argument('-c', '--check-conds', action='store_true')
+parser.add_argument('-p', '--print-conds', action='store_true')
 parser.add_argument('-t', '--test-file')
 args = parser.parse_args()
 
@@ -470,7 +495,7 @@ else:
     testfile = open(args.test_file, 'w')
 
 def print_cond(msg, cond):
-    if simsym.check(cond)[0] == z3.unsat:
+    if args.check_conds and simsym.check(cond)[0] == z3.unsat:
         return
 
     ## If the assumptions (i.e., calls to simsym.assume) imply the condition
@@ -488,14 +513,17 @@ def print_cond(msg, cond):
     ## separate in simsym, which will make them easier to disentangle..
 
     c = simsym.implies(simsym.symand(simsym.assume_list), cond)
-    if simsym.check(simsym.symnot(c))[0] == z3.unsat:
+    if args.check_conds and simsym.check(simsym.symnot(c))[0] == z3.unsat:
         s = 'always'
     else:
         if args.print_conds:
             scond = simsym.simplify(cond)
             s = '\n    ' + str(scond).replace('\n', '\n    ')
         else:
-            s = 'sometimes'
+            if args.check_conds:
+                s = 'sometimes'
+            else:
+                s = 'maybe'
     print '  %s: %s' % (msg, s)
 
 z3printer._PP.max_lines = float('inf')

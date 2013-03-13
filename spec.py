@@ -415,14 +415,9 @@ def model_unwrap(e, modelctx):
         return [e.decl().name()] + [model_unwrap(e.arg(i), modelctx)
                              for i in range(0, e.num_args())]
     if isinstance(e, z3.ArrayRef):
-        # print 'ArrayRef thing:', e
-        # print dir(e)
-        # print 'num_args:', e.num_args()
-        # print 'children:', e.children()
-        # print 'decl:', e.decl()
-        # print 'domain:', e.domain()
-        # print 'range:', e.range()
-        return ['XXX-as-array-something']
+        if z3.is_as_array(e):
+            f = z3.get_as_array_func(e)
+            return model_unwrap(modelctx[f], modelctx)
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 def same_assignments(model):

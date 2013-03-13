@@ -451,7 +451,33 @@ def same_assignments(model):
             # different initial states?
             pass
         elif dsort.kind() == z3.Z3_DATATYPE_SORT:
-            conds.append(dconst == val)
+            if dsort.num_constructors() != 1:
+                raise Exception('Too many constructors for data type %s' % dsort)
+                conds.append(dconst == val)
+
+            constructor = dsort.constructor(0)
+            c_arity = constructor.arity()
+            for i in range(0, c_arity):
+                childval = val.children()[i]
+                dconst_field = dsort.accessor(0, i)(dconst)
+                if not z3.is_as_array(childval):
+                    cond = (dconst_field == childval)
+                    conds.append(cond)
+                else:
+                    var = z3.get_as_array_func(childval)
+                    childval = model[var]
+                    assert(isinstance(childval, z3.FuncInterp))
+
+                    val_list = childval.as_list()
+                    for valarg, valval in val_list[:-1]:
+                        cond = dconst_field[valarg] == valval
+                        conds.append(cond)
+
+                    domain_anon = z3.Const(simsym.anon_name(), dconst_field.domain())
+                    elsecond = z3.ForAll(domain_anon,
+                                  z3.Or([dconst_field[domain_anon] == val_list[-1]] +
+                                        [domain_anon == x for x, _ in val_list[:-1]]))
+                    conds.append(elsecond)
         else:
             raise Exception('unknown sort %s kind %d in %s' %
                             (dsort, dsort.kind(), decl))

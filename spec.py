@@ -133,7 +133,7 @@ class Fs(Struct):
         self.i_map = SIMap.any('Fs.imap')
         self.fd_map = SFdMap.any('Fs.fdmap')
         self.data_empty = SData.any('Data.empty')
-        self.data_empty._len = 0
+        simsym.assume(self.data_empty._len == 0)
 
         ## XXX Non-directories impl:
         self.root_dir = SDirMap.any('Fs.rootdir')
@@ -420,46 +420,156 @@ def model_unwrap(e, modelctx):
             return model_unwrap(modelctx[f], modelctx)
     raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
-def same_assignments(model):
-    # Based on http://stackoverflow.com/questions/11867611
-    conds = [simsym.wrap(z3.BoolVal(True))]
-    uninterp_sorts = []
-    uninterp_pairs = []
-    for decl in model:
-        val = model[decl]
-        if '!' in str(decl):
-            ## Do not mention internal variables in the same_assignments
-            ## condition, otherwise Z3 just happily keeps iterating on
-            ## these non-interesting variables to produce effectively
+class IsomorphicMatch(object):
+    ## Based on http://stackoverflow.com/questions/11867611
+
+    def __init__(self, model):
+        self.uninterp_sorts = []
+        self.uninterp_pairs = []
+        self.delayed_elses = []
+
+        ## equivconds holds assertions about the interesting variables
+        ## being equal to our isomorphic equivalents.
+        self.equivconds = [simsym.wrap(z3.BoolVal(True))]
+
+        ## conds holds assertions about what constitutes an interesting
+        ## model assignment: equality of interesting variables to constants,
+        ## or equality between isomorphic anons.
+        self.conds = [simsym.wrap(z3.BoolVal(True))]
+
+        self.add_model(model)
+        self.gen_uninterp()
+
+    def gen_uninterp(self):
+        for sort in self.uninterp_sorts:
+            sort_pairs = [(k, v) for k, v in self.uninterp_pairs
+                          if k.sort() == sort]
+            self.gen_uninterp_sort(sort_pairs)
+
+        for de in self.delayed_elses:
+            self.gen_delayed_else(*de)
+
+    def gen_uninterp_sort(self, pairs):
+        for (k1, v1), (k2, v2) in itertools.combinations(pairs, 2):
+            if v1.eq(v2):
+                self.conds.append(k1 == k2)
+            else:
+                self.conds.append(k1 != k2)
+
+    def gen_delayed_else(self, domain_anon, elsevar, elseval, explicit_args):
+        elsevarconds = [z3.BoolVal(True)]
+        elsevarconds += [domain_anon != self.uwrap(x) for x in explicit_args]
+
+        if domain_anon.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
+            ## If the else condition is for an array whose domain is an
+            ## uninterpreted sort, then including a ForAll over that sort
+            ## will cause the solver to supply new models that inject more
+            ## items into the domain.  Instead, try to precisely enumerate
+            ## the relevant values of that sort.
+            is_uwrapped = [z3.BoolVal(False)]
+            for k, _ in self.uninterp_pairs:
+                if k.sort() == domain_anon.sort():
+                    is_uwrapped.append(domain_anon == k)
+            elsevarconds.append(z3.Or(is_uwrapped))
+
+        if elseval.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
+            elsecond = z3.ForAll(domain_anon,
+                          z3.Implies(z3.And(elsevarconds),
+                                     elsevar == self.uwrap(elseval)))
+            self.equivconds.append(elsecond)
+
+            ## This might needlessly require that _all_ else values
+            ## be equal to the same uwrap variable; instead, we want
+            ## to assign a separate uwrap variable for each arg not
+            ## in explicit_args.
+        else:
+            elsecond = z3.ForAll(domain_anon,
+                          z3.Implies(z3.And(elsevarconds),
+                                     elsevar == elseval))
+            self.conds.append(elsecond)
+
+    def add_else_cond(self, domain_anon, elsevar, elseval, explicit_args):
+        self.delayed_elses.append((domain_anon, elsevar, elseval, explicit_args))
+
+    ## uwrap() produces a new symbolic value that will represent the isomorphic
+    ## equivalent of val, and records the symbolic value for later assertions
+    ## about the isomorphic structure.
+    def uwrap(self, val):
+        # print 'uwrap:', val, val.sort()
+        if val.sort().kind() != z3.Z3_UNINTERPRETED_SORT:
+            return val
+            # raise Exception('uwrap for interpreted sort %s: %s' %
+            #                 (val.sort().name(), str(val)))
+
+        if val.sort() not in self.uninterp_sorts:
+            self.uninterp_sorts.append(val.sort())
+
+        for k, v in self.uninterp_pairs:
+            if val.eq(v):
+                return k
+
+        aname = 'uwrap_%s' % str(val)
+        avar = z3.Const(simsym.anon_name(aname), val.sort())
+        self.uninterp_pairs.append((avar, val))
+        return avar
+
+    def add_equal(self, var, val):
+        if val.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
+            self.equivconds.append(var == self.uwrap(val))
+        else:
+            self.conds.append(var == val)
+
+    def add_model(self, model):
+        for decl in model:
+            self.add_model_var(decl, model)
+
+    def add_model_var(self, decl, model):
+        if '!' in str(decl) or str(decl).startswith('uwrap_'):
+            ## Do not mention internal variables in the match condition;
+            ## otherwise Z3 just happily keeps iterating on these
+            ## non-interesting variables to produce effectively
             ## identical assignments.
-            continue
+            return
+
+        val = model[decl]
         if decl.arity() > 0:
+            ## Handle FuncDeclRef objects.
+            assert(decl.arity() == 1)
+
             val_list = val.as_list()
             for valarg, valval in val_list[:-1]:
-                conds.append(decl(valarg) == valval)
+                self.add_equal(decl(self.uwrap(valarg)), valval)
 
             domain_sorts = [decl.domain(i) for i in range(0, decl.arity())]
             domain_anon = [z3.Const(simsym.anon_name(), s) for s in domain_sorts]
             elsecond = z3.ForAll(domain_anon,
-                          z3.Or([decl(*domain_anon) == val_list[-1]] +
-                                [domain_anon[0] == x for x, _ in val_list[:-1]]))
-            conds.append(elsecond)
-            continue
+                          z3.Or([decl(*domain_anon) == self.uwrap(val_list[-1])] +
+                                [domain_anon[0] == self.uwrap(x)
+                                 for x, _ in val_list[:-1]]))
+            self.conds.append(elsecond)
+            return
+
         dconst = decl()
         dsort = dconst.sort()
         if dsort in [z3.IntSort(), z3.BoolSort()]:
-            conds.append(dconst == val)
-        elif dsort.kind() == z3.Z3_UNINTERPRETED_SORT:
-            if dsort not in uninterp_sorts: uninterp_sorts.append(dsort)
-            uninterp_pairs.append((dsort, dconst, val))
-        elif dsort.kind() == z3.Z3_ARRAY_SORT:
-            # XXX treat arrays like uninterpreted sorts to construct
-            # different initial states?
-            pass
-        elif dsort.kind() == z3.Z3_DATATYPE_SORT:
+            self.add_equal(dconst, val)
+            return
+
+        if dsort.kind() == z3.Z3_UNINTERPRETED_SORT:
+            self.add_equal(dconst, val)
+            return
+
+        if dsort.kind() == z3.Z3_ARRAY_SORT:
+            self.add_array_equal(dconst, val)
+            return
+
+        if dsort.kind() == z3.Z3_DATATYPE_SORT:
+            ## A simple version would be self.conds.append(dconst == val),
+            ## but Z3 doesn't deal well with such constraints, so we expand
+            ## it out to datatype members.
+
             if dsort.num_constructors() != 1:
                 raise Exception('Too many constructors for data type %s' % dsort)
-                conds.append(dconst == val)
 
             constructor = dsort.constructor(0)
             c_arity = constructor.arity()
@@ -467,34 +577,32 @@ def same_assignments(model):
                 childval = val.children()[i]
                 dconst_field = dsort.accessor(0, i)(dconst)
                 if not z3.is_as_array(childval):
-                    cond = (dconst_field == childval)
-                    conds.append(cond)
-                else:
-                    var = z3.get_as_array_func(childval)
-                    childval = model[var]
-                    assert(isinstance(childval, z3.FuncInterp))
+                    self.add_equal(dconst_field, childval)
+                    continue
 
-                    val_list = childval.as_list()
-                    for valarg, valval in val_list[:-1]:
-                        cond = dconst_field[valarg] == valval
-                        conds.append(cond)
+                var = z3.get_as_array_func(childval)
+                childval = model[var]
+                self.add_array_equal(dconst_field, childval)
+            return
 
-                    domain_anon = z3.Const(simsym.anon_name(), dconst_field.domain())
-                    elsecond = z3.ForAll(domain_anon,
-                                  z3.Or([dconst_field[domain_anon] == val_list[-1]] +
-                                        [domain_anon == x for x, _ in val_list[:-1]]))
-                    conds.append(elsecond)
-        else:
-            raise Exception('unknown sort %s kind %d in %s' %
-                            (dsort, dsort.kind(), decl))
-    for s in uninterp_sorts:
-        for k1, v1 in [(k, v) for s2, k, v in uninterp_pairs if s2 == s]:
-            for k2, v2 in [(k, v) for s2, k, v in uninterp_pairs if s2 == s]:
-                if v1.eq(v2):
-                    conds.append(k1 == k2)
-                else:
-                    conds.append(k1 != k2)
-    return simsym.symand(conds)
+        raise Exception('unknown sort %s kind %d in %s' %
+                        (dsort, dsort.kind(), decl))
+
+    def add_array_equal(self, array_var, func_interp):
+        assert(isinstance(func_interp, z3.FuncInterp))
+
+        val_list = func_interp.as_list()
+        for valarg, valval in val_list[:-1]:
+            self.add_equal(array_var[self.uwrap(valarg)], valval)
+
+        domain_anon = z3.Const(simsym.anon_name(), array_var.domain())
+        self.add_else_cond(domain_anon,
+                           array_var[domain_anon], val_list[-1],
+                           [x for x, _ in val_list[:-1]])
+
+    def notsame_cond(self):
+        return simsym.symand([simsym.symand(self.equivconds),
+                              simsym.symnot(simsym.symand(self.conds))])
 
 tests = [
     # (State, 3, {},
@@ -615,13 +723,18 @@ for (base, ncomb, projections, calls) in tests:
                 ## the raw symbolic expression returned by symbolic_apply().
 
                 vars = { model_unwrap(k, model): model_unwrap(model[k], model)
-                         for k in model if '!' not in model_unwrap(k, model) }
+                         for k in model
+                         if '!' not in model_unwrap(k, model) and
+                            not model_unwrap(k, model).startswith('uwrap_') }
                 # print 'New assignment:', vars
                 module_testcases.append({
                     'calls': [c.__name__ for c in callset],
                     'vars':  vars,
                 })
-                notsame = simsym.symnot(same_assignments(model))
+
+                same = IsomorphicMatch(model)
+                notsame = same.notsame_cond()
+                # print 'Negation:', notsame
                 e = simsym.symand([e, notsame])
 
     print

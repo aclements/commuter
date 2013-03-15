@@ -8,6 +8,7 @@ import itertools
 import sys
 import argparse
 import json
+import time
 
 class PreconditionFailure(Exception):
     def __init__(self): pass
@@ -701,7 +702,8 @@ parser.add_argument('-p', '--print-conds', action='store_true')
 parser.add_argument('-t', '--test-file')
 args = parser.parse_args()
 
-testcases = {}
+## Timestamp keeps track of generated test cases (a poor nonce)
+testcases = { '__gen_ts': int(time.time()) }
 if args.test_file is None:
     testfile = None
 else:

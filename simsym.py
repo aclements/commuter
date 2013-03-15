@@ -13,6 +13,13 @@ def z3_nonzero(self):
 z3.ExprRef.__nonzero__ = z3_nonzero
 del z3_nonzero
 
+# Patch in a __hash__ for SortRef, to make it possible to put
+# sorts as dictionary keys.
+def z3_sort_hash(self):
+    return hash(str(self))
+z3.SortRef.__hash__ = z3_sort_hash
+del z3_sort_hash
+
 anon_idx = 0
 def anon_name(base = "anon"):
     global anon_idx

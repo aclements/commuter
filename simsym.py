@@ -822,7 +822,7 @@ def symbolic_apply(fn, *args):
         finally:
             solver = None
 #    curgraph.show()
-    return { val: symor(condlist) for val, condlist in rvs.items() }
+    return rvs
 
 def check(e):
     global solver

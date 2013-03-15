@@ -716,57 +716,57 @@ for (base, ncomb, projections, calls) in tests:
     for callset in itertools.combinations_with_replacement(projected_calls, ncomb):
         print ' '.join([c.__name__ for c in callset])
         conds = collections.defaultdict(lambda: simsym.wrap(z3.BoolVal(False)))
-        for result, cond in simsym.symbolic_apply(test, base, *callset).items():
-            conds[result] = cond
+        for result, condlist in simsym.symbolic_apply(test, base, *callset).items():
+            conds[result] = condlist
 
         # Internal variables help deal with situations where, for the same
         # assignment of initial state + external inputs, two operations both
         # can commute and can diverge (depending on internal choice, like the
         # inode number for file creation).
-        commute = conds[()]
+        commute = simsym.symor(conds[()])
         cannot_commute = simsym.symnot(simsym.exists(simsym.internals(), commute))
 
-        for diverge, cond in sorted(conds.items()):
+        for diverge, condlist in sorted(conds.items()):
             if diverge == ():
-                print_cond('can commute', cond)
+                print_cond('can commute', simsym.symor(condlist))
             else:
                 print_cond('cannot commute, %s can diverge' % ', '.join(diverge),
-                           simsym.symand([cond, cannot_commute]))
+                           simsym.symand([simsym.symor(condlist), cannot_commute]))
 
         if testfile is not None:
-            e = commute
-            while True:
-                check, model = simsym.check(e)
-                if check == z3.unsat: break
-                if check == z3.unknown:
-                    # raise Exception('Cannot enumerate: %s' % str(e))
-                    print 'Cannot enumerate, moving on..'
-                    print 'Failure reason:', model
-                    break
+            for e in conds[()]:
+                while True:
+                    check, model = simsym.check(e)
+                    if check == z3.unsat: break
+                    if check == z3.unknown:
+                        # raise Exception('Cannot enumerate: %s' % str(e))
+                        print 'Cannot enumerate, moving on..'
+                        print 'Failure reason:', model
+                        break
 
-                ## What should we do about variables that do not show up
-                ## in the assignment (e.g., because they were eliminated
-                ## due to combining multiple paths)?  One possibility, to
-                ## generate more test cases, is to pick some default value
-                ## for them (since the exact value does not matter).  Doing
-                ## so will force this loop to iterate over all possible
-                ## assignments, even to these "missing" variables.  Another
-                ## possibility is to extract "interesting" variables from
-                ## the raw symbolic expression returned by symbolic_apply().
+                    ## What should we do about variables that do not show up
+                    ## in the assignment (e.g., because they were eliminated
+                    ## due to combining multiple paths)?  One possibility, to
+                    ## generate more test cases, is to pick some default value
+                    ## for them (since the exact value does not matter).  Doing
+                    ## so will force this loop to iterate over all possible
+                    ## assignments, even to these "missing" variables.  Another
+                    ## possibility is to extract "interesting" variables from
+                    ## the raw symbolic expression returned by symbolic_apply().
 
-                vars = { model_unwrap(k, model): model_unwrap(model[k], model)
-                         for k in model
-                         if '!' not in model_unwrap(k, model) }
-                # print 'New assignment:', vars
-                module_testcases.append({
-                    'calls': [c.__name__ for c in callset],
-                    'vars':  vars,
-                })
+                    vars = { model_unwrap(k, model): model_unwrap(model[k], model)
+                             for k in model
+                             if '!' not in model_unwrap(k, model) }
+                    # print 'New assignment:', vars
+                    module_testcases.append({
+                        'calls': [c.__name__ for c in callset],
+                        'vars':  vars,
+                    })
 
-                same = IsomorphicMatch(model)
-                notsame = same.notsame_cond()
-                # print 'Negation:', notsame
-                e = simsym.symand([e, notsame])
+                    same = IsomorphicMatch(model)
+                    notsame = same.notsame_cond()
+                    # print 'Negation:', notsame
+                    e = simsym.symand([e, notsame])
 
     print
     testcases[base.__name__] = module_testcases

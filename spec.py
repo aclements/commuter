@@ -471,8 +471,16 @@ def model_unwrap(e, modelctx):
             raise Exception('could not find %s in %s' % (str(e), str(univ)))
         return positions[0]
     if isinstance(e, z3.DatatypeRef):
-        return [e.decl().name()] + [model_unwrap(e.arg(i), modelctx)
-                             for i in range(0, e.num_args())]
+        nc = None
+        for i in range(0, e.sort().num_constructors()):
+            if e.decl().eq(e.sort().constructor(i)): nc = i
+        if nc is None:
+            raise Exception('Could not find constructor for %s' % e)
+        dict = { '_datatype_decl': e.decl().name() }
+        for i in range(0, e.sort().constructor(nc).arity()):
+            fieldname = str(e.sort().accessor(nc, i))
+            dict[fieldname] = model_unwrap(e.arg(i), modelctx)
+        return dict
     if isinstance(e, z3.ArrayRef):
         if z3.is_as_array(e):
             f = z3.get_as_array_func(e)

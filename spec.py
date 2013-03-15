@@ -762,7 +762,10 @@ for (base, ncomb, projections, calls) in tests:
 
         if testfile is not None:
             for e in conds[()]:
-                ## XXX check later: does this simplify change the # of test cases?
+                ## This can potentially reduce the number of test cases
+                ## by, e.g., eliminating irrelevant variables from e.
+                ## The effect doesn't seem significant: one version of Fs
+                ## produces 3204 test cases without simplify, and 3182 with.
                 e = simsym.simplify(e)
                 while True:
                     check, model = simsym.check(e)

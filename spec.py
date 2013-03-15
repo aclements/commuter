@@ -119,6 +119,33 @@ SIMap = symtypes.tmap(SInum, SInode)
 ## XXX Non-directories impl:
 SPathname = SFn
 
+## Although some things are integers, we treat them as uninterpreted
+## sorts in IsomorphicMatch, by checking what decl the integer is
+## being assigned to.  The first part of the tuple is the decl, and
+## the second is the fake uninterpreted sort name that these values
+## will be treated as.  The sort name only matters for matching up
+## with other sort names in this same list.  This results in an
+## approximation; see also the comment about else clause handling
+## in IsomorphicMatch.
+
+pseudo_sort_decls = [
+    (SInode.__z3_sort__.nlink, 'file-nlink'),
+    (SData.__z3_sort__._len, 'file-length'),
+]
+
+## Ignore some pseudo sort names altogether when enumerating models.
+
+pseudo_sort_ignore = {
+    'file-nlink': True,     ## unused for test generation
+    'file-length': True,    ## too many cases in link*link
+    'fd-num': False,
+}
+
+def add_pseudo_sort_decl(decl, name):
+    for d, _ in pseudo_sort_decls:
+        if d.eq(decl): return
+    pseudo_sort_decls.append((decl, name))
+
 class Fs(Struct):
     __slots__ = ['i_map',
                  'fd_map',
@@ -164,6 +191,12 @@ class Fs(Struct):
                 simsym.symand([self.fd_map.contains(fd),
                                self.fd_map._map[fd].inum == inum]))])
 
+    def add_fdvar(self, fdvar):
+        add_pseudo_sort_decl(simsym.unwrap(fdvar).decl(), 'fd-num')
+
+    def add_offvar(self, offvar):
+        add_pseudo_sort_decl(simsym.unwrap(offvar).decl(), 'file-length')
+
     def nameiparent(self, pn):
         ## XXX Non-directories impl:
         return 0, self.root_dir, pn
@@ -198,6 +231,7 @@ class Fs(Struct):
             self.i_map[pndirmap[pnlast]].data = self.data_empty
 
         fd = simsym.SInt.any('Fs.open[%s].fd' % which)
+        self.add_fdvar(fd)
         simsym.add_internal(fd)
         simsym.assume(fd >= 0)
         simsym.assume(simsym.symnot(self.fd_map.contains(fd)))
@@ -268,6 +302,7 @@ class Fs(Struct):
 
     def read(self, which):
         fd = simsym.SInt.any('Fs.read[%s].fd' % which)
+        self.add_fdvar(fd)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         off = self.fd_map[fd].off
@@ -278,7 +313,9 @@ class Fs(Struct):
 
     def pread(self, which):
         fd = simsym.SInt.any('Fs.pread[%s].fd' % which)
+        self.add_fdvar(fd)
         off = simsym.SInt.any('Fs.pread[%s].off' % which)
+        self.add_offvar(off)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         return self.iread(self.fd_map[fd].inum, off)
@@ -296,6 +333,7 @@ class Fs(Struct):
 
     def write(self, which):
         fd = simsym.SInt.any('Fs.write[%s].fd' % which)
+        self.add_fdvar(fd)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         databyte = SDataByte.any('Fs.write[%s].data' % which)
@@ -305,7 +343,9 @@ class Fs(Struct):
 
     def pwrite(self, which):
         fd = simsym.SInt.any('Fs.pwrite[%s].fd' % which)
+        self.add_fdvar(fd)
         off = simsym.SInt.any('Fs.pwrite[%s].off' % which)
+        self.add_offvar(off)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         databyte = SDataByte.any('Fs.pwrite[%s].databyte' % which)
@@ -325,6 +365,7 @@ class Fs(Struct):
 
     def fstat(self, which):
         fd = simsym.SInt.any('Fs.fstat[%s].fd' % which)
+        self.add_fdvar(fd)
         if not self.fd_map.contains(fd):
             return ('err', errno.EBADF)
         return self.istat(self.fd_map[fd].inum)
@@ -555,12 +596,24 @@ class IsomorphicMatch(object):
 
     def add_assignment(self, expr, val):
         sort = val.sort()
-        if sort.kind() != z3.Z3_UNINTERPRETED_SORT:
-            cond = (expr == val)
-            if not any([c.eq(cond) for c in self.conds]):
-                self.conds.append(cond)
+        if sort.kind() == z3.Z3_UNINTERPRETED_SORT:
+            self.add_assignment_uninterp(expr, val, sort)
             return
 
+        for d, sortname in pseudo_sort_decls:
+            if not expr.decl().eq(d): continue
+            if pseudo_sort_ignore[sortname]: return
+            self.add_assignment_uninterp(expr, val, sortname)
+            return
+
+        if expr.sort().kind() != z3.Z3_BOOL_SORT:
+            print 'WARNING: Interpreted sort assignment:', expr, val
+
+        cond = (expr == val)
+        if not any([c.eq(cond) for c in self.conds]):
+            self.conds.append(cond)
+
+    def add_assignment_uninterp(self, expr, val, sort):
         new_group = True
         for uexpr, uval in self.uninterps[sort]:
             if uval.eq(val):
@@ -568,7 +621,6 @@ class IsomorphicMatch(object):
                 if uexpr.eq(expr): return
         if new_group:
             self.groups_changed = True
-
         self.uninterps[sort].append((expr, val))
 
     def process_uninterp(self):

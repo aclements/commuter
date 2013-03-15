@@ -404,6 +404,11 @@ def projected_call(pname, pf, method):
     wrapped.__name__ = '%s:%s' % (method.__name__, pname)
     return wrapped
 
+def contains_var(expr):
+    if z3.is_var(expr):
+        return True
+    return any([contains_var(child) for child in expr.children()])
+
 def fnmap(x, fnlist):
     for f in fnlist:
         match = False
@@ -417,6 +422,8 @@ def fnmap(x, fnlist):
     return x
 
 def var_unwrap(e, fnlist, modelctx):
+    if not contains_var(e):
+        return None
     if z3.is_var(e) and z3.get_var_index(e) == 0:
         fn0 = fnlist[0].as_list()
         retlist = []
@@ -439,11 +446,22 @@ def model_unwrap(e, modelctx):
         return int(e.as_long())
     if isinstance(e, z3.FuncInterp):
         elist = e.as_list()
-        # if len(elist) == 1 and elist[0].num_args() > 0:
-        #     elist = var_unwrap(elist[0], [], modelctx)
+        ## Sometimes Z3 gives us assignments like:
+        ##   k!21594 = [else -> k!21594!21599(k!21597(Var(0)))],
+        ##   k!21597 = [Fn!val!1 -> Fn!val!1, else -> Fn!val!0],
+        ##   k!21594!21599 = [Fn!val!0 -> True, else -> False],
+        ## Check if elist[0] contains a Var() thing; if so, unwrap the Var.
+        if len(elist) == 1:
+            var_elist = var_unwrap(elist[0], [], modelctx)
+            if var_elist is not None:
+                elist = var_elist
         return [model_unwrap(x, modelctx) for x in elist]
     if isinstance(e, z3.BoolRef):
-        return (str(e) == 'True')
+        if z3.is_true(e):
+            return True
+        if z3.is_false(e):
+            return False
+        raise Exception('Suspect boolean: %s' % e)
     if isinstance(e, list):
         return [model_unwrap(x, modelctx) for x in e]
     if isinstance(e, z3.ExprRef) and e.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
@@ -536,6 +554,8 @@ class IsomorphicMatch(object):
         if dsort.kind() in [z3.Z3_INT_SORT,
                             z3.Z3_BOOL_SORT,
                             z3.Z3_UNINTERPRETED_SORT]:
+            if not z3.is_const(val):
+                print 'WARNING: Not a constant:', val
             self.add_assignment(dconst, val)
             return
 
@@ -547,6 +567,13 @@ class IsomorphicMatch(object):
             assert(isinstance(func_interp, z3.FuncInterp))
 
             flist = func_interp.as_list()
+
+            ## Handle Var() things; see comment in model_unwrap().
+            if len(flist) == 1:
+                var_flist = var_unwrap(flist[0], [], model)
+                if var_flist is not None:
+                    flist = var_flist
+
             for fidx, fval in flist[:-1]:
                 fidxrep = self.uninterp_representative(fidx)
                 if fidxrep is None: continue
@@ -735,6 +762,8 @@ for (base, ncomb, projections, calls) in tests:
 
         if testfile is not None:
             for e in conds[()]:
+                ## XXX check later: does this simplify change the # of test cases?
+                e = simsym.simplify(e)
                 while True:
                     check, model = simsym.check(e)
                     if check == z3.unsat: break

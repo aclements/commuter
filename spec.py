@@ -477,7 +477,7 @@ def model_unwrap(e, modelctx):
             if e.decl().eq(e.sort().constructor(i)): nc = i
         if nc is None:
             raise Exception('Could not find constructor for %s' % e)
-        dict = { '_datatype_decl': e.decl().name() }
+        dict = {}
         for i in range(0, e.sort().constructor(nc).arity()):
             fieldname = str(e.sort().accessor(nc, i))
             dict[fieldname] = model_unwrap(e.arg(i), modelctx)

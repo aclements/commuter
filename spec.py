@@ -211,7 +211,8 @@ class Fs(Struct):
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
         excl = simsym.SBool.any('Fs.open[%s].excl' % which)
         trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
-        anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
+        # anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
+        anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
             if not pndirmap.contains(pnlast):

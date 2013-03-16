@@ -266,7 +266,7 @@ class Fs(Struct):
         else:
             dstinum = None
         dstdirmap[dstlast] = srcdirmap[srclast]
-        del dstdirmap[dstlast]
+        del srcdirmap[srclast]
         if dstinum is not None:
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
         return ('ok',)

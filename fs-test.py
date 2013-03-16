@@ -6,158 +6,215 @@ import errno
 import itertools
 import collections
 
-filenames = [str(x) for x in range(0, 15)]
+class SetAllocator(object):
+  def __init__(self, values):
+    self.avail = list(reversed(values))
+    self.map = {}
 
-def getdir(vars):
-  files = set()
-  if vars['Fs.dir._valid'][-1]:
-    files.update(filenames)
-  for fnidx, exists in vars['Fs.dir._valid'][:-1]:
-    if not exists:
-      if filenames[fnidx] in files: files.remove(filenames[fnidx])
-    else:
-      files.add(filenames[fnidx])
+  def get(self, v):
+    if v not in self.map:
+      self.map[v] = self.avail.pop()
+    return self.map[v]
 
-  fnidx_to_ino = vars.get('Fs.dir._map', [0])
-  dir = {}
-  for fn in files:
-    ino = fnidx_to_ino[-1]
-    for fnidx2, ino2 in fnidx_to_ino[:-1]:
-      if fn == filenames[fnidx2]:
-        ino = ino2
-    dir[fn] = ino
+  def assigned(self):
+    return self.map.keys()
 
-  ino_to_data = vars.get('Fs.idata._map', [0])
-  idata = {}
-  for ino in set(dir.values()):
-    data = ino_to_data[-1]
-    for ino2, data2 in ino_to_data[:-1]:
-      if ino == ino2:
-        data = data2
-    idata[ino] = data
+all_filenames = ['__f%d' % x for x in range(0, 6)]
+fd_begin = 5
+fd_end = 10
+all_fds = [x for x in range(fd_begin, fd_end)]
 
-  return dir, idata
+def array_lookup_raw(array, idx):
+  for k, v in array[:-1]:
+    if idx == k: return v
+  return array[-1]
 
-def build_dir(dir, idata):
-  ccode = ''
-  for ino in set(dir.values()):
-    ifn = '__i%d' % ino
-    ccode = ccode + """
-  {
-    int fd = open("%s", O_CREAT | O_EXCL | O_RDWR, 0666);
-    char c = %d;
-    write(fd, &c, 1);
-    close(fd);
-  }""" % (ifn, idata[ino])
+class FsState(object):
+  def __init__(self, vars):
+    self.vars = vars
+    self.filenames = SetAllocator(all_filenames)
+    self.inodefiles = SetAllocator(['__i%d' % x for x in range(0, 6)])
+    self.fds = SetAllocator(all_fds)
 
-  for fn, ino in dir.iteritems():
-    ifn = '__i%d' % ino
-    ccode = ccode + """\n  link("%s", "%s");""" % (ifn, fn)
+  def array_lookup(self, arraynamechain, idx, defval):
+    array = self.vars
+    for name in arraynamechain:
+      if name not in array: return defval
+      array = array[name]
+    return array_lookup_raw(array, idx)
 
-  for ino in set(dir.values()):
-    ifn = '__i%d' % ino
-    ccode = ccode + """\n  unlink("%s");""" % ifn
+  def get_fn(self, v):
+    return self.filenames.get(v)
 
-  return ccode
+  def get_ifn(self, v):
+    return self.inodefiles.get(v)
+
+  def get_fd(self, v):
+    return self.fds.get(v)
+
+  def build_dir(self):
+    fn_to_ino = {}
+    for fn_idx in self.filenames.assigned():
+      if not self.array_lookup(('Fs.rootdir', '_valid'), fn_idx, False):
+        continue
+      ino_idx = self.array_lookup(('Fs.rootdir', '_map'), fn_idx, 0)
+      fn_to_ino[self.get_fn(fn_idx)] = self.get_ifn(ino_idx)
+
+    fd_to_ino = {}
+    fd_to_off = {}
+    for fd_idx in self.fds.assigned():
+      if not self.array_lookup(('Fs.fdmap', '_valid'), fd_idx, False):
+        continue
+      fd_state = self.array_lookup(('Fs.fdmap', '_map'), fd_idx, 0)
+      fd_to_ino[self.get_fd(fd_idx)] = self.get_ifn(fd_state['inum'])
+      fd_to_off[self.get_fd(fd_idx)] = fd_state['off']
+
+    ccode = ''
+    ccode += '\n  int fd __attribute__((unused));'
+    ccode += '\n  char c __attribute__((unused));'
+    for ino_idx in self.inodefiles.assigned():
+      ifn = self.get_ifn(ino_idx)
+      ccode += '\n  fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn
+
+      inode = self.array_lookup(('Fs.imap',), ino_idx, None)
+      if inode is not None:
+        len = inode['data']['_len']
+        if len < 0:
+          ## XXX hack -- maybe fix spec.py?
+          len = 0
+        if len > 16:
+          ## XXX hack -- maybe fix spec.py?
+          len = 16
+        for i in range(0, len):
+          ccode += '\n  c = %d;' % array_lookup_raw(inode['data']['_vals'], i)
+          ccode += '\n  write(fd, &c, 1);'
+
+      ccode += '\n  close(fd);'
+
+    for fn in fn_to_ino:
+      ccode += '\n  link("%s", "%s");' % (fn_to_ino[fn], fn)
+
+    for fd in fd_to_ino:
+      ccode += '\n  fd = open("%s", O_RDWR);' % fd_to_ino[fd]
+      ccode += '\n  lseek(fd, %d, SEEK_SET);' % fd_to_off[fd]
+      ccode += '\n  dup2(fd, %d);' % fd
+      ccode += '\n  close(fd);'
+
+    for ino_idx in self.inodefiles.assigned():
+      ccode += '\n  unlink("%s");' % self.get_ifn(ino_idx)
+
+    return ccode
+
+  def gen_code(self, m, which):
+    f = getattr(self, m)
+    return f(which)
+
+  def open(self, which):
+    fn_idx = self.vars['Fs.open[%s].pn' % which]
+    flags = ['O_RDWR']
+    if self.vars.get('Fs.open[%s].excl' % which, True):
+      flags.append('O_EXCL')
+    if self.vars.get('Fs.open[%s].creat' % which, True):
+      flags.append('O_CREAT')
+    if self.vars.get('Fs.open[%s].trunc' % which, True):
+      flags.append('O_TRUNC')
+    if self.vars.get('Fs.open[%s].anyfd' % which, True):
+      flags.append('O_ANYFD')
+    ccode = ''
+    ccode += '\n  return open("%s", %s, 0666);' % (self.get_fn(fn_idx),
+                                                   ' | '.join(flags))
+    return ccode
+
+  def pread(self, which):
+    fd_idx = self.vars['Fs.pread[%s].fd' % which]
+    off = self.vars.get('Fs.pread[%s].off' % which, 0)
+    ccode = ''
+    ccode += '\n  char c;'
+    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % (self.get_fd(fd_idx), off)
+    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  return c;'
+    return ccode
+
+  def pwrite(self, which):
+    fd_idx = self.vars['Fs.pwrite[%s].fd' % which]
+    off = self.vars.get('Fs.pwrite[%s].off' % which, 0)
+    val = self.vars.get('Fs.pwrite[%s].databyte' % which, 0)
+    ccode = ''
+    ccode += '\n  char c = %d;' % val
+    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % (self.get_fd(fd_idx), off)
+    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  return cc;'
+    return ccode
+
+  def read(self, which):
+    fd_idx = self.vars['Fs.read[%s].fd' % which]
+    ccode = ''
+    ccode += '\n  char c;'
+    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % self.get_fd(fd_idx)
+    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  return c;'
+    return ccode
+
+  def write(self, which):
+    fd_idx = self.vars['Fs.write[%s].fd' % which]
+    val = self.vars.get('Fs.write[%s].databyte' % which, 0)
+    ccode = ''
+    ccode += '\n  char c = %d;' % val
+    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % self.get_fd(fd_idx)
+    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  return cc;'
+    return ccode
+
+  def unlink(self, which):
+    fn_idx = self.vars['Fs.unlink[%s].fn' % which]
+    ccode = ''
+    ccode += '\n  return unlink("%s");' % self.get_fn(fn_idx)
+    return ccode
+
+  def link(self, which):
+    oldfn_idx = self.vars.get('Fs.link[%s].old' % which, 0)
+    newfn_idx = self.vars.get('Fs.link[%s].new' % which, 0)
+    ccode = ''
+    ccode += '\n  return link("%s", "%s");' % (self.get_fn(oldfn_idx),
+                                               self.get_fn(newfn_idx))
+    return ccode
+
+  def rename(self, which):
+    srcfn_idx = self.vars.get('Fs.rename[%s].src' % which, 0)
+    dstfn_idx = self.vars.get('Fs.rename[%s].dst' % which, 0)
+    ccode = ''
+    ccode += '\n  return rename("%s", "%s");' % (self.get_fn(srcfn_idx),
+                                                 self.get_fn(dstfn_idx))
+    return ccode
+
+  def stat(self, which):
+    fn_idx = self.vars['Fs.stat[%s].fn' % which]
+    ccode = ''
+    ccode += '\n  struct stat st;'
+    ccode += '\n  int r = stat("%s", &st);' % self.get_fn(fn_idx)
+    ccode += '\n  if (r < 0) return xerrno(r);'
+    ccode += '\n  /* Hack, to test for approximate equality */'
+    ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
+    return ccode
+
+  def fstat(self, which):
+    fd_idx = self.vars['Fs.fstat[%s].fd' % which]
+    ccode = ''
+    ccode += '\n  struct stat st;'
+    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(fd_idx)
+    ccode += '\n  if (r < 0) return xerrno(r);'
+    ccode += '\n  /* Hack, to test for approximate equality */'
+    ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
+    return ccode
 
 def cleanup():
   ccode = ''
-  for fn in filenames:
-    ccode = ccode + """\n  unlink("%s");""" % fn
+  for fn in all_filenames:
+    ccode = ccode + '\n  unlink("%s");' % fn
+  assert(fd_begin > 3)
+  for fd in range(3, fd_end):
+    ccode = ccode + '\n  close(%d);' % fd
   return ccode
-
-class FsRunner:
-  @classmethod
-  def run_method(cls, m, which, vars):
-    f = getattr(cls, m)
-    return f(which, vars)
-
-  @staticmethod
-  def open(which, vars):
-    fnidx = vars['Fs.open[%s].fn' % which]
-    flags = ['O_RDWR']
-    if vars.get('Fs.open[%s].excl' % which, True):
-      flags.append('O_EXCL')
-    if vars.get('Fs.open[%s].creat' % which, True):
-      flags.append('O_CREAT')
-    if vars.get('Fs.open[%s].trunc' % which, True):
-      flags.append('O_TRUNC')
-    return """
-  {
-    int fd = open("%s", %s | O_ANYFD, 0666);
-    /* XXX O_ANYFD because model has no notion of lowest-FD yet */
-    if (fd < 0)
-      return xerrno(fd);
-    close(fd);
-    return 0;
-  }""" % (filenames[fnidx], ' | '.join(flags))
-
-  @staticmethod
-  def read(which, vars):
-    fnidx = vars['Fs.read[%s].fn' % which]
-    return """
-  {
-    int fd = open("%s", O_RDONLY | O_ANYFD);
-    if (fd < 0)
-      return xerrno(fd);
-    char c;
-    ssize_t cc = read(fd, &c, 1);
-    close(fd);
-    return (cc > 0) ? c : INT_MIN;
-  }""" % filenames[fnidx]
-
-  @staticmethod
-  def write(which, vars):
-    fnidx = vars['Fs.write[%s].fn' % which]
-    d = vars.get('Fs.write[%s].data' % which, 0)
-    return """
-  {
-    int fd = open("%s", O_WRONLY | O_TRUNC | O_ANYFD);
-    if (fd < 0)
-      return xerrno(fd);
-    char c = %d;
-    ssize_t cc = write(fd, &c, 1);
-    close(fd);
-    return cc;
-  }""" % (filenames[fnidx], d)
-
-  @staticmethod
-  def unlink(which, vars):
-    fnidx = vars['Fs.unlink[%s].fn' % which]
-    return """\n  return unlink("%s");""" % filenames[fnidx]
-
-  @staticmethod
-  def link(which, vars):
-    oldfnidx = vars.get('Fs.link[%s].oldfn' % which, 0)
-    newfnidx = vars.get('Fs.link[%s].newfn' % which, 0)
-    return """\n  return link("%s", "%s");""" % \
-           (filenames[oldfnidx], filenames[newfnidx])
-
-  @staticmethod
-  def rename(which, vars):
-    srcfnidx = vars.get('Fs.rename[%s].src' % which, 0)
-    dstfnidx = vars.get('Fs.rename[%s].dst' % which, 0)
-    return """\n return rename("%s", "%s");""" % \
-           (filenames[srcfnidx], filenames[dstfnidx])
-
-  @staticmethod
-  def stat(which, vars):
-    fnidx = vars['Fs.stat[%s].fn' % which]
-    return """
-  {
-    struct stat st;
-    int r = stat("%s", &st);
-    if (r < 0)
-      return xerrno(r);
-    /* Hack, to test for approximate equality */
-    return st.st_ino ^ st.st_nlink ^ st.st_size;
-  }""" % (filenames[fnidx])
-
-def run_calls(idxcalls, vars):
-  r = range(0, len(idxcalls))
-  for idx, c in idxcalls:
-    r[idx] = FsRunner.run_method(c, chr(idx + ord('a')), vars)
-  return r
 
 def pretty_print_vars(d):
   r = ''
@@ -165,27 +222,29 @@ def pretty_print_vars(d):
     r = r + '%s: %s\n' % (k, d[k])
   return r
 
+def generate_fs(d):
+  print 'Number of test cases:', len(d['Fs'])
+  for tidx, t in enumerate(d['Fs']):
+    calls = t['calls']
+    vars = t['vars']
+
+    fs = FsState(vars)
+    for callidx, call in enumerate(calls):
+      code = fs.gen_code(call, chr(callidx + ord('a')))
+      testcode[tidx][callidx] = code
+    setupcode[tidx] = fs.build_dir()
+
 with open(sys.argv[1]) as f:
   d = json.loads(f.read())
+  setupcode = {}
+  testcode = collections.defaultdict(dict)
+  cleanupcode = cleanup()
+  gen_ts = d['__gen_ts']
+  generate_fs(d)
 
 outprog = open(sys.argv[2], 'w')
-
-setupcode = {}
-testcode = collections.defaultdict(dict)
-cleanupcode = cleanup()
-
-print 'Number of test cases:', len(d['Fs'])
-for tidx, t in enumerate(d['Fs']):
-  calls = t['calls']
-  vars = t['vars']
-
-  dir, idata = getdir(vars)
-  setupcode[tidx] = build_dir(dir, idata)
-  for callidx, call in enumerate(calls):
-    code = FsRunner.run_method(call, chr(callidx + ord('a')), vars)
-    testcode[tidx][callidx] = code
-
 outprog.write("""\
+#define _GNU_SOURCE 1
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -198,7 +257,7 @@ outprog.write("""\
 #define O_ANYFD 0
 #endif
 
-static int xerrno(int r) {
+static int __attribute__((unused)) xerrno(int r) {
 #ifdef XV6_USER
   return r;
 #else
@@ -234,8 +293,9 @@ outprog.write("""
 struct fstest fstests[] = {""")
 for tidx in setupcode:
   outprog.write("""
-  { &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },""" \
-  % (tidx, tidx, tidx,
+  { "%s", &setup_%d, &test_%d_0, &test_%d_1, "%s", "%s", &cleanup },""" \
+  % ('fs-%d-%d' % (gen_ts, tidx),
+     tidx, tidx, tidx,
      d['Fs'][tidx]['calls'][0],
      d['Fs'][tidx]['calls'][1]))
 outprog.write("""

@@ -272,7 +272,7 @@ class Fs(Struct):
         return ('ok',)
 
     def unlink(self, which):
-        pn = SPathname.any('Fs.unlink[%s].fn' % which)
+        pn = SPathname.any('Fs.unlink[%s].pn' % which)
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
@@ -358,7 +358,7 @@ class Fs(Struct):
         return ('ok', inum, len, nlink)
 
     def stat(self, which):
-        pn = SPathname.any('Fs.stat[%s].fn' % which)
+        pn = SPathname.any('Fs.stat[%s].pn' % which)
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)

@@ -166,7 +166,7 @@ class FsState(object):
     return ccode
 
   def unlink(self, which):
-    fn_idx = self.vars['Fs.unlink[%s].fn' % which]
+    fn_idx = self.vars['Fs.unlink[%s].pn' % which]
     ccode = ''
     ccode += '\n  return unlink("%s");' % self.get_fn(fn_idx)
     return ccode
@@ -188,7 +188,7 @@ class FsState(object):
     return ccode
 
   def stat(self, which):
-    fn_idx = self.vars['Fs.stat[%s].fn' % which]
+    fn_idx = self.vars['Fs.stat[%s].pn' % which]
     ccode = ''
     ccode += '\n  struct stat st;'
     ccode += '\n  int r = stat("%s", &st);' % self.get_fn(fn_idx)

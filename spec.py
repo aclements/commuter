@@ -257,10 +257,10 @@ class Fs(Struct):
         dst = SPathname.any('Fs.rename[%s].dst' % which)
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
-        if srcdiri == dstdiri and srclast == dstlast:
-            return ('ok',)
         if not srcdirmap.contains(srclast):
             return ('err', errno.ENOENT)
+        if srcdiri == dstdiri and srclast == dstlast:
+            return ('ok',)
         if dstdirmap.contains(dstlast):
             dstinum = dstdirmap[dstlast]
         else:

@@ -9,8 +9,7 @@ generating test cases:
   cp testgen.c ~/proj/xv6/libutil/testgen.c
 
 check cache line sharing on xv6:
-  # enable MTRACE in param.h; maybe add -mtrace-calls to MTRACEOPTS
-  make mtrace.out
+  make HW=mtrace mtrace.out
   % fstest -t; halt
   ../mtrace/mtrace-tools/mscan --check-testcases
 

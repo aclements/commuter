@@ -85,6 +85,11 @@ class FsState(object):
         if len > 16:
           ## XXX hack -- maybe fix spec.py?
           len = 16
+        ## XXX
+        ## We may want to implement each Databyte as a separate 4KB page,
+        ## to check for scalability of writes to different pages (as opposed
+        ## to writes to different bytes, which is less interesting).
+
         for i in range(0, len):
           ccode += '\n  c = %d;' % array_lookup_raw(inode['data']['_vals'], i)
           ccode += '\n  write(fd, &c, 1);'

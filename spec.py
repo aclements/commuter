@@ -324,6 +324,8 @@ class Fs(Struct):
 
     def iwrite(self, inum, off, databyte):
         simsym.assume(off >= 0)
+        ## Avoid overly-long files.  fs-test.py caps file size at 16 units.
+        simsym.assume(off < 10)
         ## XXX Handle sparse files?
         simsym.assume(off <= self.i_map[inum].data._len)
 

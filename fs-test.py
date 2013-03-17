@@ -118,7 +118,7 @@ class FsState(object):
       flags.append('O_CREAT')
     if self.vars.get('Fs.open[%s].trunc' % which, True):
       flags.append('O_TRUNC')
-    if self.vars.get('Fs.open[%s].anyfd' % which, True):
+    if self.vars.get('Fs.open[%s].anyfd' % which, False):
       flags.append('O_ANYFD')
     ccode = ''
     ccode += '\n  return open("%s", %s, 0666);' % (self.get_fn(fn_idx),

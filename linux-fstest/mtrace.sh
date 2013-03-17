@@ -7,7 +7,6 @@ trap "kill $NFSPID" 0 1 2 3 14 15
 
 /home/nickolai/proj/mtrace/x86_64-softmmu/qemu-system-x86_64 \
     -rtc clock=vm -mtrace-enable -mtrace-file mtrace.out \
-    -mtrace-quantum 100 \
     -mtrace-calls \
     -hda ./fs.img \
     -smp 2 \

@@ -25,3 +25,8 @@ class Pipe(model.Struct):
             self.nread = self.nread + 1
             return e
 
+model_class = Pipe
+model_functions = [
+    Pipe.write,
+    Pipe.read,
+]

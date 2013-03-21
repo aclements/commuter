@@ -1,6 +1,6 @@
 generating test cases:
   # construct symbolic test cases:
-  python spec.py -t test.out
+  python spec.py fs -t test.out
 
   # generate testgen.c:
   python fs-test.py test.out testgen.c

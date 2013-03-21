@@ -21,3 +21,9 @@ class Counter(model.Struct):
     def sys_iszero(self, which):
         return self.counter == 0
 
+model_class = Counter
+model_functions = [
+    Counter.sys_inc,
+    Counter.sys_dec,
+    Counter.sys_iszero,
+]

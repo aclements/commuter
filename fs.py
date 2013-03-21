@@ -283,3 +283,16 @@ class Fs(model.Struct):
             return ('err', errno.EBADF)
         return self.istat(self.fd_map[fd].inum)
 
+model_class = Fs
+model_functions = [
+    Fs.open,
+    Fs.pread,
+    Fs.pwrite,
+    Fs.read,
+    Fs.write,
+    Fs.unlink,
+    Fs.link,
+    Fs.rename,
+    Fs.stat,
+    Fs.fstat,
+]

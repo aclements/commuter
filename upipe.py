@@ -24,3 +24,8 @@ class UPipe(model.Struct):
             self.nitem = self.nitem - 1
             return e
 
+model_class = UPipe
+model_functions = [
+    UPipe.u_write,
+    UPipe.u_read,
+]

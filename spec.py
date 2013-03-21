@@ -310,9 +310,9 @@ parser.add_argument('-t', '--test-file',
 parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
                     help='Number of system calls to combine per test')
 parser.add_argument('-f', '--functions', action='store',
-                    help='method1,method2')
+                    help='Methods to run (e.g., stat,fstat)')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
-                    help='Module to test')
+                    help='Module to test (e.g., fs)')
 args = parser.parse_args()
 
 if args.test_file is None:

@@ -311,6 +311,8 @@ parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
                     help='Number of system calls to combine per test')
 parser.add_argument('-f', '--functions', action='store',
                     help='Methods to run (e.g., stat,fstat)')
+parser.add_argument('--simplify-more', default=False, action='store_true',
+                    help='Use ctx-solver-simplify')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()
@@ -343,7 +345,7 @@ def print_cond(msg, cond):
         s = 'always'
     else:
         if args.print_conds:
-            scond = simsym.simplify(cond)
+            scond = simsym.simplify(cond, args.simplify_more)
             s = '\n    ' + str(scond).replace('\n', '\n    ')
         else:
             if args.check_conds:

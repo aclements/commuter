@@ -708,11 +708,13 @@ def str_state():
     return str(z3.simplify(z3.And(*asserts),
                            expand_select_store=True))
 
-def simplify(expr):
-    t = z3.Repeat(z3.Then('propagate-values',
-                          ## ctx-solver-simplify is very slow; use the
-                          ## faster but less powerful ctx-simplify.
-                          'ctx-simplify',
+def simplify(expr, try_harder=False):
+    core_simplifier = 'ctx-simplify'
+    if try_harder:
+        ## ctx-solver-simplify is very slow; use the
+        ## faster but less powerful ctx-simplify.
+        core_simplifier = 'ctx-solver-simplify'
+    t = z3.Repeat(z3.Then('propagate-values', core_simplifier,
                           z3.With('simplify', expand_select_store=True)))
     subgoals = t(unwrap(expr))
     if len(subgoals[0]) == 0:

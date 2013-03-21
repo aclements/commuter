@@ -1,15 +1,12 @@
 import simsym
-import symtypes
 import z3
 import z3printer
-import errno
 import collections
 import itertools
 import sys
 import argparse
 import json
 import time
-import model
 
 def test(base, *calls):
     all_s = []

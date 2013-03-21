@@ -11,11 +11,6 @@ import json
 import time
 import model
 
-from counter import Counter
-from pipe import Pipe
-from upipe import UPipe
-from fs import Fs, pseudo_sort_decls, pseudo_sort_ignore
-
 def test(base, *calls):
     all_s = []
     all_r = []
@@ -363,6 +358,9 @@ def print_cond(msg, cond):
 z3printer._PP.max_lines = float('inf')
 m = __import__(args.module)
 base = m.model_class
+
+pseudo_sort_decls = getattr(m, 'pseudo_sort_decls', [])
+pseudo_sort_ignore = getattr(m, 'pseudo_sort_ignore', {})
 
 if args.functions is not None:
     calls = [getattr(base, fname) for fname in args.functions.split(',')]

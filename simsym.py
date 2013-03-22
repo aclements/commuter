@@ -716,6 +716,7 @@ def simplify(expr, try_harder=False):
         core_simplifier = 'ctx-solver-simplify'
     t = z3.Repeat(z3.Then('propagate-values', core_simplifier,
                           z3.With('simplify', expand_select_store=True,
+                                              ite_extra_rules=True,
                                               expand_store_eq=True)))
     subgoals = t(unwrap(expr))
     if len(subgoals[0]) == 0:

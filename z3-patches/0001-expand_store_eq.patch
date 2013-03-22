@@ -1,0 +1,147 @@
+From 294083bbe32b99e3dcaa7a41f1c2161dc7861510 Mon Sep 17 00:00:00 2001
+From: Nickolai Zeldovich <nickolai@csail.mit.edu>
+Date: Thu, 21 Mar 2013 22:59:10 -0400
+Subject: [PATCH] expand_store_eq
+
+---
+ src/ast/rewriter/array_rewriter.cpp        |   53 ++++++++++++++++++++++++++++
+ src/ast/rewriter/array_rewriter.h          |    4 +++
+ src/ast/rewriter/array_rewriter_params.pyg |    1 +
+ src/ast/rewriter/mk_simplified_app.cpp     |    2 ++
+ src/ast/rewriter/th_rewriter.cpp           |    2 ++
+ 5 files changed, 62 insertions(+)
+
+diff --git a/src/ast/rewriter/array_rewriter.cpp b/src/ast/rewriter/array_rewriter.cpp
+index 0bb7378..eff094c 100644
+--- a/src/ast/rewriter/array_rewriter.cpp
++++ b/src/ast/rewriter/array_rewriter.cpp
+@@ -25,6 +25,7 @@ void array_rewriter::updt_params(params_ref const & _p) {
+     array_rewriter_params p(_p);
+     m_sort_store = p.sort_store();
+     m_expand_select_store = p.expand_select_store();
++    m_expand_store_eq = p.expand_store_eq();
+ }
+ 
+ void array_rewriter::get_param_descrs(param_descrs & r) {
+@@ -80,6 +81,58 @@ lbool array_rewriter::compare_args(unsigned num_args, expr * const * args1, expr
+     return l_true;
+ }
+ 
++void
++array_rewriter::store_unwind_idx(expr * storeexpr, ptr_buffer<expr> * idxlist, expr ** basep) {
++    if (!m_util.is_store(storeexpr)) {
++        *basep = storeexpr;
++        return;
++    }
++
++    idxlist->push_back(to_app(storeexpr)->get_arg(1));
++    store_unwind_idx(to_app(storeexpr)->get_arg(0), idxlist, basep);
++}
++
++void
++array_rewriter::add_select_eq(ptr_buffer<expr> * l, expr * arg1, expr * arg2, expr * idx) {
++    ptr_buffer<expr> select_one_args;
++    select_one_args.push_back(arg1);
++    select_one_args.push_back(idx);
++
++    ptr_buffer<expr> select_two_args;
++    select_two_args.push_back(arg2);
++    select_two_args.push_back(idx);
++
++    expr * vone = m().mk_app(get_fid(), OP_SELECT, 2, select_one_args.c_ptr());
++    expr * vtwo = m().mk_app(get_fid(), OP_SELECT, 2, select_two_args.c_ptr());
++    l->push_back(m().mk_eq(vone, vtwo));
++}
++
++br_status array_rewriter::mk_eq_core(expr * arg1, expr * arg2, expr_ref & result) {
++    if (!m_expand_store_eq)
++        return BR_FAILED;
++
++    expr * one_base;
++    ptr_buffer<expr> one_idx;
++    store_unwind_idx(arg1, &one_idx, &one_base);
++
++    expr * two_base;
++    ptr_buffer<expr> two_idx;
++    store_unwind_idx(arg2, &two_idx, &two_base);
++
++    if (one_base != two_base)
++        return BR_FAILED;
++
++    ptr_buffer<expr> l;
++    for (int i = 0; i < one_idx.size(); i++)
++        add_select_eq(&l, arg1, arg2, one_idx[i]);
++
++    for (int i = 0; i < two_idx.size(); i++)
++        add_select_eq(&l, arg1, arg2, two_idx[i]);
++
++    result = m().mk_and(l.size(), l.c_ptr());
++    return BR_DONE;
++}
++
+ br_status array_rewriter::mk_store_core(unsigned num_args, expr * const * args, expr_ref & result) {
+     SASSERT(num_args >= 3);
+ 
+diff --git a/src/ast/rewriter/array_rewriter.h b/src/ast/rewriter/array_rewriter.h
+index f136280..4939ceb 100644
+--- a/src/ast/rewriter/array_rewriter.h
++++ b/src/ast/rewriter/array_rewriter.h
+@@ -31,8 +31,11 @@ class array_rewriter {
+     array_util    m_util;
+     bool          m_sort_store;
+     bool          m_expand_select_store;
++    bool          m_expand_store_eq;
+     template<bool CHECK_DISEQ>
+     lbool compare_args(unsigned num_args, expr * const * args1, expr * const * args2);
++    void store_unwind_idx(expr * storeexpr, ptr_buffer<expr> * idxlist, expr ** basep);
++    void add_select_eq(ptr_buffer<expr> * l, expr * arg1, expr * arg2, expr * idx);
+ public:    
+     array_rewriter(ast_manager & m, params_ref const & p = params_ref()):
+         m_util(m) {
+@@ -46,6 +49,7 @@ public:
+ 
+     br_status mk_app_core(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
+ 
++    br_status mk_eq_core(expr * arg1, expr * arg2, expr_ref & result);
+     br_status mk_store_core(unsigned num_args, expr * const * args, expr_ref & result);
+     br_status mk_select_core(unsigned num_args, expr * const * args, expr_ref & result);
+     br_status mk_map_core(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
+diff --git a/src/ast/rewriter/array_rewriter_params.pyg b/src/ast/rewriter/array_rewriter_params.pyg
+index 2e3ae9f..3d1bb63 100644
+--- a/src/ast/rewriter/array_rewriter_params.pyg
++++ b/src/ast/rewriter/array_rewriter_params.pyg
+@@ -2,4 +2,5 @@ def_module_params(module_name='rewriter',
+                   class_name='array_rewriter_params',
+                   export=True,
+                   params=(("expand_select_store", BOOL, False, "replace a (select (store ...) ...) term by an if-then-else term"),
++                          ("expand_store_eq", BOOL, False, "split (store ...) = (store ...) with a common base into selects"),
+                           ("sort_store", BOOL, False, "sort nested stores when the indices are known to be different")))
+diff --git a/src/ast/rewriter/mk_simplified_app.cpp b/src/ast/rewriter/mk_simplified_app.cpp
+index da615e1..a46e715 100644
+--- a/src/ast/rewriter/mk_simplified_app.cpp
++++ b/src/ast/rewriter/mk_simplified_app.cpp
+@@ -62,6 +62,8 @@ struct mk_simplified_app::imp {
+                     st = m_dt_rw.mk_eq_core(args[0], args[1], result);
+                 else if (s_fid == m_f_rw.get_fid())
+                     st = m_f_rw.mk_eq_core(args[0], args[1], result);
++                else if (s_fid == m_ar_rw.get_fid())
++                    st = m_ar_rw.mk_eq_core(args[0], args[1], result);
+                 
+                 if (st != BR_FAILED)
+                     return st;
+diff --git a/src/ast/rewriter/th_rewriter.cpp b/src/ast/rewriter/th_rewriter.cpp
+index 966544b..d6c3c71 100644
+--- a/src/ast/rewriter/th_rewriter.cpp
++++ b/src/ast/rewriter/th_rewriter.cpp
+@@ -169,6 +169,8 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
+                     st = m_dt_rw.mk_eq_core(args[0], args[1], result);
+                 else if (s_fid == m_f_rw.get_fid())
+                     st = m_f_rw.mk_eq_core(args[0], args[1], result);
++                else if (s_fid == m_ar_rw.get_fid())
++                    st = m_ar_rw.mk_eq_core(args[0], args[1], result);
+ 
+                 if (st != BR_FAILED)
+                     return st;
+-- 
+1.7.10.4
+

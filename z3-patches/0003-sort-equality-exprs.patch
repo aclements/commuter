@@ -1,0 +1,63 @@
+From c5232ea4c5f3d750998277a6be472ffb85b71b85 Mon Sep 17 00:00:00 2001
+From: Nickolai Zeldovich <nickolai@csail.mit.edu>
+Date: Fri, 22 Mar 2013 01:21:50 -0400
+Subject: [PATCH] sort equality exprs
+
+---
+ src/ast/rewriter/bool_rewriter.cpp        |    7 +++++++
+ src/ast/rewriter/bool_rewriter.h          |    1 +
+ src/ast/rewriter/bool_rewriter_params.pyg |    1 +
+ 3 files changed, 9 insertions(+)
+
+diff --git a/src/ast/rewriter/bool_rewriter.cpp b/src/ast/rewriter/bool_rewriter.cpp
+index 5b0c386..4ca0b57 100644
+--- a/src/ast/rewriter/bool_rewriter.cpp
++++ b/src/ast/rewriter/bool_rewriter.cpp
+@@ -29,6 +29,7 @@ void bool_rewriter::updt_params(params_ref const & _p) {
+     m_blast_distinct       = p.blast_distinct();
+     m_blast_distinct_threshold = p.blast_distinct_threshold();
+     m_ite_extra_rules      = p.ite_extra_rules();
++    m_sort_eq              = p.sort_eq();
+ }
+ 
+ void bool_rewriter::get_param_descrs(param_descrs & r) {
+@@ -709,6 +710,12 @@ br_status bool_rewriter::mk_eq_core(expr * lhs, expr * rhs, expr_ref & result) {
+             return BR_DONE;
+         }
+     }
++
++    if (m_sort_eq && lhs > rhs) {
++        result = m().mk_eq(rhs, lhs);
++        return BR_DONE;
++    }
++
+     return BR_FAILED;
+ }
+ 
+diff --git a/src/ast/rewriter/bool_rewriter.h b/src/ast/rewriter/bool_rewriter.h
+index ef6dc2d..2d16473 100644
+--- a/src/ast/rewriter/bool_rewriter.h
++++ b/src/ast/rewriter/bool_rewriter.h
+@@ -59,6 +59,7 @@ class bool_rewriter {
+     bool           m_ite_extra_rules;
+     unsigned       m_local_ctx_limit;
+     unsigned       m_local_ctx_cost;
++    bool           m_sort_eq;
+ 
+     br_status mk_flat_and_core(unsigned num_args, expr * const * args, expr_ref & result);
+     br_status mk_flat_or_core(unsigned num_args, expr * const * args, expr_ref & result);
+diff --git a/src/ast/rewriter/bool_rewriter_params.pyg b/src/ast/rewriter/bool_rewriter_params.pyg
+index 531bf4d..b12737a 100644
+--- a/src/ast/rewriter/bool_rewriter_params.pyg
++++ b/src/ast/rewriter/bool_rewriter_params.pyg
+@@ -2,6 +2,7 @@ def_module_params(module_name='rewriter',
+                   class_name='bool_rewriter_params',
+                   export=True,
+                   params=(("ite_extra_rules", BOOL, False, "extra ite simplifications, these additional simplifications may reduce size locally but increase globally"),
++                          ("sort_eq", BOOL, False, "sort a and b in a==b"),
+                           ("flat", BOOL, True, "create nary applications for and,or,+,*,bvadd,bvmul,bvand,bvor,bvxor"),
+                           ("elim_and", BOOL, False, "conjunctions are rewritten using negation and disjunctions"),
+                           ("local_ctx", BOOL, False, "perform local (i.e., cheap) context simplifications"),
+-- 
+1.7.10.4
+

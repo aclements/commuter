@@ -1,0 +1,39 @@
+From 97b05223bf81ab978cc06b1d4e20f1369dead4c0 Mon Sep 17 00:00:00 2001
+From: Nickolai Zeldovich <nickolai@csail.mit.edu>
+Date: Fri, 22 Mar 2013 01:08:26 -0400
+Subject: [PATCH] fix ctx-simplify to properly deal with this case:
+
+  import z3
+
+  a, b, c = z3.Bools('a b c')
+  e0 = z3.And(z3.Not(b), z3.Not(z3.And(z3.Not(b), c)))
+  e1 = z3.Or(a, e0)
+
+  t = z3.Tactic('ctx-simplify')
+  print e1, '->', t(e1)
+
+This now returns:
+
+Or(a, And(Not(b), Not(And(Not(b), c)))) -> [[Or(a, And(Not(b), Not(c)))]]
+---
+ src/tactic/core/ctx_simplify_tactic.cpp |    4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/tactic/core/ctx_simplify_tactic.cpp b/src/tactic/core/ctx_simplify_tactic.cpp
+index 831efa0..ce0d570 100644
+--- a/src/tactic/core/ctx_simplify_tactic.cpp
++++ b/src/tactic/core/ctx_simplify_tactic.cpp
+@@ -105,7 +105,9 @@ struct ctx_simplify_tactic::imp {
+     }
+ 
+     bool shared(expr * t) const { 
+-        return t->get_ref_count() > 1 && m_occs.get_num_occs(t) > 1;
++        // XXX something seems to be wrong with goal_num_occurs
++        // return t->get_ref_count() > 1 && m_occs.get_num_occs(t) > 1;
++        return t->get_ref_count() > 1;
+     }
+ 
+     bool check_cache() {
+-- 
+1.7.10.4
+

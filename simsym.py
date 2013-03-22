@@ -714,10 +714,14 @@ def simplify(expr, try_harder=False):
         ## ctx-solver-simplify is very slow; use the
         ## faster but less powerful ctx-simplify.
         core_simplifier = 'ctx-solver-simplify'
-    t = z3.Repeat(z3.Then('propagate-values', core_simplifier,
-                          z3.With('simplify', expand_select_store=True,
+    t = z3.Repeat(z3.Then(z3.With('simplify', expand_select_store=True,
                                               ite_extra_rules=True,
-                                              expand_store_eq=True)))
+                                              sort_eq=True,
+                                              expand_store_eq=True),
+                          'propagate-values',
+                          'ctx-simplify',
+                          core_simplifier,
+                          ))
     subgoals = t(unwrap(expr))
     if len(subgoals[0]) == 0:
         s = wrap(z3.BoolVal(True))

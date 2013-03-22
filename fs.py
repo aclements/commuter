@@ -59,7 +59,6 @@ def add_pseudo_sort_decl(decl, name):
 class Fs(model.Struct):
     __slots__ = ['i_map',
                  'fd_map',
-                 'data_empty',
 
                  ## XXX Non-directories impl:
                  'root_dir',
@@ -69,8 +68,6 @@ class Fs(model.Struct):
     def __init__(self):
         self.i_map = SIMap.any('Fs.imap')
         self.fd_map = SFdMap.any('Fs.fdmap')
-        self.data_empty = SData.any('Data.empty')
-        simsym.assume(self.data_empty._len == 0)
 
         ## XXX Non-directories impl:
         self.root_dir = SDirMap.any('Fs.rootdir')
@@ -129,8 +126,10 @@ class Fs(model.Struct):
                 simsym.add_internal(inum)
                 simsym.assume(simsym.symnot(self.iused(inum)))
 
+                data_empty = SData.any('Data.empty')
+                simsym.assume(data_empty._len == 0)
                 idata = SInode.any()
-                idata.data = self.data_empty
+                idata.data = data_empty
                 idata.nlink = 1
                 self.i_map[inum] = idata
                 pndirmap[pnlast] = inum
@@ -139,7 +138,9 @@ class Fs(model.Struct):
         if not pndirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         if trunc:
-            self.i_map[pndirmap[pnlast]].data = self.data_empty
+            data_empty = SData.any('Data.empty')
+            simsym.assume(data_empty._len == 0)
+            self.i_map[pndirmap[pnlast]].data = data_empty
 
         fd = simsym.SInt.any('Fs.open[%s].fd' % which)
         self.add_fdvar(fd)

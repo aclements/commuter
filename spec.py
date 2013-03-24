@@ -340,7 +340,12 @@ def print_cond(msg, cond):
     ## explicit assumptions vs. symbolic execution control flow constraints)
     ## separate in simsym, which will make them easier to disentangle..
 
-    c = simsym.implies(simsym.symand(simsym.assume_list), cond)
+    #c = simsym.implies(simsym.symand(simsym.assume_list), cond)
+    ## XXX the above doesn't work well -- it causes open*open to say "always".
+    ## One hypothesis is that we should be pairing the assume_list with each
+    ## path condition, instead of taking the assume_list across all paths.
+    c = cond
+
     if args.check_conds and simsym.check(simsym.symnot(c))[0] == z3.unsat:
         s = 'always'
     else:

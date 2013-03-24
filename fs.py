@@ -284,6 +284,14 @@ class Fs(model.Struct):
             return ('err', errno.EBADF)
         return self.istat(self.fd_map[fd].inum)
 
+    def close(self, which):
+        fd = simsym.SInt.any('Fs.close[%s].fd' % which)
+        self.add_fdvar(fd)
+        if not self.fd_map.contains(fd):
+            return ('err', errno.EBADF)
+        del self.fd_map[fd]
+        return ('ok',)
+
 model_class = Fs
 model_functions = [
     Fs.open,
@@ -296,4 +304,5 @@ model_functions = [
     Fs.rename,
     Fs.stat,
     Fs.fstat,
+    Fs.close,
 ]

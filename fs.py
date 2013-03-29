@@ -176,9 +176,8 @@ class Fs(model.Struct):
 
         return ('ok', fd)
 
-    def rename(self, which):
-        src = SPathname.any('Fs.rename[%s].src' % which)
-        dst = SPathname.any('Fs.rename[%s].dst' % which)
+    @model.methodwrap(src=SPathname, dst=SPathname)
+    def rename(self, src, dst):
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
         if not srcdirmap.contains(srclast):
@@ -195,8 +194,8 @@ class Fs(model.Struct):
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
         return ('ok',)
 
-    def unlink(self, which):
-        pn = SPathname.any('Fs.unlink[%s].pn' % which)
+    @model.methodwrap(pn=SPathname)
+    def unlink(self, pn):
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
@@ -205,9 +204,8 @@ class Fs(model.Struct):
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
         return ('ok',)
 
-    def link(self, which):
-        oldpn = SPathname.any('Fs.link[%s].old' % which)
-        newpn = SPathname.any('Fs.link[%s].new' % which)
+    @model.methodwrap(oldpn=SPathname, newpn=SPathname)
+    def link(self, oldpn, newpn):
         olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
         newdiri, newdirmap, newlast = self.nameiparent(newpn)
         if not olddirmap.contains(oldlast):
@@ -225,9 +223,9 @@ class Fs(model.Struct):
             return ('eof',)
         return ('data', self.i_map[inum].data[off])
 
-    def read(self, which):
-        pid = self.sympid('Fs.read[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.read[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, pid=SPid)
+    def read(self, fd, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)
@@ -237,11 +235,10 @@ class Fs(model.Struct):
             self.pid_map[pid].fd_map[fd].off = off + 1
         return r
 
-    def pread(self, which):
-        pid = self.sympid('Fs.pread[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.pread[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid)
+    def pread(self, fd, off, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
-        off = simsym.SInt.any('Fs.pread[%s].off' % which)
         self.add_offvar(off)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)
@@ -260,26 +257,23 @@ class Fs(model.Struct):
             self.i_map[inum].data[off] = databyte
         return ('ok',)
 
-    def write(self, which):
-        pid = self.sympid('Fs.write[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.write[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid)
+    def write(self, fd, databyte, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)
-        databyte = SDataByte.any('Fs.write[%s].data' % which)
         off = self.pid_map[pid].fd_map[fd].off
         self.pid_map[pid].fd_map[fd].off = off + 1
         return self.iwrite(self.pid_map[pid].fd_map[fd].inum, off, databyte)
 
-    def pwrite(self, which):
-        pid = self.sympid('Fs.pwrite[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.pwrite[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid)
+    def pwrite(self, fd, off, databyte, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
-        off = simsym.SInt.any('Fs.pwrite[%s].off' % which)
         self.add_offvar(off)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)
-        databyte = SDataByte.any('Fs.pwrite[%s].databyte' % which)
         return self.iwrite(self.pid_map[pid].fd_map[fd].inum, off, databyte)
 
     def istat(self, inum):
@@ -287,24 +281,24 @@ class Fs(model.Struct):
         nlink = self.i_map[inum].nlink
         return ('ok', inum, len, nlink)
 
-    def stat(self, which):
-        pn = SPathname.any('Fs.stat[%s].pn' % which)
+    @model.methodwrap(pn=SPathname)
+    def stat(self, pn):
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         return self.istat(dirmap[pnlast])
 
-    def fstat(self, which):
-        pid = self.sympid('Fs.fstat[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.fstat[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, pid=SPid)
+    def fstat(self, fd, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)
         return self.istat(self.pid_map[pid].fd_map[fd].inum)
 
-    def close(self, which):
-        pid = self.sympid('Fs.close[%s].pid' % which)
-        fd = simsym.SInt.any('Fs.close[%s].fd' % which)
+    @model.methodwrap(fd=simsym.SInt, pid=SPid)
+    def close(self, fd, pid):
+        simsym.assume(self.pid_map.contains(pid))
         self.add_fdvar(fd)
         if not self.pid_map[pid].fd_map.contains(fd):
             return ('err', errno.EBADF)

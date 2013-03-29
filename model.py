@@ -1,5 +1,15 @@
 import simsym
 
+def methodwrap(**kwargs):
+    def decorator(m):
+        def wrapped(self, which):
+            args = { arg: kwargs[arg].any('%s[%s].%s' % (m.__name__, which, arg))
+                     for arg in kwargs }
+            return m(self, **args)
+        wrapped.__name__ = m.__name__
+        return wrapped
+    return decorator
+
 class Struct(object):
     __slots__ = []
 

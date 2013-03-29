@@ -776,13 +776,12 @@ def assume(e):
         s2 = z3.Solver()
         s2.add(*solver.assertions())
         sat = s2.check()
+        reason = s2.reason_unknown()
 
     if sat == z3.unsat:
-        # print "Unsatisfiable path:"
-        # print solver.assertions()
         raise UnsatisfiablePath()
     elif sat != z3.sat:
-        raise RuntimeError("Uncheckable assumption %s" % e)
+        raise UncheckableConstraintError(unwrap(e), reason)
 
 def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.  Return a map of

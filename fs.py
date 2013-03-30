@@ -20,7 +20,6 @@ SData = symtypes.tlist(SDataByte)
 SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
 SProc = symtypes.tstruct(fd_map = SFdMap)
-SProcMap = symtypes.tdict(SPid, SProc)
 SDirMap = symtypes.tdict(SFn, SInum)
 SInode = simsym.tstruct(data = SData,
                         nlink = simsym.SInt,
@@ -63,7 +62,9 @@ def add_pseudo_sort_decl(decl, name):
 
 class Fs(model.Struct):
     __slots__ = ['i_map',
-                 'pid_map',
+                 'pid0',
+                 'proc0',
+                 'proc1',
 
                  ## XXX Non-directories impl:
                  'root_dir',
@@ -72,10 +73,17 @@ class Fs(model.Struct):
 
     def __init__(self):
         self.i_map = SIMap.any('Fs.imap')
-        self.pid_map = SProcMap.any('Fs.pidmap')
+        self.pid0 = SPid.any('Fs.pid0')
+        self.proc0 = SProc.any('Fs.proc0')
+        self.proc1 = SProc.any('Fs.proc1')
 
         ## XXX Non-directories impl:
         self.root_dir = SDirMap.any('Fs.rootdir')
+
+    def getproc(self, pid):
+        if pid == self.pid0:
+            return self.proc0
+        return self.proc1
 
     def iused(self, inum):
         dir = SInum.any('dir')
@@ -100,10 +108,17 @@ class Fs(model.Struct):
                 simsym.symand([self.root_dir.contains(fn),
                                self.root_dir._map[fn] == inum])),
 
-            simsym.exists((fd, pid),
-                simsym.symand([self.pid_map.contains(pid),
-                               self.pid_map._map[pid].fd_map.contains(fd),
-                               self.pid_map._map[pid].fd_map._map[fd].inum == inum]))])
+            simsym.exists(fd,
+                simsym.symand([self.proc0.fd_map.contains(fd),
+                               self.proc0.fd_map._map[fd].inum == inum])),
+
+            simsym.exists(fd,
+                simsym.symand([self.proc1.fd_map.contains(fd),
+                               self.proc1.fd_map._map[fd].inum == inum])),
+            ])
+
+    def add_selfpid(self, pid):
+        pass
 
     def add_fdvar(self, fdvar):
         add_pseudo_sort_decl(simsym.unwrap(fdvar).decl(), 'fd-num')
@@ -119,13 +134,9 @@ class Fs(model.Struct):
         # simsym.assume(self.i_map[self.root_inum].isdir)
         # return self.root_inum, self.i_map[self.root_inum].dirmap, pn.last
 
-    def sympid(self, name):
-        pid = SPid.any(name)
-        simsym.assume(self.pid_map.contains(pid))
-        return pid
-
     def open(self, which):
-        pid = self.sympid('Fs.open[%s].pid' % which)
+        pid = SPid.any('Fs.open[%s].pid' % which)
+        self.add_selfpid(pid)
         pn = SPathname.any('Fs.open[%s].pn' % which)
         creat = simsym.SBool.any('Fs.open[%s].creat' % which)
         excl = simsym.SBool.any('Fs.open[%s].excl' % which)
@@ -159,7 +170,7 @@ class Fs(model.Struct):
         self.add_fdvar(fd)
         simsym.add_internal(fd)
         simsym.assume(fd >= 0)
-        simsym.assume(simsym.symnot(self.pid_map[pid].fd_map.contains(fd)))
+        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(fd)))
 
         ## Lowest FD
         otherfd = simsym.SInt.any('fd')
@@ -167,12 +178,12 @@ class Fs(model.Struct):
             simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
                                otherfd < fd,
-                               self.pid_map[pid].fd_map.contains(otherfd)])))]))
+                               self.getproc(pid).fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
         fd_data.inum = pndirmap[pnlast]
         fd_data.off = 0
-        self.pid_map[pid].fd_map[fd] = fd_data
+        self.getproc(pid).fd_map[fd] = fd_data
 
         return ('ok', fd)
 
@@ -225,24 +236,24 @@ class Fs(model.Struct):
 
     @model.methodwrap(fd=simsym.SInt, pid=SPid)
     def read(self, fd, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        off = self.pid_map[pid].fd_map[fd].off
-        r = self.iread(self.pid_map[pid].fd_map[fd].inum, off)
+        off = self.getproc(pid).fd_map[fd].off
+        r = self.iread(self.getproc(pid).fd_map[fd].inum, off)
         if r[0] == 'data':
-            self.pid_map[pid].fd_map[fd].off = off + 1
+            self.getproc(pid).fd_map[fd].off = off + 1
         return r
 
     @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid)
     def pread(self, fd, off, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iread(self.pid_map[pid].fd_map[fd].inum, off)
+        return self.iread(self.getproc(pid).fd_map[fd].inum, off)
 
     def iwrite(self, inum, off, databyte):
         simsym.assume(off >= 0)
@@ -259,22 +270,22 @@ class Fs(model.Struct):
 
     @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid)
     def write(self, fd, databyte, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        off = self.pid_map[pid].fd_map[fd].off
-        self.pid_map[pid].fd_map[fd].off = off + 1
-        return self.iwrite(self.pid_map[pid].fd_map[fd].inum, off, databyte)
+        off = self.getproc(pid).fd_map[fd].off
+        self.getproc(pid).fd_map[fd].off = off + 1
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
 
     @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid)
     def pwrite(self, fd, off, databyte, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iwrite(self.pid_map[pid].fd_map[fd].inum, off, databyte)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
 
     def istat(self, inum):
         len = self.i_map[inum].data._len
@@ -290,19 +301,19 @@ class Fs(model.Struct):
 
     @model.methodwrap(fd=simsym.SInt, pid=SPid)
     def fstat(self, fd, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.istat(self.pid_map[pid].fd_map[fd].inum)
+        return self.istat(self.getproc(pid).fd_map[fd].inum)
 
     @model.methodwrap(fd=simsym.SInt, pid=SPid)
     def close(self, fd, pid):
-        simsym.assume(self.pid_map.contains(pid))
+        self.add_selfpid(pid)
         self.add_fdvar(fd)
-        if not self.pid_map[pid].fd_map.contains(fd):
+        if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        del self.pid_map[pid].fd_map[fd]
+        del self.getproc(pid).fd_map[fd]
         return ('ok',)
 
 model_class = Fs

@@ -134,19 +134,19 @@ class Fs(model.Struct):
         # simsym.assume(self.i_map[self.root_inum].isdir)
         # return self.root_inum, self.i_map[self.root_inum].dirmap, pn.last
 
-    def open(self, which):
-        pid = SPid.any('Fs.open[%s].pid' % which)
+    @model.methodwrap(pn=SPathname,
+                      creat=simsym.SBool,
+                      excl=simsym.SBool,
+                      trunc=simsym.SBool,
+                      anyfd=simsym.SBool,
+                      pid=SPid)
+    def open(self, pn, creat, excl, trunc, anyfd, pid):
         self.add_selfpid(pid)
-        pn = SPathname.any('Fs.open[%s].pn' % which)
-        creat = simsym.SBool.any('Fs.open[%s].creat' % which)
-        excl = simsym.SBool.any('Fs.open[%s].excl' % which)
-        trunc = simsym.SBool.any('Fs.open[%s].trunc' % which)
-        # anyfd = simsym.SBool.any('Fs.open[%s].anyfd' % which)
         anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
             if not pndirmap.contains(pnlast):
-                inum = SInum.any('Fs.open[%s].ialloc' % which)
+                inum = SInum.any()  # 'Fs.open[%s].ialloc' % which
                 simsym.add_internal(inum)
                 simsym.assume(simsym.symnot(self.iused(inum)))
 
@@ -166,7 +166,7 @@ class Fs(model.Struct):
             simsym.assume(data_empty._len == 0)
             self.i_map[pndirmap[pnlast]].data = data_empty
 
-        fd = simsym.SInt.any('Fs.open[%s].fd' % which)
+        fd = simsym.SInt.any()  # 'Fs.open[%s].fd' % which
         self.add_fdvar(fd)
         simsym.add_internal(fd)
         simsym.assume(fd >= 0)

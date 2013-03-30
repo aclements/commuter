@@ -3,7 +3,7 @@ import simsym
 def methodwrap(**kwargs):
     def decorator(m):
         def wrapped(self, which):
-            args = { arg: kwargs[arg].any('%s[%s].%s' % (m.__name__, which, arg))
+            args = { arg: kwargs[arg].any('%s.%s.%s' % (which, m.__name__, arg))
                      for arg in kwargs }
             return m(self, **args)
         wrapped.__name__ = m.__name__

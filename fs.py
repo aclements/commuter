@@ -13,9 +13,7 @@ class SInum(simsym.SExpr, simsym.SymbolicConst):
 class SDataByte(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('DataByte')
 
-class SPid(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('Pid')
-
+SPid = simsym.SBool
 SData = symtypes.tlist(SDataByte)
 SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
@@ -62,7 +60,6 @@ def add_pseudo_sort_decl(decl, name):
 
 class Fs(model.Struct):
     __slots__ = ['i_map',
-                 'pid0',
                  'proc0',
                  'proc1',
 
@@ -73,7 +70,6 @@ class Fs(model.Struct):
 
     def __init__(self):
         self.i_map = SIMap.any('Fs.imap')
-        self.pid0 = SPid.any('Fs.pid0')
         self.proc0 = SProc.any('Fs.proc0')
         self.proc1 = SProc.any('Fs.proc1')
 
@@ -81,7 +77,7 @@ class Fs(model.Struct):
         self.root_dir = SDirMap.any('Fs.rootdir')
 
     def getproc(self, pid):
-        if pid == self.pid0:
+        if pid == False:
             return self.proc0
         return self.proc1
 

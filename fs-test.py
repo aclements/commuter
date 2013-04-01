@@ -161,7 +161,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c;'
     ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % (self.get_fd(pid, fd_idx), off)
-    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
 
@@ -181,7 +181,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c;'
     ccode += '\n  ssize_t cc = read(%d, &c, 1);' % self.get_fd(pid, fd_idx)
-    ccode += '\n  if (cc < 0) return xerrno(cc);'
+    ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
 

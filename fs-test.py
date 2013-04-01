@@ -203,8 +203,8 @@ class FsState(object):
     return ccode
 
   def link(self, which, pid):
-    oldfn_idx = self.vars.get('%s.link.old' % which, 0)
-    newfn_idx = self.vars.get('%s.link.new' % which, 0)
+    oldfn_idx = self.vars.get('%s.link.oldpn' % which, 0)
+    newfn_idx = self.vars.get('%s.link.newpn' % which, 0)
     ccode = ''
     ccode += '\n  int r = link("%s", "%s");' % (self.get_fn(oldfn_idx),
                                                 self.get_fn(newfn_idx))

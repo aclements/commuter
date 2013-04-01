@@ -135,24 +135,26 @@ class Fs(model.Struct):
                       excl=simsym.SBool,
                       trunc=simsym.SBool,
                       anyfd=simsym.SBool,
-                      pid=SPid)
-    def open(self, pn, creat, excl, trunc, anyfd, pid):
+                      pid=SPid,
+                      alloc_inum=SInum,   ## internal
+                      ret_fd=simsym.SInt, ## internal
+                     )
+    def open(self, pn, creat, excl, trunc, anyfd, pid, alloc_inum, ret_fd):
         self.add_selfpid(pid)
         anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
             if not pndirmap.contains(pnlast):
-                inum = SInum.any()  # 'Fs.open[%s].ialloc' % which
-                simsym.add_internal(inum)
-                simsym.assume(simsym.symnot(self.iused(inum)))
+                simsym.add_internal(alloc_inum)
+                simsym.assume(simsym.symnot(self.iused(alloc_inum)))
 
                 data_empty = SData.any('Data.empty')
                 simsym.assume(data_empty._len == 0)
                 idata = SInode.any()
                 idata.data = data_empty
                 idata.nlink = 1
-                self.i_map[inum] = idata
-                pndirmap[pnlast] = inum
+                self.i_map[alloc_inum] = idata
+                pndirmap[pnlast] = alloc_inum
             else:
                 if excl: return ('err', errno.EEXIST)
         if not pndirmap.contains(pnlast):
@@ -162,26 +164,25 @@ class Fs(model.Struct):
             simsym.assume(data_empty._len == 0)
             self.i_map[pndirmap[pnlast]].data = data_empty
 
-        fd = simsym.SInt.any()  # 'Fs.open[%s].fd' % which
-        self.add_fdvar(fd)
-        simsym.add_internal(fd)
-        simsym.assume(fd >= 0)
-        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(fd)))
+        self.add_fdvar(ret_fd)
+        simsym.add_internal(ret_fd)
+        simsym.assume(ret_fd >= 0)
+        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(ret_fd)))
 
         ## Lowest FD
         otherfd = simsym.SInt.any('fd')
         simsym.assume(simsym.symor([anyfd,
             simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
-                               otherfd < fd,
+                               otherfd < ret_fd,
                                self.getproc(pid).fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
         fd_data.inum = pndirmap[pnlast]
         fd_data.off = 0
-        self.getproc(pid).fd_map[fd] = fd_data
+        self.getproc(pid).fd_map[ret_fd] = fd_data
 
-        return ('ok', fd)
+        return ('ok', ret_fd)
 
     @model.methodwrap(src=SPathname, dst=SPathname)
     def rename(self, src, dst):

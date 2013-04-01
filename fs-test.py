@@ -150,8 +150,9 @@ class FsState(object):
     if self.vars.get('%s.open.anyfd' % which, False):
       flags.append('O_ANYFD')
     ccode = ''
-    ccode += '\n  return open("%s", %s, 0666);' % (self.get_fn(fn_idx),
-                                                   ' | '.join(flags))
+    ccode += '\n  int r = open("%s", %s, 0666);' % (self.get_fn(fn_idx),
+                                                    ' | '.join(flags))
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def pread(self, which, pid):
@@ -197,23 +198,26 @@ class FsState(object):
   def unlink(self, which, pid):
     fn_idx = self.vars['%s.unlink.pn' % which]
     ccode = ''
-    ccode += '\n  return unlink("%s");' % self.get_fn(fn_idx)
+    ccode += '\n  int r = unlink("%s");' % self.get_fn(fn_idx)
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def link(self, which, pid):
     oldfn_idx = self.vars.get('%s.link.old' % which, 0)
     newfn_idx = self.vars.get('%s.link.new' % which, 0)
     ccode = ''
-    ccode += '\n  return link("%s", "%s");' % (self.get_fn(oldfn_idx),
-                                               self.get_fn(newfn_idx))
+    ccode += '\n  int r = link("%s", "%s");' % (self.get_fn(oldfn_idx),
+                                                self.get_fn(newfn_idx))
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def rename(self, which, pid):
     srcfn_idx = self.vars.get('%s.rename.src' % which, 0)
     dstfn_idx = self.vars.get('%s.rename.dst' % which, 0)
     ccode = ''
-    ccode += '\n  return rename("%s", "%s");' % (self.get_fn(srcfn_idx),
-                                                 self.get_fn(dstfn_idx))
+    ccode += '\n  int r = rename("%s", "%s");' % (self.get_fn(srcfn_idx),
+                                                  self.get_fn(dstfn_idx))
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def stat(self, which, pid):
@@ -239,7 +243,8 @@ class FsState(object):
   def close(self, which, pid):
     fd_idx = self.vars['%s.close.fd' % which]
     ccode = ''
-    ccode += '\n  return close(%d);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  int r = close(%d);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  return xerrno(r);'
     return ccode
 
 def cleanup():
@@ -296,7 +301,10 @@ static int __attribute__((unused)) xerrno(int r) {
 #ifdef XV6_USER
   return r;
 #else
-  return -errno;
+  if (r < 0)
+    return -errno;
+  else
+    return r;
 #endif
 }
 """)

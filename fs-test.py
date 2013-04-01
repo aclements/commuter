@@ -159,7 +159,7 @@ class FsState(object):
     off = self.vars.get('%s.pread.off' % which, 0)
     ccode = ''
     ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % (self.get_fd(fd_idx), off)
+    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % (self.get_fd(pid, fd_idx), off)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
@@ -170,7 +170,7 @@ class FsState(object):
     val = self.vars.get('%s.pwrite.databyte' % which, 0)
     ccode = ''
     ccode += '\n  char c = %d;' % val
-    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % (self.get_fd(fd_idx), off)
+    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % (self.get_fd(pid, fd_idx), off)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
@@ -179,7 +179,7 @@ class FsState(object):
     fd_idx = self.vars['%s.read.fd' % which]
     ccode = ''
     ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % self.get_fd(fd_idx)
+    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % self.get_fd(pid, fd_idx)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
@@ -189,7 +189,7 @@ class FsState(object):
     val = self.vars.get('%s.write.databyte' % which, 0)
     ccode = ''
     ccode += '\n  char c = %d;' % val
-    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % self.get_fd(fd_idx)
+    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % self.get_fd(pid, fd_idx)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
@@ -230,7 +230,7 @@ class FsState(object):
     fd_idx = self.vars['%s.fstat.fd' % which]
     ccode = ''
     ccode += '\n  struct stat st;'
-    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(fd_idx)
+    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(pid, fd_idx)
     ccode += '\n  if (r < 0) return xerrno(r);'
     ccode += '\n  /* Hack, to test for approximate equality */'
     ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'

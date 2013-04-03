@@ -141,11 +141,11 @@ class FsState(object):
   def open(self, which, pid):
     fn_idx = self.vars['%s.open.pn' % which]
     flags = ['O_RDWR']
-    if self.vars.get('%s.open.excl' % which, True):
+    if self.vars.get('%s.open.excl' % which, False):
       flags.append('O_EXCL')
-    if self.vars.get('%s.open.creat' % which, True):
+    if self.vars.get('%s.open.creat' % which, False):
       flags.append('O_CREAT')
-    if self.vars.get('%s.open.trunc' % which, True):
+    if self.vars.get('%s.open.trunc' % which, False):
       flags.append('O_TRUNC')
     if self.vars.get('%s.open.anyfd' % which, False):
       flags.append('O_ANYFD')

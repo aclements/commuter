@@ -51,19 +51,17 @@ building an mtrace-friendly Linux kernel:
 
 check cache line sharing on Linux:
   cd ~/proj/xv6
-  ## set MTRACE 1 for HW_linux in param.h
-  make HW=linux
+  make HW=linuxmtrace
   mkdir -p /tmp/nfs-export
-  cp o.linux/bin/fstest /tmp/nfs-export
+  cp o.linuxmtrace/bin/fstest /tmp/nfs-export
 
   cd ~/tmp/linux-vm
-  ln -s pk/vmlinux mscan.kern
 
   script -c ./mtrace.sh typescript.mtrace
   # cd /mnt/tmpfs
-  # /n/fstest -t
-  # halt -pf
+  # /n/fstest -t ; halt -pf
 
+  ln -s pk/vmlinux mscan.kern
   nm -C -S mscan.kern > mscan.syms
   ~/proj/mtrace/mtrace-tools/mscan --check-testcases
 

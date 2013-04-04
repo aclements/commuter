@@ -21,6 +21,9 @@ SProc = symtypes.tstruct(fd_map = SFdMap)
 SDirMap = symtypes.tdict(SFn, SInum)
 SInode = simsym.tstruct(data = SData,
                         nlink = simsym.SInt,
+                        atime = simsym.SInt,
+                        mtime = simsym.SInt,
+                        ctime = simsym.SInt,
                         ## XXX Directories impl:
                         # isdir = simsym.SBool,
                         # dirmap = SDirMap,
@@ -138,9 +141,12 @@ class Fs(model.Struct):
                       pid=SPid,
                       alloc_inum=SInum,   ## internal
                       ret_fd=simsym.SInt, ## internal
+                      time=simsym.SInt,   ## internal
                      )
-    def open(self, pn, creat, excl, trunc, anyfd, pid, alloc_inum, ret_fd):
+    def open(self, pn, creat, excl, trunc, anyfd, pid, alloc_inum, ret_fd, time):
+        simsym.add_internal(time)
         self.add_selfpid(pid)
+        created = False
         anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
@@ -155,14 +161,29 @@ class Fs(model.Struct):
                 idata.nlink = 1
                 self.i_map[alloc_inum] = idata
                 pndirmap[pnlast] = alloc_inum
+
+                simsym.assume(time > self.i_map[alloc_inum].atime)
+                simsym.assume(time > self.i_map[alloc_inum].mtime)
+                simsym.assume(time > self.i_map[alloc_inum].ctime)
+                self.i_map[alloc_inum].atime = time
+                self.i_map[alloc_inum].mtime = time
+                self.i_map[alloc_inum].ctime = time
+                created = True
             else:
                 if excl: return ('err', errno.EEXIST)
         if not pndirmap.contains(pnlast):
             return ('err', errno.ENOENT)
+
+        inum = pndirmap[pnlast]
         if trunc:
+            if not created:
+                simsym.assume(time > self.i_map[inum].mtime)
+                simsym.assume(time > self.i_map[inum].ctime)
+                self.i_map[inum].mtime = time
+                self.i_map[inum].ctime = time
             data_empty = SData.any('Data.empty')
             simsym.assume(data_empty._len == 0)
-            self.i_map[pndirmap[pnlast]].data = data_empty
+            self.i_map[inum].data = data_empty
 
         self.add_fdvar(ret_fd)
         simsym.add_internal(ret_fd)
@@ -178,14 +199,14 @@ class Fs(model.Struct):
                                self.getproc(pid).fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
-        fd_data.inum = pndirmap[pnlast]
+        fd_data.inum = inum
         fd_data.off = 0
         self.getproc(pid).fd_map[ret_fd] = fd_data
 
         return ('ok', ret_fd)
 
-    @model.methodwrap(src=SPathname, dst=SPathname)
-    def rename(self, src, dst):
+    @model.methodwrap(src=SPathname, dst=SPathname, time=simsym.SInt)
+    def rename(self, src, dst, time=simsym.SInt):
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
         if not srcdirmap.contains(srclast):
@@ -200,20 +221,26 @@ class Fs(model.Struct):
         del srcdirmap[srclast]
         if dstinum is not None:
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
+            simsym.add_internal(time)
+            simsym.assume(time > self.i_map[dstinum].ctime)
+            self.i_map[dstinum].ctime = time
         return ('ok',)
 
-    @model.methodwrap(pn=SPathname)
-    def unlink(self, pn):
+    @model.methodwrap(pn=SPathname, time=simsym.SInt)
+    def unlink(self, pn, time):
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         inum = dirmap[pnlast]
         del dirmap[pnlast]
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
+        simsym.add_internal(time)
+        simsym.assume(time > self.i_map[inum].ctime)
+        self.i_map[inum].ctime = time
         return ('ok',)
 
-    @model.methodwrap(oldpn=SPathname, newpn=SPathname)
-    def link(self, oldpn, newpn):
+    @model.methodwrap(oldpn=SPathname, newpn=SPathname, time=simsym.SInt)
+    def link(self, oldpn, newpn, time):
         olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
         newdiri, newdirmap, newlast = self.nameiparent(newpn)
         if not olddirmap.contains(oldlast):
@@ -223,36 +250,42 @@ class Fs(model.Struct):
         inum = olddirmap[oldlast]
         newdirmap[newlast] = inum
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
+        simsym.add_internal(time)
+        simsym.assume(time > self.i_map[inum].ctime)
+        self.i_map[inum].ctime = time
         return ('ok',)
 
-    def iread(self, inum, off):
+    def iread(self, inum, off, time):
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return ('eof',)
+        simsym.add_internal(time)
+        simsym.assume(time > self.i_map[inum].atime)
+        self.i_map[inum].atime = time
         return ('data', self.i_map[inum].data[off])
 
-    @model.methodwrap(fd=simsym.SInt, pid=SPid)
-    def read(self, fd, pid):
+    @model.methodwrap(fd=simsym.SInt, pid=SPid, time=simsym.SInt)
+    def read(self, fd, pid, time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         off = self.getproc(pid).fd_map[fd].off
-        r = self.iread(self.getproc(pid).fd_map[fd].inum, off)
+        r = self.iread(self.getproc(pid).fd_map[fd].inum, off, time)
         if r[0] == 'data':
             self.getproc(pid).fd_map[fd].off = off + 1
         return r
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid)
-    def pread(self, fd, off, pid):
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid, time=simsym.SInt)
+    def pread(self, fd, off, pid, time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iread(self.getproc(pid).fd_map[fd].inum, off)
+        return self.iread(self.getproc(pid).fd_map[fd].inum, off, time)
 
-    def iwrite(self, inum, off, databyte):
+    def iwrite(self, inum, off, databyte, time):
         simsym.assume(off >= 0)
         ## Avoid overly-long files.  fs-test.py caps file size at 16 units.
         simsym.assume(off < 10)
@@ -263,31 +296,39 @@ class Fs(model.Struct):
             self.i_map[inum].data.append(databyte)
         else:
             self.i_map[inum].data[off] = databyte
+        simsym.add_internal(time)
+        simsym.assume(time > self.i_map[inum].mtime)
+        simsym.assume(time > self.i_map[inum].ctime)
+        self.i_map[inum].mtime = time
+        self.i_map[inum].ctime = time
         return ('ok',)
 
-    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid)
-    def write(self, fd, databyte, pid):
+    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid, time=simsym.SInt)
+    def write(self, fd, databyte, pid, time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         off = self.getproc(pid).fd_map[fd].off
         self.getproc(pid).fd_map[fd].off = off + 1
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, time)
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid)
-    def pwrite(self, fd, off, databyte, pid):
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid, time=simsym.SInt)
+    def pwrite(self, fd, off, databyte, pid, time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, time)
 
     def istat(self, inum):
         len = self.i_map[inum].data._len
         nlink = self.i_map[inum].nlink
-        return ('ok', inum, len, nlink)
+        atime = self.i_map[inum].atime
+        mtime = self.i_map[inum].mtime
+        ctime = self.i_map[inum].ctime
+        return ('ok', inum, len, nlink, atime, mtime, ctime)
 
     @model.methodwrap(pn=SPathname)
     def stat(self, pn):

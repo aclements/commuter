@@ -206,7 +206,7 @@ class Fs(model.Struct):
         return ('ok', ret_fd)
 
     @model.methodwrap(src=SPathname, dst=SPathname, time=simsym.SInt)
-    def rename(self, src, dst, time=simsym.SInt):
+    def rename(self, src, dst, time):
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
         if not srcdirmap.contains(srclast):

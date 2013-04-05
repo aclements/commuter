@@ -375,7 +375,7 @@ testcases = []
 
 for callset in itertools.combinations_with_replacement(calls, args.ncomb):
     print ' '.join([c.__name__ for c in callset])
-    conds = collections.defaultdict(lambda: simsym.wrap(z3.BoolVal(False)))
+    conds = collections.defaultdict(lambda: [simsym.wrap(z3.BoolVal(False))])
     for result, condlist in simsym.symbolic_apply(test, base, *callset).items():
         conds[result] = condlist
 

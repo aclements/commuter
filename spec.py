@@ -15,8 +15,9 @@ def test(base, *calls):
     for callseq in itertools.permutations(range(0, len(calls))):
         s = base()
         r = {}
+        seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:
-            r[idx] = calls[idx](s, chr(idx + ord('a')))
+            r[idx] = calls[idx](s, chr(idx + ord('a')), seqname)
         all_s.append(s)
         all_r.append(r)
 
@@ -146,7 +147,7 @@ class IsomorphicMatch(object):
             ## otherwise Z3 can iterate over different assignments to these
             ## variables, while we care only about assignments to "external"
             ## variables.
-            if '!' in str(decl):
+            if '!' in str(decl) or 'internal_' in str(decl):
                 continue
             self.process_decl_assignment(decl, model[decl], model)
 

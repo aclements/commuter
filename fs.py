@@ -139,35 +139,34 @@ class Fs(model.Struct):
                       trunc=simsym.SBool,
                       anyfd=simsym.SBool,
                       pid=SPid,
-                      alloc_inum=SInum,   ## internal
-                      ret_fd=simsym.SInt, ## internal
-                      time=simsym.SInt,   ## internal
+                      internal_alloc_inum=SInum,
+                      internal_ret_fd=simsym.SInt,
+                      internal_time=simsym.SInt,
                      )
-    def open(self, pn, creat, excl, trunc, anyfd, pid, alloc_inum, ret_fd, time):
-        simsym.add_internal(time)
+    def open(self, pn, creat, excl, trunc, anyfd, pid,
+             internal_alloc_inum, internal_ret_fd, internal_time):
         self.add_selfpid(pid)
         created = False
         anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
             if not pndirmap.contains(pnlast):
-                simsym.add_internal(alloc_inum)
-                simsym.assume(simsym.symnot(self.iused(alloc_inum)))
+                simsym.assume(simsym.symnot(self.iused(internal_alloc_inum)))
 
                 data_empty = SData.any('Data.empty')
                 simsym.assume(data_empty._len == 0)
                 idata = SInode.any()
                 idata.data = data_empty
                 idata.nlink = 1
-                self.i_map[alloc_inum] = idata
-                pndirmap[pnlast] = alloc_inum
+                self.i_map[internal_alloc_inum] = idata
+                pndirmap[pnlast] = internal_alloc_inum
 
-                simsym.assume(time > self.i_map[alloc_inum].atime)
-                simsym.assume(time > self.i_map[alloc_inum].mtime)
-                simsym.assume(time > self.i_map[alloc_inum].ctime)
-                self.i_map[alloc_inum].atime = time
-                self.i_map[alloc_inum].mtime = time
-                self.i_map[alloc_inum].ctime = time
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].atime)
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].mtime)
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].ctime)
+                self.i_map[internal_alloc_inum].atime = internal_time
+                self.i_map[internal_alloc_inum].mtime = internal_time
+                self.i_map[internal_alloc_inum].ctime = internal_time
                 created = True
             else:
                 if excl: return ('err', errno.EEXIST)
@@ -177,36 +176,36 @@ class Fs(model.Struct):
         inum = pndirmap[pnlast]
         if trunc:
             if not created:
-                simsym.assume(time > self.i_map[inum].mtime)
-                simsym.assume(time > self.i_map[inum].ctime)
-                self.i_map[inum].mtime = time
-                self.i_map[inum].ctime = time
+                simsym.assume(internal_time > self.i_map[inum].mtime)
+                simsym.assume(internal_time > self.i_map[inum].ctime)
+                self.i_map[inum].mtime = internal_time
+                self.i_map[inum].ctime = internal_time
             data_empty = SData.any('Data.empty')
             simsym.assume(data_empty._len == 0)
             self.i_map[inum].data = data_empty
 
-        self.add_fdvar(ret_fd)
-        simsym.add_internal(ret_fd)
-        simsym.assume(ret_fd >= 0)
-        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(ret_fd)))
+        self.add_fdvar(internal_ret_fd)
+        simsym.assume(internal_ret_fd >= 0)
+        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_ret_fd)))
 
         ## Lowest FD
         otherfd = simsym.SInt.any('fd')
         simsym.assume(simsym.symor([anyfd,
             simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
-                               otherfd < ret_fd,
+                               otherfd < internal_ret_fd,
                                self.getproc(pid).fd_map.contains(otherfd)])))]))
 
         fd_data = SFd.any()
         fd_data.inum = inum
         fd_data.off = 0
-        self.getproc(pid).fd_map[ret_fd] = fd_data
+        self.getproc(pid).fd_map[internal_ret_fd] = fd_data
 
-        return ('ok', ret_fd)
+        return ('ok', internal_ret_fd)
 
-    @model.methodwrap(src=SPathname, dst=SPathname, time=simsym.SInt)
-    def rename(self, src, dst, time):
+    @model.methodwrap(src=SPathname, dst=SPathname,
+                      internal_time=simsym.SInt)
+    def rename(self, src, dst, internal_time):
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
         if not srcdirmap.contains(srclast):
@@ -221,26 +220,24 @@ class Fs(model.Struct):
         del srcdirmap[srclast]
         if dstinum is not None:
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
-            simsym.add_internal(time)
-            simsym.assume(time > self.i_map[dstinum].ctime)
-            self.i_map[dstinum].ctime = time
+            simsym.assume(internal_time > self.i_map[dstinum].ctime)
+            self.i_map[dstinum].ctime = internal_time
         return ('ok',)
 
-    @model.methodwrap(pn=SPathname, time=simsym.SInt)
-    def unlink(self, pn, time):
+    @model.methodwrap(pn=SPathname, internal_time=simsym.SInt)
+    def unlink(self, pn, internal_time):
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return ('err', errno.ENOENT)
         inum = dirmap[pnlast]
         del dirmap[pnlast]
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
-        simsym.add_internal(time)
-        simsym.assume(time > self.i_map[inum].ctime)
-        self.i_map[inum].ctime = time
+        simsym.assume(internal_time > self.i_map[inum].ctime)
+        self.i_map[inum].ctime = internal_time
         return ('ok',)
 
-    @model.methodwrap(oldpn=SPathname, newpn=SPathname, time=simsym.SInt)
-    def link(self, oldpn, newpn, time):
+    @model.methodwrap(oldpn=SPathname, newpn=SPathname, internal_time=simsym.SInt)
+    def link(self, oldpn, newpn, internal_time):
         olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
         newdiri, newdirmap, newlast = self.nameiparent(newpn)
         if not olddirmap.contains(oldlast):
@@ -250,40 +247,38 @@ class Fs(model.Struct):
         inum = olddirmap[oldlast]
         newdirmap[newlast] = inum
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
-        simsym.add_internal(time)
-        simsym.assume(time > self.i_map[inum].ctime)
-        self.i_map[inum].ctime = time
+        simsym.assume(internal_time > self.i_map[inum].ctime)
+        self.i_map[inum].ctime = internal_time
         return ('ok',)
 
     def iread(self, inum, off, time):
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return ('eof',)
-        simsym.add_internal(time)
         simsym.assume(time > self.i_map[inum].atime)
         self.i_map[inum].atime = time
         return ('data', self.i_map[inum].data[off])
 
-    @model.methodwrap(fd=simsym.SInt, pid=SPid, time=simsym.SInt)
-    def read(self, fd, pid, time):
+    @model.methodwrap(fd=simsym.SInt, pid=SPid, internal_time=simsym.SInt)
+    def read(self, fd, pid, internal_time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         off = self.getproc(pid).fd_map[fd].off
-        r = self.iread(self.getproc(pid).fd_map[fd].inum, off, time)
+        r = self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
         if r[0] == 'data':
             self.getproc(pid).fd_map[fd].off = off + 1
         return r
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid, time=simsym.SInt)
-    def pread(self, fd, off, pid, time):
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid, internal_time=simsym.SInt)
+    def pread(self, fd, off, pid, internal_time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iread(self.getproc(pid).fd_map[fd].inum, off, time)
+        return self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
 
     def iwrite(self, inum, off, databyte, time):
         simsym.assume(off >= 0)
@@ -296,31 +291,30 @@ class Fs(model.Struct):
             self.i_map[inum].data.append(databyte)
         else:
             self.i_map[inum].data[off] = databyte
-        simsym.add_internal(time)
         simsym.assume(time > self.i_map[inum].mtime)
         simsym.assume(time > self.i_map[inum].ctime)
         self.i_map[inum].mtime = time
         self.i_map[inum].ctime = time
         return ('ok',)
 
-    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid, time=simsym.SInt)
-    def write(self, fd, databyte, pid, time):
+    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    def write(self, fd, databyte, pid, internal_time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         off = self.getproc(pid).fd_map[fd].off
         self.getproc(pid).fd_map[fd].off = off + 1
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, time)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid, time=simsym.SInt)
-    def pwrite(self, fd, off, databyte, pid, time):
+    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    def pwrite(self, fd, off, databyte, pid, internal_time):
         self.add_selfpid(pid)
         self.add_fdvar(fd)
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, time)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
 
     def istat(self, inum):
         len = self.i_map[inum].data._len

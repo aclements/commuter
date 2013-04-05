@@ -128,6 +128,11 @@ class IsomorphicMatch(object):
     ## all over the place: as values of a variable, as values in an array,
     ## as keys in an array, as default 'else' values in an array, etc.
 
+    ## XXX handling FDs and timestamps might be better done by treating
+    ## them as supporting order, rather than supporting just equality;
+    ## the isomorphism condition would be the values being in the same
+    ## order, rather than in the same equality pattern.
+
     def __init__(self, model):
         self.uninterps = collections.defaultdict(list)
         self.conds = [z3.BoolVal(True)]

@@ -46,6 +46,9 @@ SPathname = SFn
 pseudo_sort_decls = [
     (SInode.__z3_sort__.nlink, 'file-nlink'),
     (SData.__z3_sort__._len, 'file-length'),
+    (SInode.__z3_sort__.atime, 'time'),
+    (SInode.__z3_sort__.mtime, 'time'),
+    (SInode.__z3_sort__.ctime, 'time'),
 ]
 
 ## Ignore some pseudo sort names altogether when enumerating models.
@@ -53,6 +56,7 @@ pseudo_sort_decls = [
 pseudo_sort_ignore = {
     'file-nlink': True,     ## unused for test generation
     'file-length': True,    ## too many cases in link*link
+    'time': True,           ## irrelevant for test generation for now
     'fd-num': False,
 }
 

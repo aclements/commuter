@@ -33,7 +33,7 @@ hostname vm
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 /sbin/dhclient eth0
 /usr/sbin/sshd
-mount -t nfs -o nolock,vers=3,proto=tcp,mountport=21349,port=21349 10.0.2.2:/tmp/nfs-export /n &
+( mount -t nfs -o nolock,vers=3,proto=tcp,mountport=21349,port=21349 10.0.2.2:/tmp/nfs-export /n ; /fstest.sh ) &
 
 while :; do
   echo 'Starting shell..'
@@ -41,6 +41,17 @@ while :; do
 done
 EOF
 chmod 755 /mnt/fsx/init.sh
+
+cat > /mnt/fsx/fstest.sh <<EOF
+#!/bin/sh
+eval \$(cat /proc/cmdline)
+if [ -n "\$fstest_parts" ]; then
+  cd /mnt/tmpfs
+  /n/fstest -t -n \$fstest_parts -p \$fstest_thispart
+  halt -pf
+fi
+EOF
+chmod 755 /mnt/fsx/fstest.sh
 
 ## root's password is 'root'
 perl -pi -e 's!root:\*:!root:\$6\$ythweci8\$N7JQfIyxjNo/oyEnMp6uQerq7GHqwpKUsLxYdpLyYVdriX75Ka01bC2u9Nfepn3v.xHN5piV6zH.F9oRUJOfq0:!' /mnt/fsx/etc/shadow

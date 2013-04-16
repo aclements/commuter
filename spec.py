@@ -96,6 +96,7 @@ def model_unwrap(e, modelctx):
         return [model_unwrap(x, modelctx) for x in e]
     if isinstance(e, z3.ExprRef) and e.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
         univ = modelctx.get_universe(e.sort())
+        if univ is None: univ = []
         positions = [i for i, v in enumerate(univ) if v.eq(e)]
         if len(positions) != 1:
             raise Exception('could not find %s in %s' % (str(e), str(univ)))
@@ -236,7 +237,9 @@ class IsomorphicMatch(object):
             ## otherwise-interesting assignments.
 
             if dconst.domain().kind() == z3.Z3_UNINTERPRETED_SORT:
-                for idx in model.get_universe(dconst.domain()):
+                univ = model.get_universe(dconst.domain())
+                if univ is None: univ = []
+                for idx in univ:
                     if any([idx.eq(i) for i, _ in flist[:-1]]): continue
                     idxrep = self.uninterp_representative(idx)
                     if idxrep is None: continue

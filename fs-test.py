@@ -327,19 +327,23 @@ class FsState(object):
     return ccode
 
   def mem_read(self, which, pid):
-    ## TODO: catch SIGSEGV
     va_idx = self.vars['%s.mem_read.va' % which]
     ccode = ''
     ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
+    ccode += '\n    return -1;'
+    ccode += '\n  pf_active = 1;'
     ccode += '\n  return *p;'
     return ccode
 
   def mem_write(self, which, pid):
-    ## TODO: catch SIGSEGV
     va_idx = self.vars['%s.mem_write.va' % which]
     val = self.vars.get('%s.mem_write.databyte' % which, 0)
     ccode = ''
     ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
+    ccode += '\n    return -1;'
+    ccode += '\n  pf_active = 1;'
     ccode += '\n  *p = %d;' % val
     ccode += '\n  return 0;'
     return ccode
@@ -382,6 +386,7 @@ outprog.write("""\
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>

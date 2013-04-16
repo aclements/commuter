@@ -283,7 +283,30 @@ class FsState(object):
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  ## TODO: mmap
+  def mmap(self, which, pid):
+    va_idx = self.vars.get('%s.mmap.va' % which, 0)
+    writable = self.vars.get('%s.mmap.writable' % which, True)
+    fixed = self.vars.get('%s.mmap.fixed' % which, True)
+    anon = self.vars.get('%s.mmap.anon' % which, True)
+    fd_idx = self.vars.get('%s.mmap.fd' % which, 0)
+    off = self.vars.get('%s.mmap.off' % which, 0)
+
+    prot = 'PROT_READ'
+    if writable: prot += ' | PROT_WRITE'
+
+    va = self.get_va(pid, va_idx)
+    if not fixed: va = 0
+
+    if anon:
+      flags = 'MAP_PRIVATE | MAP_ANONYMOUS'
+    else:
+      flags = 'MAP_SHARED'
+
+    ccode = ''
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % va
+    ccode += '\n  return (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
+             (prot, flags, self.get_fd(pid, fd_idx), off)
+    return ccode
 
   def munmap(self, which, pid):
     va_idx = self.vars.get('%s.munmap.va' % which, 0)

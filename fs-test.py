@@ -20,9 +20,15 @@ class SetAllocator(object):
     return self.map.keys()
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
+
 fd_begin = 5
 fd_end = 10
-all_fds = [x for x in range(fd_begin, fd_end)]
+all_fds = range(fd_begin, fd_end)
+assert(fd_begin > 3)
+
+va_base = 0x12345600
+va_len = 4
+all_vas = range(va_base, va_base + va_len)
 
 def array_lookup_raw(array, idx):
   for k, v in array[:-1]:
@@ -36,6 +42,8 @@ class FsState(object):
     self.inodefiles = SetAllocator(['__i%d' % x for x in range(0, 6)])
     self.fds = { False: SetAllocator(all_fds),
                  True:  SetAllocator(all_fds) }
+    self.vas = { False: SetAllocator(all_vas),
+                 True:  SetAllocator(all_vas) }
 
   def array_lookup(self, arraynamechain, idx, defval):
     array = self.vars
@@ -53,7 +61,10 @@ class FsState(object):
   def get_fd(self, pid, v):
     return self.fds[pid].get(v)
 
-  def build_fds(self, pid, procname):
+  def get_va(self, pid, v):
+    return self.vas[pid].get(v) * 4096
+
+  def build_proc(self, pid, procname):
     fdmap = {}
     for fd_idx in self.fds[pid].assigned():
       if not self.array_lookup((procname, 'fd_map', '_valid'), fd_idx, False):
@@ -61,7 +72,17 @@ class FsState(object):
       fd_state = self.array_lookup((procname, 'fd_map', '_map'), fd_idx, 0)
       fdmap[self.get_fd(pid, fd_idx)] = { 'ino': self.get_ifn(fd_state['inum']),
                                           'off': fd_state['off'] }
-    return fdmap
+    vamap = {}
+    for va_idx in self.vas[pid].assigned():
+      if not self.array_lookup((procname, 'va_map', '_valid'), va_idx, False):
+        continue
+      va_state = self.array_lookup((procname, 'va_map', '_map'), va_idx, 0)
+      vamap[self.get_va(pid, va_idx)] = { 'ino': self.get_ifn(va_state['inum']),
+                                          'off': va_state['off'],
+                                          'anon': va_state['anon'],
+                                          'anondata': va_state['anondata'],
+                                          'writable': va_state['writable'] }
+    return (fdmap, vamap)
 
   def setup_inodes(self):
     ccode = ''
@@ -104,7 +125,7 @@ class FsState(object):
       ccode += '\n  unlink("%s");' % self.get_ifn(ino_idx)
     return ccode
 
-  def setup_proc(self, fdmap):
+  def setup_proc(self, fdmap, vamap):
     ccode = ''
     ccode += '\n  int fd __attribute__((unused));'
     for fd in fdmap:
@@ -112,6 +133,21 @@ class FsState(object):
       ccode += '\n  lseek(fd, %d, SEEK_SET);' % fdmap[fd]['off']
       ccode += '\n  dup2(fd, %d);' % fd
       ccode += '\n  close(fd);'
+
+    ccode += '\n  int* va __attribute__((unused));'
+    for va in vamap:
+      ccode += '\n  va = (void*) 0x%lxUL;' % va
+      prot = 'PROT_READ'
+      if vamap[va]['writable']:
+        prot += ' | PROT_WRITE'
+      if vamap[va]['anon']:
+        ccode += '\n  mmap(va, 4096, %s, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);' % prot
+        ccode += '\n  *va = %d;' % vamap[va]['anondata']
+      else:
+        ccode += '\n  fd = open("%s", O_RDWR);' % vamap[va]['ino']
+        ccode += '\n  mmap(va, 4096, %s, MAP_SHARED | MAP_ANONYMOUS, fd, %d * 4096);' % \
+                 (prot, vamap[va]['off'])
+        ccode += '\n  close(fd);'
     return ccode
 
   def build_dir(self):
@@ -122,12 +158,12 @@ class FsState(object):
       ino_idx = self.array_lookup(('Fs.rootdir', '_map'), fn_idx, 0)
       fn_to_ino[self.get_fn(fn_idx)] = self.get_ifn(ino_idx)
 
-    fdmap0 = self.build_fds(False, 'Fs.proc0')
-    fdmap1 = self.build_fds(True,  'Fs.proc1')
+    (fdmap0, vamap0) = self.build_proc(False, 'Fs.proc0')
+    (fdmap1, vamap1) = self.build_proc(True,  'Fs.proc1')
 
     return {'common': self.setup_inodes() + self.setup_filenames(fn_to_ino),
-            'proc0': self.setup_proc(fdmap0),
-            'proc1': self.setup_proc(fdmap1),
+            'proc0': self.setup_proc(fdmap0, vamap0),
+            'proc1': self.setup_proc(fdmap1, vamap1),
             'final': self.setup_inodes_finalize(),
            }
 
@@ -247,13 +283,48 @@ class FsState(object):
     ccode += '\n  return xerrno(r);'
     return ccode
 
+  ## TODO: mmap
+
+  def munmap(self, which, pid):
+    va_idx = self.vars.get('%s.munmap.va' % which, 0)
+    ccode = ''
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  return munmap(va, 4096);'
+    return ccode
+
+  def mprotect(self, which, pid):
+    va_idx = self.vars['%s.mprotect.va' % which]
+    writable = self.vars.get('%s.mprotect.writable' % which, False)
+    prot = 'PROT_READ'
+    if writable:
+      prot += ' | PROT_WRITE'
+    ccode = ''
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  return mprotect(va, 4096, %s);' % prot
+    return ccode
+
+  def mem_read(self, which, pid):
+    ## TODO: catch SIGSEGV
+    va_idx = self.vars['%s.mem_read.va' % which]
+    ccode = ''
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  return *p;'
+    return ccode
+
+  def mem_write(self, which, pid):
+    ## TODO: catch SIGSEGV
+    va_idx = self.vars['%s.mem_write.va' % which]
+    val = self.vars.get('%s.mem_write.databyte' % which, 0)
+    ccode = ''
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  *p = %d;' % val
+    ccode += '\n  return 0;'
+    return ccode
+
 def cleanup():
   ccode = ''
   for fn in all_filenames:
     ccode = ccode + '\n  unlink("%s");' % fn
-  assert(fd_begin > 3)
-  for fd in range(3, fd_end):
-    ccode = ccode + '\n  close(%d);' % fd
   return ccode
 
 def pretty_print_vars(d):
@@ -291,6 +362,7 @@ outprog.write("""\
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include "fstest.h"
 
 #ifndef XV6_USER

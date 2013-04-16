@@ -141,12 +141,13 @@ class FsState(object):
       if vamap[va]['writable']:
         prot += ' | PROT_WRITE'
       if vamap[va]['anon']:
-        ccode += '\n  mmap(va, 4096, %s, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);' % prot
+        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);'
         ccode += '\n  *va = %d;' % vamap[va]['anondata']
       else:
         ccode += '\n  fd = open("%s", O_RDWR);' % vamap[va]['ino']
-        ccode += '\n  mmap(va, 4096, %s, MAP_SHARED | MAP_ANONYMOUS, fd, %d * 4096);' % \
-                 (prot, vamap[va]['off'])
+        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, fd, %d * 4096);' % \
+                 vamap[va]['off']
+        ccode += '\n  mprotect(va, 4096, %s);' % prot
         ccode += '\n  close(fd);'
     return ccode
 

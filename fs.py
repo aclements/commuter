@@ -3,6 +3,7 @@ import simsym
 import symtypes
 import errno
 import model
+import signal
 
 class SFn(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Fn')
@@ -13,11 +14,21 @@ class SInum(simsym.SExpr, simsym.SymbolicConst):
 class SDataByte(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('DataByte')
 
+class SVa(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('VA')
+
 SPid = simsym.SBool
 SData = symtypes.tlist(SDataByte)
 SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
-SProc = symtypes.tstruct(fd_map = SFdMap)
+SVMA = simsym.tstruct(anon = simsym.SBool,
+                      writable = simsym.SBool,
+                      inum = SInum,
+                      off = simsym.SInt,
+                      anondata = SDataByte)
+SVaMap = symtypes.tdict(SVa, SVMA)
+SProc = symtypes.tstruct(fd_map = SFdMap,
+                         va_map = SVaMap)
 SDirMap = symtypes.tdict(SFn, SInum)
 SInode = simsym.tstruct(data = SData,
                         nlink = simsym.SInt,
@@ -49,6 +60,7 @@ pseudo_sort_decls = [
     (SInode.__z3_sort__.atime, 'time'),
     (SInode.__z3_sort__.mtime, 'time'),
     (SInode.__z3_sort__.ctime, 'time'),
+    (SVMA.__z3_sort__.off, 'file-length'),
 ]
 
 ## Ignore some pseudo sort names altogether when enumerating models.
@@ -259,8 +271,9 @@ class Fs(model.Struct):
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return ('eof',)
-        simsym.assume(time > self.i_map[inum].atime)
-        self.i_map[inum].atime = time
+        if time is not None:
+            simsym.assume(time > self.i_map[inum].atime)
+            self.i_map[inum].atime = time
         return ('data', self.i_map[inum].data[off])
 
     @model.methodwrap(fd=simsym.SInt, pid=SPid, internal_time=simsym.SInt)
@@ -295,10 +308,11 @@ class Fs(model.Struct):
             self.i_map[inum].data.append(databyte)
         else:
             self.i_map[inum].data[off] = databyte
-        simsym.assume(time > self.i_map[inum].mtime)
-        simsym.assume(time > self.i_map[inum].ctime)
-        self.i_map[inum].mtime = time
-        self.i_map[inum].ctime = time
+        if time is not None:
+            simsym.assume(time > self.i_map[inum].mtime)
+            simsym.assume(time > self.i_map[inum].ctime)
+            self.i_map[inum].mtime = time
+            self.i_map[inum].ctime = time
         return ('ok',)
 
     @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
@@ -352,6 +366,79 @@ class Fs(model.Struct):
         del self.getproc(pid).fd_map[fd]
         return ('ok',)
 
+    @model.methodwrap(anon=simsym.SBool,
+                      writable=simsym.SBool,
+                      fixed=simsym.SBool,
+                      va=SVa,
+                      fd=simsym.SInt,
+                      off=simsym.SInt,
+                      pid=SPid,
+                      internal_freeva=SVa)
+    def mmap(self, anon, writable, fixed, va, fd, off, pid, internal_freeva):
+        ## TODO: MAP_SHARED/MAP_PRIVATE for files
+        ##       -> how to model delayed file read?
+        ## TODO: MAP_SHARED/MAP_PRIVATE for anon (with fork)
+        ## TODO: zeroing anon memory
+        self.add_selfpid(pid)
+        self.add_fdvar(fd)
+        myproc = self.getproc(pid)
+        if not fixed:
+            va = internal_freeva
+            simsym.assume(simsym.symnot(myproc.va_map.contains(va)))
+        vma = SVMA.any()
+        vma.anon = anon
+        vma.writable = writable
+        if not anon:
+            if not myproc.fd_map.contains(fd):
+                return ('err', errno.EBADF)
+            vma.off = off
+            vma.inum = myproc.fd_map[fd].inum
+        myproc.va_map[va] = vma
+        return ('ok', va)
+
+    @model.methodwrap(va=SVa, pid=SPid)
+    def munmap(self, va, pid):
+        self.add_selfpid(pid)
+        del self.getproc(pid).va_map[va]
+        return ('ok',)
+
+    @model.methodwrap(va=SVa, writable=simsym.SBool, pid=SPid)
+    def mprotect(self, va, writable, pid):
+        self.add_selfpid(pid)
+        myproc = self.getproc(pid)
+        if not myproc.va_map.contains(va):
+            return ('err', errno.ENOMEM)
+        myproc.va_map[va].writable = writable
+        return ('ok',)
+
+    @model.methodwrap(va=SVa, pid=SPid, internal_time=simsym.SInt)
+    def mem_read(self, va, pid, internal_time):
+        self.add_selfpid(pid)
+        myproc = self.getproc(pid)
+        if not myproc.va_map.contains(va):
+            return ('signal', signal.SIGSEGV)
+        if myproc.va_map[va].anon:
+            return ('data', myproc.va_map[va].anondata)
+        ## TODO: memory-mapped reads don't bump atime?
+        internal_time = None
+        return self.iread(myproc.va_map[va].inum, myproc.va_map[va].off, internal_time)
+
+    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    def mem_write(self, va, databyte, pid, internal_time):
+        self.add_selfpid(pid)
+        myproc = self.getproc(pid)
+        if not myproc.va_map.contains(va):
+            return ('signal', signal.SIGSEGV)
+        if not myproc.va_map[va].writable:
+            return ('signal', signal.SIGSEGV)
+        if myproc.va_map[va].anon:
+            myproc.va_map[va].anondata = databyte
+            return ('ok',)
+        ## TODO: memory-mapped writes don't bump mtime/ctime?
+        internal_time = None
+        return self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off,
+                           databyte, internal_time)
+
 model_class = Fs
 model_functions = [
     Fs.open,
@@ -365,4 +452,9 @@ model_functions = [
     Fs.stat,
     Fs.fstat,
     Fs.close,
+    Fs.mmap,
+    Fs.munmap,
+    Fs.mprotect,
+    Fs.mem_read,
+    Fs.mem_write,
 ]

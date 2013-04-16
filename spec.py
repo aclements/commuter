@@ -413,7 +413,6 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
             ## produces 3204 test cases without simplify, and 3182 with.
             e = simsym.simplify(e)
             while ncond < args.max_testcases:
-                ncond += 1
                 check, model = simsym.check(e)
                 if check == z3.unsat: break
                 if check == z3.unknown:
@@ -440,6 +439,7 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                     'calls': [c.__name__ for c in callset],
                     'vars':  vars,
                 })
+                ncond += 1
 
                 same = IsomorphicMatch(model)
                 notsame = same.notsame_cond()

@@ -13,6 +13,11 @@ check cache line sharing on xv6:
   % fstest -t; halt
   ../mtrace/mtrace-tools/mscan --check-testcases
 
+or in parallel:
+  make HW=mtrace
+  python ~/papers/xv6-scale-doc/spec/par-mtrace-xv6.py 
+  python ~/papers/xv6-scale-doc/spec/par-mscan.py
+
 set up a Linux VM:
   mkdir -p ~/tmp/linux-vm
   cd ~/tmp/linux-vm
@@ -64,4 +69,9 @@ check cache line sharing on Linux:
   ln -s pk/vmlinux mscan.kern
   nm -C -S mscan.kern > mscan.syms
   ~/proj/mtrace/mtrace-tools/mscan --check-testcases
+
+or in parallel:
+  cd ~/tmp/linux-vm
+  python ~/papers/xv6-scale-doc/spec/par-mtrace-linux.py 
+  python ~/papers/xv6-scale-doc/spec/par-mscan.py
 

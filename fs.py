@@ -169,9 +169,13 @@ class Fs(model.Struct):
             if not pndirmap.contains(pnlast):
                 simsym.assume(simsym.symnot(self.iused(internal_alloc_inum)))
 
-                data_empty = SData.any('Data.empty')
+                ## Allocating dummy variables, then assigning or asserting
+                ## to/about their struct fields, and finally doing whole-struct
+                ## assignment seems to be easier for Z3 than ## poking at struct
+                ## members in existing large structs.
+                data_empty = SData.any(simsym.anon_name('dummy_data'))
                 simsym.assume(data_empty._len == 0)
-                idata = SInode.any()
+                idata = SInode.any(simsym.anon_name('dummy_idata'))
                 idata.data = data_empty
                 idata.nlink = 1
                 self.i_map[internal_alloc_inum] = idata
@@ -196,7 +200,7 @@ class Fs(model.Struct):
                 simsym.assume(internal_time > self.i_map[inum].ctime)
                 self.i_map[inum].mtime = internal_time
                 self.i_map[inum].ctime = internal_time
-            data_empty = SData.any('Data.empty')
+            data_empty = SData.any(simsym.anon_name('dummy_data'))
             simsym.assume(data_empty._len == 0)
             self.i_map[inum].data = data_empty
 
@@ -212,7 +216,7 @@ class Fs(model.Struct):
                                otherfd < internal_ret_fd,
                                self.getproc(pid).fd_map.contains(otherfd)])))]))
 
-        fd_data = SFd.any()
+        fd_data = SFd.any(simsym.anon_name('dummy_fd_data'))
         fd_data.inum = inum
         fd_data.off = 0
         self.getproc(pid).fd_map[internal_ret_fd] = fd_data
@@ -381,11 +385,12 @@ class Fs(model.Struct):
         ## TODO: zeroing anon memory
         self.add_selfpid(pid)
         self.add_fdvar(fd)
+        self.add_offvar(off)
         myproc = self.getproc(pid)
         if not fixed:
             va = internal_freeva
             simsym.assume(simsym.symnot(myproc.va_map.contains(va)))
-        vma = SVMA.any()
+        vma = SVMA.any(simsym.anon_name('dummy_vma'))
         vma.anon = anon
         vma.writable = writable
         if not anon:

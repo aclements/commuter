@@ -153,7 +153,9 @@ class IsomorphicMatch(object):
             ## otherwise Z3 can iterate over different assignments to these
             ## variables, while we care only about assignments to "external"
             ## variables.
-            if '!' in str(decl) or 'internal_' in str(decl):
+            if '!' in str(decl) or \
+               str(decl).startswith('internal_') or \
+               str(decl).startswith('dummy_'):
                 continue
             self.process_decl_assignment(decl, model[decl], model)
 
@@ -434,7 +436,7 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                 vars = { model_unwrap(k, model): model_unwrap(model[k], model)
                          for k in model
                          if '!' not in model_unwrap(k, model) }
-                # print 'New assignment:', vars
+                # print 'New assignment', ncond, ':', vars
                 testcases.append({
                     'calls': [c.__name__ for c in callset],
                     'vars':  vars,
@@ -443,7 +445,7 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
 
                 same = IsomorphicMatch(model)
                 notsame = same.notsame_cond()
-                # print 'Negation:', notsame
+                # print 'Negation', ncond, ':', notsame
                 e = simsym.symand([e, notsame])
 
 if testfile is not None:

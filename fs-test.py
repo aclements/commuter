@@ -141,11 +141,11 @@ class FsState(object):
       if vamap[va]['writable']:
         prot += ' | PROT_WRITE'
       if vamap[va]['anon']:
-        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);'
+        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);'
         ccode += '\n  *va = %d;' % vamap[va]['anondata']
       else:
         ccode += '\n  fd = open("%s", O_RDWR);' % vamap[va]['ino']
-        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, fd, %d * 4096);' % \
+        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % \
                  vamap[va]['off']
         ccode += '\n  mprotect(va, 4096, %s);' % prot
         ccode += '\n  close(fd);'
@@ -295,13 +295,16 @@ class FsState(object):
     prot = 'PROT_READ'
     if writable: prot += ' | PROT_WRITE'
 
-    va = self.get_va(pid, va_idx)
-    if not fixed: va = 0
-
     if anon:
       flags = 'MAP_PRIVATE | MAP_ANONYMOUS'
     else:
       flags = 'MAP_SHARED'
+
+    va = self.get_va(pid, va_idx)
+    if fixed:
+      flags += ' | MAP_FIXED'
+    else:
+      va = 0
 
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % va

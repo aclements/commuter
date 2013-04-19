@@ -133,7 +133,10 @@ class Fs(model.Struct):
             ])
 
     def add_selfpid(self, pid):
-        pass
+        ## XXX hack due to our simplified PID model
+        ## without loss of generality, assume syscall "a" happens in proc0
+        if str(pid).startswith('a.'):
+            simsym.assume(pid == False)
 
     def add_fdvar(self, fdvar):
         add_pseudo_sort_decl(simsym.unwrap(fdvar).decl(), 'fd-num')

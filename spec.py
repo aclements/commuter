@@ -447,6 +447,7 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                 notsame = same.notsame_cond()
                 # print 'Negation', ncond, ':', notsame
                 e = simsym.symand([e, notsame])
+        print '  %d testcases' % ncond
 
 if testfile is not None:
     ## Timestamp keeps track of generated test cases (a poor nonce)

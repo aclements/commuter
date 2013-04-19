@@ -326,6 +326,8 @@ parser.add_argument('--simplify-more', default=False, action='store_true',
                     help='Use ctx-solver-simplify')
 parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='store',
                     help='Maximum # test cases to generate per combination')
+parser.add_argument('--verbose-testgen', default=False, action='store_true',
+                    help='Print diagnostics during model enumeration')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()
@@ -436,7 +438,8 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                 vars = { model_unwrap(k, model): model_unwrap(model[k], model)
                          for k in model
                          if '!' not in model_unwrap(k, model) }
-                # print 'New assignment', ncond, ':', vars
+                if args.verbose_testgen:
+                    print 'New assignment', ncond, ':', vars
                 testcases.append({
                     'calls': [c.__name__ for c in callset],
                     'vars':  vars,
@@ -445,7 +448,8 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
 
                 same = IsomorphicMatch(model)
                 notsame = same.notsame_cond()
-                # print 'Negation', ncond, ':', notsame
+                if args.verbose_testgen:
+                    print 'Negation', ncond, ':', notsame
                 e = simsym.symand([e, notsame])
         print '  %d testcases' % ncond
 

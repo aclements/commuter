@@ -15,13 +15,13 @@ check cache line sharing on xv6:
 
 or in parallel:
   make HW=mtrace
-  python ~/papers/xv6-scale-doc/spec/par-mtrace-xv6.py 
-  python ~/papers/xv6-scale-doc/spec/par-mscan.py
+  python ~/proj/commuter/par-mtrace-xv6.py 
+  python ~/proj/commuter/par-mscan.py
 
 set up a Linux VM:
   mkdir -p ~/tmp/linux-vm
   cd ~/tmp/linux-vm
-  cp ~/papers/xv6-scale-doc/spec/linux-fstest/*.sh .
+  cp ~/proj/commuter/linux-fstest/*.sh .
   sudo ./make-image.sh
 
 building an mtrace-friendly Linux kernel:
@@ -72,6 +72,6 @@ check cache line sharing on Linux:
 
 or in parallel:
   cd ~/tmp/linux-vm
-  python ~/papers/xv6-scale-doc/spec/par-mtrace-linux.py 
-  python ~/papers/xv6-scale-doc/spec/par-mscan.py
+  python ~/proj/commuter/par-mtrace-linux.py 
+  python ~/proj/commuter/par-mscan.py
 

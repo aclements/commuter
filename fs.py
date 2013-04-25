@@ -17,9 +17,19 @@ class SDataByte(simsym.SExpr, simsym.SymbolicConst):
 class SVa(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('VA')
 
+class SPipeId(simsym.SExpr, simsym.SymbolicConst):
+    __z3_sort__ = z3.DeclareSort('PipeId')
+
 SPid = simsym.SBool
 SData = symtypes.tlist(SDataByte)
-SFd = simsym.tstruct(inum = SInum, off = simsym.SInt)
+SPipe = simsym.tstruct(data = SData,
+                       nread = simsym.SInt)
+SPipeMap = symtypes.tmap(SPipeId, SPipe)
+SFd = simsym.tstruct(ispipe = simsym.SBool,
+                     pipeid = SPipeId,
+                     pipewriter = simsym.SBool,
+                     inum = SInum,
+                     off = simsym.SInt)
 SFdMap = symtypes.tdict(simsym.SInt, SFd)
 SVMA = simsym.tstruct(anon = simsym.SBool,
                       writable = simsym.SBool,
@@ -81,6 +91,7 @@ class Fs(model.Struct):
     __slots__ = ['i_map',
                  'proc0',
                  'proc1',
+                 'pipes',
 
                  ## XXX Non-directories impl:
                  'root_dir',
@@ -91,6 +102,7 @@ class Fs(model.Struct):
         self.i_map = SIMap.any('Fs.imap')
         self.proc0 = SProc.any('Fs.proc0')
         self.proc1 = SProc.any('Fs.proc1')
+        self.pipes = SPipeMap.any('Fs.pipes')
 
         ## XXX Non-directories impl:
         self.root_dir = SDirMap.any('Fs.rootdir')
@@ -125,10 +137,12 @@ class Fs(model.Struct):
 
             simsym.exists(fd,
                 simsym.symand([self.proc0.fd_map.contains(fd),
+                               simsym.symnot(self.proc0.fd_map._map[fd].ispipe),
                                self.proc0.fd_map._map[fd].inum == inum])),
 
             simsym.exists(fd,
                 simsym.symand([self.proc1.fd_map.contains(fd),
+                               simsym.symnot(self.proc1.fd_map._map[fd].ispipe),
                                self.proc1.fd_map._map[fd].inum == inum])),
             ])
 
@@ -222,9 +236,64 @@ class Fs(model.Struct):
         fd_data = SFd.any(simsym.anon_name('dummy_fd_data'))
         fd_data.inum = inum
         fd_data.off = 0
+        fd_data.ispipe = False
         self.getproc(pid).fd_map[internal_ret_fd] = fd_data
 
         return ('ok', internal_ret_fd)
+
+    @model.methodwrap(pid=SPid,
+                      internal_pipeid=SPipeId,
+                      internal_fd_r=simsym.SInt,
+                      internal_fd_w=simsym.SInt,
+                      )
+    def pipe(self, pid, internal_pipeid, internal_fd_r, internal_fd_w):
+        self.add_selfpid(pid)
+
+        xfd = simsym.SInt.any('xfd')
+        simsym.assume(simsym.symnot(simsym.symor([
+            simsym.exists(xfd,
+                simsym.symand([self.proc0.fd_map.contains(xfd),
+                               self.proc0.fd_map._map[xfd].ispipe,
+                               self.proc0.fd_map._map[xfd].pipeid == internal_pipeid])),
+            simsym.exists(xfd,
+                simsym.symand([self.proc1.fd_map.contains(xfd),
+                               self.proc1.fd_map._map[xfd].ispipe,
+                               self.proc1.fd_map._map[xfd].pipeid == internal_pipeid]))])))
+
+        empty_pipe = SPipe.any(simsym.anon_name('dummy_pipe'))
+        empty_pipe.nread = 0
+        simsym.assume(empty_pipe.data.len() == 0)
+        self.pipes[internal_pipeid] = empty_pipe
+
+        ## lowest FD for read end
+        self.add_fdvar(internal_fd_r)
+        simsym.assume(internal_fd_r >= 0)
+        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_r)))
+        simsym.assume(simsym.symnot(simsym.exists(xfd,
+                simsym.symand([xfd >= 0,
+                               xfd < internal_fd_r,
+                               self.getproc(pid).fd_map.contains(xfd)]))))
+        fd_r_data = SFd.any(simsym.anon_name('dummy_fd_data'))
+        fd_r_data.ispipe = True
+        fd_r_data.pipeid = internal_pipeid
+        fd_r_data.pipewriter = False
+        self.getproc(pid).fd_map[internal_fd_r] = fd_r_data
+
+        ## lowest FD for write end
+        self.add_fdvar(internal_fd_w)
+        simsym.assume(internal_fd_w >= 0)
+        simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_w)))
+        simsym.assume(simsym.symnot(simsym.exists(xfd,
+                simsym.symand([xfd >= 0,
+                               xfd < internal_fd_w,
+                               self.getproc(pid).fd_map.contains(xfd)]))))
+        fd_w_data = SFd.any(simsym.anon_name('dummy_fd_data'))
+        fd_w_data.ispipe = True
+        fd_w_data.pipeid = internal_pipeid
+        fd_w_data.pipewriter = True
+        self.getproc(pid).fd_map[internal_fd_w] = fd_w_data
+
+        return ('ok', internal_fd_r, internal_fd_w)
 
     @model.methodwrap(src=SPathname, dst=SPathname,
                       internal_time=simsym.SInt)
@@ -289,6 +358,18 @@ class Fs(model.Struct):
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
+        if self.getproc(pid).fd_map[fd].ispipe:
+            if self.getproc(pid).fd_map[fd].pipewriter:
+                return ('err', errno.EBADF)
+            pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
+            if pipe.data.len() == pipe.nread:
+                ## TODO: return EOF if no more writers; otherwise block
+                return ('err', 0)
+            simsym.assume(pipe.nread < pipe.data.len())
+            simsym.assume(pipe.nread >= 0)
+            d = pipe.data[pipe.nread]
+            pipe.nread = pipe.nread + 1
+            return ('data', d)
         off = self.getproc(pid).fd_map[fd].off
         r = self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
         if r[0] == 'data':
@@ -302,6 +383,8 @@ class Fs(model.Struct):
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
+        if self.getproc(pid).fd_map[fd].ispipe:
+            return ('err', errno.ESPIPE)
         return self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
 
     def iwrite(self, inum, off, databyte, time):
@@ -328,6 +411,15 @@ class Fs(model.Struct):
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
+        if self.getproc(pid).fd_map[fd].ispipe:
+            if not self.getproc(pid).fd_map[fd].pipewriter:
+                return ('err', errno.EBADF)
+            pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
+            ## TODO: return EPIPE if no more readers
+            simsym.assume(pipe.nread < pipe.data.len())
+            simsym.assume(pipe.nread >= 0)
+            pipe.data.append(databyte)
+            return ('ok',)
         off = self.getproc(pid).fd_map[fd].off
         self.getproc(pid).fd_map[fd].off = off + 1
         return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
@@ -339,6 +431,8 @@ class Fs(model.Struct):
         self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
+        if self.getproc(pid).fd_map[fd].ispipe:
+            return ('err', errno.ESPIPE)
         return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
 
     def istat(self, inum):
@@ -362,6 +456,8 @@ class Fs(model.Struct):
         self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
+        if self.getproc(pid).fd_map[fd].ispipe:
+            return ('ok', 0, 0, 0, 0, 0, 0)
         return self.istat(self.getproc(pid).fd_map[fd].inum)
 
     @model.methodwrap(fd=simsym.SInt, pid=SPid)
@@ -399,6 +495,8 @@ class Fs(model.Struct):
         if not anon:
             if not myproc.fd_map.contains(fd):
                 return ('err', errno.EBADF)
+            if myproc.fd_map[fd].ispipe:
+                return ('err', errno.EACCES)
             vma.off = off
             vma.inum = myproc.fd_map[fd].inum
         myproc.va_map[va] = vma
@@ -450,6 +548,7 @@ class Fs(model.Struct):
 model_class = Fs
 model_functions = [
     Fs.open,
+    Fs.pipe,
     Fs.pread,
     Fs.pwrite,
     Fs.read,

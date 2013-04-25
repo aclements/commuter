@@ -153,9 +153,7 @@ class IsomorphicMatch(object):
             ## otherwise Z3 can iterate over different assignments to these
             ## variables, while we care only about assignments to "external"
             ## variables.
-            if '!' in str(decl) or \
-               str(decl).startswith('internal_') or \
-               str(decl).startswith('dummy_'):
+            if '!' in str(decl) or 'internal_' in str(decl) or 'dummy_' in str(decl):
                 continue
             self.process_decl_assignment(decl, model[decl], model)
 

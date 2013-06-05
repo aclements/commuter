@@ -130,13 +130,19 @@ class SymbolicConst(Symbolic):
 # that we care about.
 
 class MetaZ3Wrapper(type):
-    """Metaclass to generate wrappers for Z3 ref object methods.  The
-    class should have a __ref_type__ field giving the Z3 ref type
-    wrapped by the class, and __wrap__ field giving a list of method
+    """Metaclass to generate wrappers for Z3 ref object methods.
+
+    The class must have a __ref_type__ field giving the Z3 ref type
+    wrapped by the class.  The class may optionally have a
+    __pass_type__ field, giving a Python type or tuple or types that
+    should be passed through wrap untouched.
+
+    The class must also have a __wrap__ field giving a list of method
     names to wrap.  For each method in __wrap__, the generated class
     will have a corresponding method with the same signature that
     unwraps all arguments, calls the Z3 method, and re-wraps the
-    result."""
+    result.
+    """
 
     def __new__(cls, classname, bases, classdict):
         if "__wrap__" in classdict:
@@ -161,6 +167,9 @@ class MetaZ3Wrapper(type):
         object."""
 
         if not isinstance(z3ref, cls.__ref_type__):
+            if hasattr(cls, "__pass_type__") and \
+               isinstance(z3ref, cls.__pass_type__):
+                return z3ref
             raise TypeError("%s expected %s, got %s" %
                             (cls.__name__, cls.__ref_type__.__name__,
                              strtype(z3ref)))
@@ -192,6 +201,7 @@ class SArith(SExpr):
                 "__neg__", "__pos__"]
 
 class SInt(SArith, SymbolicConst):
+    __pass_type__ = int
     __z3_sort__ = z3.IntSort()
 
     # We're still wrapping ArithRef here (not IntNumRef).  This class
@@ -208,6 +218,7 @@ class UnsatisfiablePath(RuntimeError):
 
 class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
+    __pass_type__ = bool
     __z3_sort__ = z3.BoolSort()
 
     def __nonzero__(self):

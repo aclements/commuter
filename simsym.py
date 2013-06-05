@@ -25,7 +25,7 @@ def anon_name(base = "anon"):
     global anon_idx
     anon_idx += 1
     return "%s%d" % (base, anon_idx)
-
+            
 class Symbolic(object):
     """Base class of symbolic types.  Symbolic types come in two
     groups: constant and mutable.  Symbolic constants are deeply
@@ -37,27 +37,31 @@ class Symbolic(object):
     where they are copied at the point of assignment.
 
     A subclass of Symbolic must have a __z3_sort__ class field giving
-    the z3.SortRef for the value's type.  Subclasses must also
-    implement the _z3_value and _wrap_lvalue methods."""
+    the compound z3.SortRef for the value's type.  Subclasses must
+    also implement the _z3_value and _wrap_lvalue methods.
+    """
 
     def __init__(self):
         raise RuntimeError("%s cannot be constructed directly" % strtype(self))
 
     @classmethod
     def _z3_sort(cls):
-        """Return the Z3 sort of objects represented by this class."""
+        """Return the compound Z3 sort represented by this class."""
         return cls.__z3_sort__
 
     def _z3_value(self):
-        """Return the Z3 value wrapped by this object.  For mutable
-        objects, this should be its current value."""
+        """Return the compound Z3 value wrapped by this object.
+
+        For mutable objects, this should be its current value.
+        """
         raise NotImplementedError("_z3_value is abstract")
 
     @classmethod
     def _new_lvalue(cls, init):
-        """Return a new instance of Symbolic with the given initial
-        value, which must be a Z3 value.  The returned instance's
-        state will not be shared with any existing instances."""
+        """Return a new instance of Symbolic with the given initial value,
+        which must be a compound Z3 value.  The returned instance's
+        state will not be shared with any existing instances.
+        """
         val = [init]
         def setter(nval):
             val[0] = nval
@@ -67,12 +71,15 @@ class Symbolic(object):
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter):
-        """Create an instance of this object wrapping the Z3 value
-        returned by getter.  If this object is immutable, then it
-        should call getter immediately to fetch the object's current
-        value.  If this object is mutable, it should use getter on
-        demand and it should reflect changes to its value by calling
-        setter with its updated Z3 value."""
+        """Return a new instance of this class.
+
+        Return an instance of this class wrapping the compound Z3
+        value returned by getter.  If this object is immutable, then
+        it should call getter immediately to fetch the object's
+        current value.  If this object is mutable, it should use
+        getter on demand and it should reflect changes to its value by
+        calling setter with its updated compound Z3 value.
+        """
         raise NotImplementedError("_wrap_lvalue is abstract")
 
     @classmethod
@@ -80,7 +87,12 @@ class Symbolic(object):
         """Return a symbolic value whose concrete value is unknown."""
         if name is None:
             name = anon_name()
-        return cls._new_lvalue(z3.Const(name, cls._z3_sort()))
+        def mkValue(name, sort):
+            if isinstance(sort, dict):
+                return {k: mkValue(name + "." + k, v)
+                        for k, v in sort.iteritems()}
+            return z3.Const(name, sort)
+        return cls._new_lvalue(mkValue(name, cls._z3_sort()))
 
     @classmethod
     def _assumptions(cls, obj):
@@ -116,6 +128,41 @@ class SymbolicConst(Symbolic):
         # Fetch the value immediately, rather than acting like an
         # lvalue.
         return cls._wrap(getter())
+
+#
+# Compounds
+#
+
+# A "compound X" is either an X or a dictionary from component names
+# (e.g., struct fields) to compound X's.
+
+def compound_map(func, *compounds):
+    if len(compounds) == 1:
+        return compound_map1(func, compounds[0])
+    else:
+        return compound_mapN(func, compounds)
+
+def compound_map1(func, compound):
+    if isinstance(compound, dict):
+        return {k: compound_map1(func, v) for k, v in compound.iteritems()}
+    return func(compound)
+
+def compound_mapN(func, compounds):
+    if isinstance(compounds[0], dict):
+        return {k: compound_mapN(func, [c[k] for c in compounds])
+                for k in compounds[0].iterkeys()}
+    return func(*compounds)
+
+def flatten_compound(compound):
+    res = []
+    def rec(compound):
+        if isinstance(compound, dict):
+            for sub in compound.itervalues():
+                rec(sub)
+        else:
+            res.append(compound)
+    rec(compound)
+    return res
 
 #
 # Z3 wrappers
@@ -373,7 +420,9 @@ class SMapBase(Symbolic):
         """Return a map where all keys initially map to 'value'."""
         # XXX Should this simply be the role of __init__ in Symbolic
         # subclasses?
-        return cls._new_lvalue(z3.K(cls._indexType._z3_sort(), unwrap(value)))
+        indexSort = cls._indexType._z3_sort()
+        return cls._new_lvalue(
+            compound_map(lambda val: z3.K(indexSort, val), unwrap(value)))
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter):
@@ -394,19 +443,25 @@ class SMapBase(Symbolic):
                        forall(x, cls._valueType._assumptions(obj[x]))])
 
     def __eq__(self, o):
-        if not isinstance(o, SMapBase):
+        if not isinstance(o, type(self)):
             return NotImplemented
-        return wrap(self._getter() == o._getter())
+        av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
+        return wrap(z3.And([af == bf for af, bf in zip(av, bv)]))
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
+        z3idx = unwrap(idx)
         return self._valueType._wrap_lvalue(
-            lambda: z3.Select(self._getter(), unwrap(idx)),
+            lambda: compound_map(
+                lambda z3val: z3.Select(z3val, z3idx), self._getter()),
             lambda val: self.__setitem__(idx, val))
 
     def __setitem__(self, idx, val):
         """Change the value at index 'idx'."""
-        self._setter(z3.Store(self._getter(), unwrap(idx), unwrap(val)))
+        z3idx = unwrap(idx)
+        self._setter(compound_map(
+            lambda z3map, z3val: z3.Store(z3map, z3idx, z3val),
+            self._getter(), unwrap(val)))
 
 def tmap(indexType, valueType):
     """Return a subclass of SMapBase that maps from 'indexType' to
@@ -414,7 +469,12 @@ def tmap(indexType, valueType):
     # XXX We could accept a size and check indexes if indexType is an
     # ordered sort
     name = "SMap_%s_%s" % (indexType.__name__, valueType.__name__)
-    sort = z3.ArraySort(indexType._z3_sort(), valueType._z3_sort())
+
+    indexSort = indexType._z3_sort()
+    if isinstance(indexSort, dict):
+        raise TypeError("Map index may not be a compound type")
+    sort = compound_map(lambda z3sort: z3.ArraySort(indexSort, z3sort),
+                        valueType._z3_sort())
     return type(name, (SMapBase,),
                 {"_indexType" : indexType, "_valueType" : valueType,
                  "__z3_sort__" : sort})
@@ -432,18 +492,18 @@ class SStructBase(Symbolic):
         supplied to name the symbolic constants for the omitted
         fields."""
 
-        fvals = []
-        for fname, typ in cls._fieldList:
+        fvals = {}
+        for fname, typ in cls._fields.iteritems():
             if fname in fields:
-                fvals.append(unwrap(fields.pop(fname)))
+                fvals[fname] = unwrap(fields.pop(fname))
             else:
                 if __name is None:
                     raise ValueError(
                         "Name required for partially symbolic struct")
-                fvals.append(unwrap(typ.any(__name + "." + fname)))
+                fvals[fname] = unwrap(typ.any(__name + "." + fname))
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
-        return cls._new_lvalue(cls._ctor(*fvals))
+        return cls._new_lvalue(fvals)
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter):
@@ -456,32 +516,26 @@ class SStructBase(Symbolic):
     def _z3_value(self):
         return self._getter()
 
-    def _update(self, name, val):
-        """Return a Z3 expression representing this struct with field
-        'name' updated to Z3 value 'val'."""
-        fvals = []
-        for fname, _ in self._fieldList:
-            if fname == name:
-                fvals.append(unwrap(val))
-            else:
-                fvals.append(unwrap(getattr(self, fname)))
-        return self._ctor(*fvals)
-
     def __eq__(self, o):
-        if not isinstance(o, SStructBase):
+        # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?
+        if not isinstance(o, type(self)):
             return NotImplemented
-        return wrap(self._getter() == o._getter())
+        av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
+        return wrap(z3.And([af == bf for af, bf in zip(av, bv)]))
 
     def __getattr__(self, name):
         if name not in self._fields:
             raise AttributeError(name)
-        fgetter = getattr(self.__z3_sort__, name)
         return self._fields[name]._wrap_lvalue(
-            lambda: fgetter(self._getter()),
+            lambda: self._getter()[name],
             lambda val: self.__setattr__(name, val))
 
     def __setattr__(self, name, val):
-        self._setter(self._update(name, val))
+        if name not in self._fields:
+            raise AttributeError(name)
+        cval = self._getter()
+        cval[name] = unwrap(val)
+        self._setter(cval)
 
 def tstruct(**fields):
     """Return a subclass of SStructBase for a struct type with the
@@ -489,15 +543,8 @@ def tstruct(**fields):
     symbolic types."""
 
     name = "SStruct_" + "_".join(fields.keys())
-    z3name = anon_name(name)
-    sort = z3.Datatype(z3name)
-    fieldList = fields.items()
-    sort.declare(z3name, *[(fname, typ._z3_sort()) for fname, typ in fieldList])
-    sort = sort.create()
-
-    type_fields = {"__slots__": [], "_fields": fields, "_fieldList": fieldList,
-                   "_z3name": z3name, "__z3_sort__": sort,
-                   "_ctor": getattr(sort, z3name)}
+    sort = {fname: typ._z3_sort() for fname, typ in fields.items()}
+    type_fields = {"__slots__": [], "_fields": fields, "__z3_sort__": sort}
     return type(name, (SStructBase,), type_fields)
 
 #

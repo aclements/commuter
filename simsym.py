@@ -87,12 +87,16 @@ class Symbolic(object):
         """Return a symbolic value whose concrete value is unknown."""
         if name is None:
             name = anon_name()
-        def mkValue(name, sort):
+        def mkValue(path, sort):
             if isinstance(sort, dict):
-                return {k: mkValue(name + "." + k, v)
+                return {k: mkValue(path + (k,), v)
                         for k, v in sort.iteritems()}
-            return z3.Const(name, sort)
-        return cls._new_lvalue(mkValue(name, cls._z3_sort()))
+            strname = ".".join((name,) + path)
+            # Record the simsym type of this constant
+            constTypes[strname] = (cls, path)
+            # Create the Z3 constant
+            return z3.Const(strname, sort)
+        return cls._new_lvalue(mkValue((), cls._z3_sort()))
 
     @classmethod
     def _assumptions(cls, obj):
@@ -121,6 +125,7 @@ class SymbolicConst(Symbolic):
         # through fewer hoops.
         if name is None:
             name = anon_name()
+        constTypes[name] = (cls, ())
         return cls._wrap(z3.Const(name, cls._z3_sort()))
 
     @classmethod
@@ -647,6 +652,52 @@ def wraplist(reflist):
     return [wrap(ref) for ref in reflist]
 
 #
+# Symbolic types of Z3 constants
+#
+
+def symbolic_type(const):
+    """Return a representation of the Symbolic type of a Z3 constant.
+
+    const must satisfy z3.is_const.  This will map its type back to a
+    pseudo-Symbolic type.  Because the Z3 type hierarchy does not
+    match the Symbolic type hierarchy, const may not have a direct
+    mapping to a Symbolic type, so this pseudo-Symbolic type will have
+    one of the following forms:
+
+    * Symbolic subclass - An exact Symbolic type.  This will be a
+      synonym type if possible (this allows additional information to
+      be associated with the Symbolic type that would otherwise be
+      lost inside Z3).
+
+    * (index pseudo-Symbolic type, value pseudo-Symbolic type) - A Z3
+      array from the index to the value type.
+    """
+
+    # XXX The result of this will only give Symbolic types for
+    # primitives.  Should this perhaps represent the whole type
+    # hierarchy?  Like
+    #  ("struct", SStruct | SSynonym, field type) |
+    #  ("map", SMap | SSynonym, index type, value type) |
+    #  ("primitive", type)
+
+    outerType, path = constTypes[str(const)]
+    def rec(outerType, path):
+        origType = outerType
+        while issubclass(outerType, SSynonymBase):
+            outerType = outerType._baseType
+
+        if issubclass(outerType, SStructBase) and len(path):
+            return rec(outerType._fields[path[0]], path[1:])
+        elif issubclass(outerType, SMapBase):
+            return (rec(outerType._indexType, ()),
+                    rec(outerType._valueType, path))
+        elif issubclass(outerType, SymbolicConst) and not len(path):
+            return origType
+        else:
+            raise Exception("Failed to resolve type of %s" % const)
+    return rec(outerType, path)
+
+#
 # AST matching code.  Unused because the simplifier aggressively
 # rewrites things back to its own preferred representation, and
 # it is difficult to rewrite just one child in an AST (no generic
@@ -758,6 +809,9 @@ curgraph = None
 cursched = None
 curschedidx = None
 
+# Map from Z3 constant names to (outer Symbolic type, compound path)
+constTypes = {}
+
 def get_solver():
     """Return the current z3.Solver(), or raise RuntimeError if no
     solver is active."""
@@ -861,6 +915,11 @@ def symbolic_apply(fn, *args):
 
     global curgraph
     curgraph = Graph()
+
+    # XXX Some variables are declared outside the symbolic_apply
+    # environment.  Do we need to keep track of those, too?
+    global constTypes
+    constTypes = {}
 
     rvs = collections.defaultdict(list)
     # Prime the schedule with a root node.  We skip this during

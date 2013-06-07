@@ -407,6 +407,20 @@ def tconstmap(indexType, valueType):
     return type(name, (SConstMapBase, SymbolicConst), {"__z3_sort__" : sort})
 
 #
+# Type synonyms
+#
+
+class SSynonymBase(Symbolic):
+    @classmethod
+    def _wrap_lvalue(cls, getter, setter):
+        return cls._baseType._wrap_lvalue(getter, setter)
+
+def tsynonym(name, baseType):
+    """Return a new type that's equivalent to baseType."""
+    return type(name, (SSynonymBase,),
+                {"_baseType" : baseType, "__z3_sort__" : baseType._z3_sort()})
+
+#
 # Compound objects
 #
 

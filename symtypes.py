@@ -29,9 +29,16 @@ class SListBase(Symbolic):
         self._len += 1
         self[l] = val
 
-def tlist(valueType):
+def tlist(valueType, lenType=SInt):
+    """Return a new list type whose values are valueType.
+
+    lenType, if specified, will be the type used for indexes and
+    length.  It must be an ordered type and support '+' (which
+    effectively means it has to be SInt or a synonym type).
+    """
+
     name = "SList_" + valueType.__name__
-    base = tstruct(_vals = tmap(SInt, valueType), _len = SInt)
+    base = tstruct(_vals = tmap(lenType, valueType), _len = lenType)
     return type(name, (base, SListBase), {})
 
 class SDictBase(Symbolic):

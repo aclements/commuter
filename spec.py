@@ -158,6 +158,12 @@ class IsomorphicMatch(object):
             self.process_decl_assignment(decl, model[decl], model)
 
     def process_decl_assignment(self, decl, val, model):
+        """Process a single assignment in a model.
+
+        decl must be a z3.FuncDeclRef assigned to z3.ExprRef val in
+        the given model.
+        """
+
         if decl.arity() > 0:
             raise Exception('handle nonzero arity')
 
@@ -177,13 +183,39 @@ class IsomorphicMatch(object):
             self.conds.append(elsecond)
             return
 
+        # Calling a FuncDeclRef returns the Z3 function application
+        # expression (which, since we weeded out non-zero arity above,
+        # will be just the constant being bound by the model,
+        # satisfying is_app and is_const).
         dconst = decl()
-        self.process_const_assignment(dconst, val, model)
 
-    def process_const_assignment(self, dconst, val, model):
+        symtype = simsym.symbolic_type(dconst)
+        self.process_const_assignment(dconst, val, symtype, model)
+
+    def process_const_assignment(self, dconst, val, symtype, model):
+        """Process a single constant assignment in model.
+
+        dconst is a projected constant expression, which is either a
+        Z3 constant expression, a projection of a projected constant
+        expression, or a select of a projected constant expression.
+        val is the assignment of dconst in model.  The sort of dconst
+        must agree with the type of val (for primitive sorts, they are
+        equal; for array sorts, val must be a FuncInterp).  symtype is
+        the pseudo-Symbolic type of dconst, as defined by
+        simsym.symbolic_type.
+
+        Effectively, this starts with the assignment (dconst == val)
+        and recursively decomposes compound values on both sides until
+        both dconst and val are primitive sorts.  At this point it
+        calls add_assignment to register the primitive assignment.
+        """
+
         dsort = dconst.sort()
 
         if dsort.kind() == z3.Z3_DATATYPE_SORT:
+            raise Exception("Z3_DATATYPE_SORT in process_const_assignment")
+            # XXX Should be unused now.  If we do still need this, we
+            # need to flow symtype through below.
             nc = None
             for i in range(0, dsort.num_constructors()):
                 if val.decl().eq(dsort.constructor(i)): nc = i
@@ -200,7 +232,8 @@ class IsomorphicMatch(object):
                             z3.Z3_UNINTERPRETED_SORT]:
             if not z3.is_const(val):
                 print 'WARNING: Not a constant:', val
-            self.add_assignment(dconst, val)
+            assert issubclass(symtype, simsym.Symbolic)
+            self.add_assignment(dconst, val, symtype)
             return
 
         if dsort.kind() == z3.Z3_ARRAY_SORT:
@@ -212,16 +245,20 @@ class IsomorphicMatch(object):
 
             flist = func_interp.as_list()
 
+            assert isinstance(symtype, tuple)
+
             ## Handle Var() things; see comment in model_unwrap().
             if len(flist) == 1:
                 var_flist = var_unwrap(flist[0], [], model)
                 if var_flist is not None:
                     flist = var_flist
 
+            ## Handle everything except the "else" value
             for fidx, fval in flist[:-1]:
                 fidxrep = self.uninterp_representative(fidx)
                 if fidxrep is None: continue
-                self.process_const_assignment(dconst[fidxrep], fval, model)
+                self.process_const_assignment(
+                    dconst[fidxrep], fval, symtype[1], model)
 
             ## One problem is what to do with ArrayRef assignments (in the form of
             ## a FuncInterp), because FuncInterp assigns a value for every index,
@@ -243,7 +280,8 @@ class IsomorphicMatch(object):
                     if any([idx.eq(i) for i, _ in flist[:-1]]): continue
                     idxrep = self.uninterp_representative(idx)
                     if idxrep is None: continue
-                    self.process_const_assignment(dconst[idxrep], flist[-1], model)
+                    self.process_const_assignment(
+                        dconst[idxrep], flist[-1], symtype[1], model)
             return
 
         print dsort.kind()
@@ -267,16 +305,14 @@ class IsomorphicMatch(object):
                 return expr2
         return None
 
-    def add_assignment(self, expr, val):
-        sort = val.sort()
-        if sort.kind() == z3.Z3_UNINTERPRETED_SORT:
-            self.add_assignment_uninterp(expr, val, sort)
+    def add_assignment(self, expr, val, symtype):
+        pseudo_sort = isomorphism_types.get(symtype)
+        if pseudo_sort == "ignore":
             return
 
-        for d, sortname in pseudo_sort_decls:
-            if not expr.decl().eq(d): continue
-            if pseudo_sort_ignore[sortname]: return
-            self.add_assignment_uninterp(expr, val, sortname)
+        sort = val.sort()
+        if sort.kind() == z3.Z3_UNINTERPRETED_SORT or pseudo_sort == "equal":
+            self.add_assignment_uninterp(expr, val, sort)
             return
 
         if expr.sort().kind() != z3.Z3_BOOL_SORT:
@@ -376,8 +412,7 @@ z3printer._PP.max_lines = float('inf')
 m = __import__(args.module)
 base = m.model_class
 
-pseudo_sort_decls = getattr(m, 'pseudo_sort_decls', [])
-pseudo_sort_ignore = getattr(m, 'pseudo_sort_ignore', {})
+isomorphism_types = getattr(m, 'isomorphism_types', {})
 
 if args.functions is not None:
     calls = [getattr(base, fname) for fname in args.functions.split(',')]

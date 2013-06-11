@@ -21,30 +21,34 @@ class SPipeId(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('PipeId')
 
 SPid = simsym.SBool
-SData = symtypes.tlist(SDataByte)
+SOffset = simsym.tsynonym("SOffset", simsym.SInt)
+SData = symtypes.tlist(SDataByte, lenType=SOffset)
 SPipe = simsym.tstruct(data = SData,
-                       nread = simsym.SInt)
+                       nread = SOffset)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)
 SFd = simsym.tstruct(ispipe = simsym.SBool,
                      pipeid = SPipeId,
                      pipewriter = simsym.SBool,
                      inum = SInum,
-                     off = simsym.SInt)
-SFdMap = symtypes.tdict(simsym.SInt, SFd)
+                     off = SOffset)
+SFdNum = simsym.tsynonym("SFdNum", simsym.SInt)
+SFdMap = symtypes.tdict(SFdNum, SFd)
 SVMA = simsym.tstruct(anon = simsym.SBool,
                       writable = simsym.SBool,
                       inum = SInum,
-                      off = simsym.SInt,
+                      off = SOffset,
                       anondata = SDataByte)
 SVaMap = symtypes.tdict(SVa, SVMA)
 SProc = symtypes.tstruct(fd_map = SFdMap,
                          va_map = SVaMap)
 SDirMap = symtypes.tdict(SFn, SInum)
+SNLink = simsym.tsynonym("SNLink", simsym.SInt)
+STime = simsym.tsynonym("STime", simsym.SInt)
 SInode = simsym.tstruct(data = SData,
-                        nlink = simsym.SInt,
-                        atime = simsym.SInt,
-                        mtime = simsym.SInt,
-                        ctime = simsym.SInt,
+                        nlink = SNLink,
+                        atime = STime,
+                        mtime = STime,
+                        ctime = STime,
                         ## XXX Directories impl:
                         # isdir = simsym.SBool,
                         # dirmap = SDirMap,
@@ -55,37 +59,28 @@ SIMap = symtypes.tmap(SInum, SInode)
 ## XXX Non-directories impl:
 SPathname = SFn
 
-## Although some things are integers, we treat them as uninterpreted
-## sorts in IsomorphicMatch, by checking what decl the integer is
-## being assigned to.  The first part of the tuple is the decl, and
-## the second is the fake uninterpreted sort name that these values
-## will be treated as.  The sort name only matters for matching up
-## with other sort names in this same list.  This results in an
-## approximation; see also the comment about else clause handling
-## in IsomorphicMatch.
+## For some types, we override the default handling in
+## IsomorphicMatch.  In particular, by default integers are treated as
+## concrete-valued, but we often want to treat them as uninterpreted
+## or ignore them completely.  isomorphism_types maps from Symbolic
+## types to:
+##
+## - "ignore", if the type should be ignored altogether when
+##   enumerating models.
+##
+## - "equal", if the type should be constrained only on equality (just
+##   like an uninterpreted sort).
+##
+## At present, the Symbolic type can only be a primitive type or a
+## synonym for a primitive type, since isomorphism will destructure
+## any compound types before checking this.
 
-pseudo_sort_decls = [
-    (SInode.__z3_sort__.nlink, 'file-nlink'),
-    (SData.__z3_sort__._len, 'file-length'),
-    (SInode.__z3_sort__.atime, 'time'),
-    (SInode.__z3_sort__.mtime, 'time'),
-    (SInode.__z3_sort__.ctime, 'time'),
-    (SVMA.__z3_sort__.off, 'file-length'),
-]
-
-## Ignore some pseudo sort names altogether when enumerating models.
-
-pseudo_sort_ignore = {
-    'file-nlink': True,     ## unused for test generation
-    'file-length': True,    ## too many cases in link*link
-    'time': True,           ## irrelevant for test generation for now
-    'fd-num': False,
+isomorphism_types = {
+    SNLink: "ignore",  # Unused for test generation
+    SOffset: "ignore", # Too many cases in link*link (XXX maybe fixed?)
+    STime: "ignore",   # Irrelevant for test generation for now
+    SFdNum: "equal",
 }
-
-def add_pseudo_sort_decl(decl, name):
-    for d, _ in pseudo_sort_decls:
-        if d.eq(decl): return
-    pseudo_sort_decls.append((decl, name))
 
 class Fs(model.Struct):
     __slots__ = ['i_map',
@@ -115,7 +110,7 @@ class Fs(model.Struct):
     def iused(self, inum):
         dir = SInum.any('dir')
         fn = SFn.any('fn')
-        fd = simsym.SInt.any('fd')
+        fd = SFdNum.any('fd')
         pid = SPid.any('pid')
 
         # If we try to simply index into dirmap, its __getitem__
@@ -152,12 +147,6 @@ class Fs(model.Struct):
         if str(pid).startswith('a.'):
             simsym.assume(pid == False)
 
-    def add_fdvar(self, fdvar):
-        add_pseudo_sort_decl(simsym.unwrap(fdvar).decl(), 'fd-num')
-
-    def add_offvar(self, offvar):
-        add_pseudo_sort_decl(simsym.unwrap(offvar).decl(), 'file-length')
-
     def nameiparent(self, pn):
         ## XXX Non-directories impl:
         return 0, self.root_dir, pn
@@ -173,8 +162,8 @@ class Fs(model.Struct):
                       anyfd=simsym.SBool,
                       pid=SPid,
                       internal_alloc_inum=SInum,
-                      internal_ret_fd=simsym.SInt,
-                      internal_time=simsym.SInt,
+                      internal_ret_fd=SFdNum,
+                      internal_time=STime,
                      )
     def open(self, pn, creat, excl, trunc, anyfd, pid,
              internal_alloc_inum, internal_ret_fd, internal_time):
@@ -221,12 +210,11 @@ class Fs(model.Struct):
             simsym.assume(data_empty._len == 0)
             self.i_map[inum].data = data_empty
 
-        self.add_fdvar(internal_ret_fd)
         simsym.assume(internal_ret_fd >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_ret_fd)))
 
         ## Lowest FD
-        otherfd = simsym.SInt.any('fd')
+        otherfd = SFdNum.any('fd')
         simsym.assume(simsym.symor([anyfd,
             simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
@@ -243,13 +231,13 @@ class Fs(model.Struct):
 
     @model.methodwrap(pid=SPid,
                       internal_pipeid=SPipeId,
-                      internal_fd_r=simsym.SInt,
-                      internal_fd_w=simsym.SInt,
+                      internal_fd_r=SFdNum,
+                      internal_fd_w=SFdNum,
                       )
     def pipe(self, pid, internal_pipeid, internal_fd_r, internal_fd_w):
         self.add_selfpid(pid)
 
-        xfd = simsym.SInt.any('xfd')
+        xfd = SFdNum.any('xfd')
         simsym.assume(simsym.symnot(simsym.symor([
             simsym.exists(xfd,
                 simsym.symand([self.proc0.fd_map.contains(xfd),
@@ -266,7 +254,6 @@ class Fs(model.Struct):
         self.pipes[internal_pipeid] = empty_pipe
 
         ## lowest FD for read end
-        self.add_fdvar(internal_fd_r)
         simsym.assume(internal_fd_r >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_r)))
         simsym.assume(simsym.symnot(simsym.exists(xfd,
@@ -280,7 +267,6 @@ class Fs(model.Struct):
         self.getproc(pid).fd_map[internal_fd_r] = fd_r_data
 
         ## lowest FD for write end
-        self.add_fdvar(internal_fd_w)
         simsym.assume(internal_fd_w >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_w)))
         simsym.assume(simsym.symnot(simsym.exists(xfd,
@@ -296,7 +282,7 @@ class Fs(model.Struct):
         return ('ok', internal_fd_r, internal_fd_w)
 
     @model.methodwrap(src=SPathname, dst=SPathname,
-                      internal_time=simsym.SInt)
+                      internal_time=STime)
     def rename(self, src, dst, internal_time):
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
@@ -316,7 +302,7 @@ class Fs(model.Struct):
             self.i_map[dstinum].ctime = internal_time
         return ('ok',)
 
-    @model.methodwrap(pn=SPathname, internal_time=simsym.SInt)
+    @model.methodwrap(pn=SPathname, internal_time=STime)
     def unlink(self, pn, internal_time):
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
@@ -328,7 +314,7 @@ class Fs(model.Struct):
         self.i_map[inum].ctime = internal_time
         return ('ok',)
 
-    @model.methodwrap(oldpn=SPathname, newpn=SPathname, internal_time=simsym.SInt)
+    @model.methodwrap(oldpn=SPathname, newpn=SPathname, internal_time=STime)
     def link(self, oldpn, newpn, internal_time):
         olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
         newdiri, newdirmap, newlast = self.nameiparent(newpn)
@@ -352,10 +338,9 @@ class Fs(model.Struct):
             self.i_map[inum].atime = time
         return ('data', self.i_map[inum].data[off])
 
-    @model.methodwrap(fd=simsym.SInt, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(fd=SFdNum, pid=SPid, internal_time=STime)
     def read(self, fd, pid, internal_time):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         if self.getproc(pid).fd_map[fd].ispipe:
@@ -376,11 +361,9 @@ class Fs(model.Struct):
             self.getproc(pid).fd_map[fd].off = off + 1
         return r
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(fd=SFdNum, off=SOffset, pid=SPid, internal_time=STime)
     def pread(self, fd, off, pid, internal_time):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
-        self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         if self.getproc(pid).fd_map[fd].ispipe:
@@ -405,10 +388,9 @@ class Fs(model.Struct):
             self.i_map[inum].ctime = time
         return ('ok',)
 
-    @model.methodwrap(fd=simsym.SInt, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(fd=SFdNum, databyte=SDataByte, pid=SPid, internal_time=STime)
     def write(self, fd, databyte, pid, internal_time):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         if self.getproc(pid).fd_map[fd].ispipe:
@@ -424,11 +406,9 @@ class Fs(model.Struct):
         self.getproc(pid).fd_map[fd].off = off + 1
         return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
 
-    @model.methodwrap(fd=simsym.SInt, off=simsym.SInt, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(fd=SFdNum, off=SOffset, databyte=SDataByte, pid=SPid, internal_time=STime)
     def pwrite(self, fd, off, databyte, pid, internal_time):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
-        self.add_offvar(off)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         if self.getproc(pid).fd_map[fd].ispipe:
@@ -450,20 +430,18 @@ class Fs(model.Struct):
             return ('err', errno.ENOENT)
         return self.istat(dirmap[pnlast])
 
-    @model.methodwrap(fd=simsym.SInt, pid=SPid)
+    @model.methodwrap(fd=SFdNum, pid=SPid)
     def fstat(self, fd, pid):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         if self.getproc(pid).fd_map[fd].ispipe:
             return ('ok', 0, 0, 0, 0, 0, 0)
         return self.istat(self.getproc(pid).fd_map[fd].inum)
 
-    @model.methodwrap(fd=simsym.SInt, pid=SPid)
+    @model.methodwrap(fd=SFdNum, pid=SPid)
     def close(self, fd, pid):
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
         if not self.getproc(pid).fd_map.contains(fd):
             return ('err', errno.EBADF)
         del self.getproc(pid).fd_map[fd]
@@ -473,8 +451,8 @@ class Fs(model.Struct):
                       writable=simsym.SBool,
                       fixed=simsym.SBool,
                       va=SVa,
-                      fd=simsym.SInt,
-                      off=simsym.SInt,
+                      fd=SFdNum,
+                      off=SOffset,
                       pid=SPid,
                       internal_freeva=SVa)
     def mmap(self, anon, writable, fixed, va, fd, off, pid, internal_freeva):
@@ -483,8 +461,6 @@ class Fs(model.Struct):
         ## TODO: MAP_SHARED/MAP_PRIVATE for anon (with fork)
         ## TODO: zeroing anon memory
         self.add_selfpid(pid)
-        self.add_fdvar(fd)
-        self.add_offvar(off)
         myproc = self.getproc(pid)
         if not fixed:
             va = internal_freeva
@@ -517,7 +493,7 @@ class Fs(model.Struct):
         myproc.va_map[va].writable = writable
         return ('ok',)
 
-    @model.methodwrap(va=SVa, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(va=SVa, pid=SPid, internal_time=STime)
     def mem_read(self, va, pid, internal_time):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
@@ -529,7 +505,7 @@ class Fs(model.Struct):
         internal_time = None
         return self.iread(myproc.va_map[va].inum, myproc.va_map[va].off, internal_time)
 
-    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid, internal_time=simsym.SInt)
+    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid, internal_time=STime)
     def mem_write(self, va, databyte, pid, internal_time):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)

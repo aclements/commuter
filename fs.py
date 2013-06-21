@@ -524,7 +524,7 @@ class Fs(model.Struct):
 model_class = Fs
 model_functions = [
 #    Fs.open,
-#    Fs.pipe,
+    Fs.pipe,
     Fs.pread,
     Fs.pwrite,
     Fs.read,

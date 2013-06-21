@@ -7,6 +7,7 @@ import sys
 import argparse
 import json
 import time
+import os
 
 def test(base, *calls):
     all_s = []
@@ -502,12 +503,20 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                     })
 
                 ncond += 1
+                if os.isatty(sys.stdout.fileno()):
+                    if ncond > 1:
+                        sys.stdout.write('\x1b[A\x1b[J')
+                    print '  %d testcases (%d/%d paths)' % \
+                        (ncond, pathi+1, len(conds[()]))
+
                 same = IsomorphicMatch(model)
                 notsame = same.notsame_cond()
                 if args.verbose_testgen:
                     print 'Negation', ncond, ':', notsame
                 e = simsym.symand([e, notsame])
-        print '  %d testcases' % ncond
+
+        if not os.isatty(sys.stdout.fileno()):
+            print '  %d testcases (%d paths)' % (ncond, len(conds[()]))
 
 if testfile is not None:
     ## Timestamp keeps track of generated test cases (a poor nonce)

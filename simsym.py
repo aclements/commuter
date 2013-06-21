@@ -909,9 +909,38 @@ def assume(e):
     elif sat != z3.sat:
         raise UncheckableConstraintError(unwrap(e), reason)
 
+class SymbolicApplyResult(object):
+    """The result of a symbolic application.
+
+    Records the value returned by the application (which may itself be
+    a symbolic value), and the path condition as a list of """
+
+    def __init__(self, value, path_condition_list):
+        self.__value = value
+        self.__path_condition_list = path_condition_list
+
+    @property
+    def value(self):
+        """The value returned by the application (which may be Symbolic)."""
+        return self.__value
+
+    @property
+    def path_condition_list(self):
+        """The path condition of this result, as a list of SBools."""
+        return self.__path_condition_list
+
+    @property
+    def path_condition(self):
+        """The path condition as a single SBool conjunction."""
+        return symand(self.__path_condition_list)
+
 def symbolic_apply(fn, *args):
-    """Evaluate fn(*args) under symbolic execution.  Return a map of
-    return values to conditions under which that value is returned."""
+    """Evaluate fn(*args) under symbolic execution.
+
+    This yields a series of SymbolicApplyResult objects; one for each
+    distinct code path.  If a code path leads to an uncheckable
+    constraint, this prints a warning and terminates that path.
+    """
 
     global curgraph
     curgraph = Graph()
@@ -921,13 +950,19 @@ def symbolic_apply(fn, *args):
     global constTypes
     constTypes = {}
 
-    rvs = collections.defaultdict(list)
     # Prime the schedule with a root node.  We skip this during
     # execution, but it means we can always use graph node
     # cursched[-1][1].
     queue_schedule([(None, curgraph.new_node())])
 
     global schedq
+    if len(schedq) != 1:
+        # XXX Given that this is a generator, it would be nice if you
+        # could have more than one symbolic_apply going at once.  We
+        # probably still need global state, but if we bundled it all
+        # into one object, it would be easy to swap in and out.
+        raise Exception("Recursive symbolic_apply?")
+
     while len(schedq) > 0:
         global cursched
         cursched = schedq.pop()
@@ -939,8 +974,8 @@ def symbolic_apply(fn, *args):
         solver = z3.Solver()
         try:
             rv = fn(*args)
-            rvs[rv].append(symand(wraplist(solver.assertions())))
             cursched[-1][1].set_label(rv)
+            yield SymbolicApplyResult(rv, wraplist(solver.assertions()))
         except UnsatisfiablePath:
             cursched[-1][1].set_label("Unsatisfiable path")
             cursched[-1][1].set_color("blue")
@@ -960,7 +995,6 @@ def symbolic_apply(fn, *args):
         finally:
             solver = None
 #    curgraph.show()
-    return rvs
 
 def check(e):
     global solver

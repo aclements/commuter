@@ -350,6 +350,8 @@ parser.add_argument('-c', '--check-conds', action='store_true',
                     help='Check commutativity conditions for sat/unsat')
 parser.add_argument('-p', '--print-conds', action='store_true',
                     help='Print commutativity conditions')
+parser.add_argument('-m', '--model-file',
+                    help='Z3 model output file')
 parser.add_argument('-t', '--test-file',
                     help='JSON output file')
 parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
@@ -365,6 +367,11 @@ parser.add_argument('--verbose-testgen', default=False, action='store_true',
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()
+
+if args.model_file is None:
+    modelfile = None
+else:
+    modelfile = open(args.model_file, 'w')
 
 if args.test_file is None:
     testfile = None
@@ -441,9 +448,18 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
             print_cond('cannot commute, %s can diverge' % ', '.join(diverge),
                        simsym.symand([simsym.symor(condlist), cannot_commute]))
 
-    if testfile is not None:
+    if modelfile is not None or testfile is not None:
+        if modelfile:
+            print >> modelfile, "=== Models for %s ===" % \
+                " ".join(c.__name__ for c in callset)
+            print >> modelfile
+
         ncond = 0
-        for e in conds[()]:
+        for pathi, e in enumerate(conds[()]):
+            if modelfile:
+                print >> modelfile, "== Path %d ==" % pathi
+                print >> modelfile
+
             ## This can potentially reduce the number of test cases
             ## by, e.g., eliminating irrelevant variables from e.
             ## The effect doesn't seem significant: one version of Fs
@@ -458,6 +474,11 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                     print 'Failure reason:', model
                     break
 
+                if modelfile:
+                    print >> modelfile, model.sexpr()
+                    print >> modelfile
+                    modelfile.flush()
+
                 ## What should we do about variables that do not show up
                 ## in the assignment (e.g., because they were eliminated
                 ## due to combining multiple paths)?  One possibility, to
@@ -468,17 +489,19 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
                 ## possibility is to extract "interesting" variables from
                 ## the raw symbolic expression returned by symbolic_apply().
 
-                vars = { model_unwrap(k, model): model_unwrap(model[k], model)
-                         for k in model
-                         if '!' not in model_unwrap(k, model) }
-                if args.verbose_testgen:
-                    print 'New assignment', ncond, ':', vars
-                testcases.append({
-                    'calls': [c.__name__ for c in callset],
-                    'vars':  vars,
-                })
-                ncond += 1
+                if testfile:
+                    vars = { model_unwrap(k, model):
+                             model_unwrap(model[k], model)
+                             for k in model
+                             if '!' not in model_unwrap(k, model) }
+                    if args.verbose_testgen:
+                        print 'New assignment', ncond, ':', vars
+                    testcases.append({
+                        'calls': [c.__name__ for c in callset],
+                        'vars':  vars,
+                    })
 
+                ncond += 1
                 same = IsomorphicMatch(model)
                 notsame = same.notsame_cond()
                 if args.verbose_testgen:

@@ -346,6 +346,120 @@ class IsomorphicMatch(object):
     def notsame_cond(self):
         return simsym.wrap(z3.Not(z3.And(self.conds)))
 
+class TestWriter(object):
+    def __init__(self, model_file=None, test_file=None):
+        if isinstance(model_file, basestring):
+            model_file = open(model_file, 'w')
+        self.model_file, self.test_file = model_file, test_file
+        self.testcases = []
+        self.__progress_shown = False
+
+    def begin_call_set(self, callset):
+        if self.model_file:
+            print >> self.model_file, "=== Models for %s ===" % \
+                " ".join(c.__name__ for c in callset)
+            print >> self.model_file
+
+        self.callset = callset
+        self.npath = self.ncompath = self.nmodel = 0
+
+    def on_result(self, result):
+        self.npath += 1
+
+        # Filter out non-commutative results
+        if result.value != ():
+            self.__progress(False)
+            return
+
+        self.ncompath += 1
+
+        if not self.model_file and not self.test_file:
+            self.__progress(False)
+            return
+
+        if self.model_file:
+            print >> self.model_file, "== Path %d ==" % self.ncompath
+            print >> self.model_file
+
+        e = result.path_condition
+
+        ## This can potentially reduce the number of test cases
+        ## by, e.g., eliminating irrelevant variables from e.
+        ## The effect doesn't seem significant: one version of Fs
+        ## produces 3204 test cases without simplify, and 3182 with.
+        e = simsym.simplify(e)
+
+        while self.nmodel < args.max_testcases:
+            check, model = simsym.check(e)
+            if check == z3.unsat: break
+            if check == z3.unknown:
+                # raise Exception('Cannot enumerate: %s' % str(e))
+                print 'Cannot enumerate, moving on..'
+                print 'Failure reason:', model
+                break
+
+            self.__on_model(model)
+
+            same = IsomorphicMatch(model)
+            notsame = same.notsame_cond()
+            if args.verbose_testgen:
+                print 'Negation', self.nmodel, ':', notsame
+            e = simsym.symand([e, notsame])
+
+    def __on_model(self, model):
+        self.nmodel += 1
+
+        if self.model_file:
+            print >> self.model_file, model.sexpr()
+            print >> self.model_file
+            self.model_file.flush()
+
+        if self.test_file:
+            ## What should we do about variables that do not show up
+            ## in the assignment (e.g., because they were eliminated
+            ## due to combining multiple paths)?  One possibility, to
+            ## generate more test cases, is to pick some default value
+            ## for them (since the exact value does not matter).  Doing
+            ## so will force this loop to iterate over all possible
+            ## assignments, even to these "missing" variables.  Another
+            ## possibility is to extract "interesting" variables from
+            ## the raw symbolic expression returned by symbolic_apply().
+            vars = { model_unwrap(k, model):
+                     model_unwrap(model[k], model)
+                     for k in model
+                     if '!' not in model_unwrap(k, model) }
+            if args.verbose_testgen:
+                print 'New assignment', self.nmodel, ':', vars
+            self.testcases.append({
+                'calls': [c.__name__ for c in self.callset],
+                'vars':  vars,
+            })
+
+        self.__progress(False)
+
+    def __progress(self, end):
+        if os.isatty(sys.stdout.fileno()):
+            if self.__progress_shown:
+                sys.stdout.write('\x1b[A\x1b[J')
+        elif not end:
+            return
+        print '  %d paths (%d commutative), %d testcases' % \
+            (self.npath, self.ncompath, self.nmodel)
+        self.__progress_shown = not end
+
+    def end_call_set(self):
+        self.__progress(True)
+
+    def finish(self):
+        if self.test_file:
+            test_file = self.test_file
+            if isinstance(test_file, basestring):
+                test_file = open(test_file, 'w')
+
+            ## Timestamp keeps track of generated test cases (a poor nonce)
+            x = { '__gen_ts': int(time.time()), base.__name__: self.testcases }
+            test_file.write(json.dumps(x, indent=2))
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--check-conds', action='store_true',
                     help='Check commutativity conditions for sat/unsat')
@@ -369,15 +483,7 @@ parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()
 
-if args.model_file is None:
-    modelfile = None
-else:
-    modelfile = open(args.model_file, 'w')
-
-if args.test_file is None:
-    testfile = None
-else:
-    testfile = open(args.test_file, 'w')
+test_writer = TestWriter(args.model_file, args.test_file)
 
 def print_cond(msg, cond):
     if args.check_conds and simsym.check(cond)[0] == z3.unsat:
@@ -427,14 +533,16 @@ if args.functions is not None:
 else:
     calls = m.model_functions
 
-testcases = []
-
 for callset in itertools.combinations_with_replacement(calls, args.ncomb):
     print ' '.join([c.__name__ for c in callset])
+    test_writer.begin_call_set(callset)
 
     condlists = collections.defaultdict(list)
     for sar in simsym.symbolic_apply(test, base, *callset):
         condlists[sar.value].append(sar.path_condition)
+        test_writer.on_result(sar)
+
+    test_writer.end_call_set()
 
     conds = collections.defaultdict(lambda: [simsym.wrap(z3.BoolVal(False))])
     for result, condlist in condlists.items():
@@ -454,76 +562,4 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
             print_cond('cannot commute, %s can diverge' % ', '.join(diverge),
                        simsym.symand([simsym.symor(condlist), cannot_commute]))
 
-    if modelfile is not None or testfile is not None:
-        if modelfile:
-            print >> modelfile, "=== Models for %s ===" % \
-                " ".join(c.__name__ for c in callset)
-            print >> modelfile
-
-        ncond = 0
-        for pathi, e in enumerate(conds[()]):
-            if modelfile:
-                print >> modelfile, "== Path %d ==" % pathi
-                print >> modelfile
-
-            ## This can potentially reduce the number of test cases
-            ## by, e.g., eliminating irrelevant variables from e.
-            ## The effect doesn't seem significant: one version of Fs
-            ## produces 3204 test cases without simplify, and 3182 with.
-            e = simsym.simplify(e)
-            while ncond < args.max_testcases:
-                check, model = simsym.check(e)
-                if check == z3.unsat: break
-                if check == z3.unknown:
-                    # raise Exception('Cannot enumerate: %s' % str(e))
-                    print 'Cannot enumerate, moving on..'
-                    print 'Failure reason:', model
-                    break
-
-                if modelfile:
-                    print >> modelfile, model.sexpr()
-                    print >> modelfile
-                    modelfile.flush()
-
-                ## What should we do about variables that do not show up
-                ## in the assignment (e.g., because they were eliminated
-                ## due to combining multiple paths)?  One possibility, to
-                ## generate more test cases, is to pick some default value
-                ## for them (since the exact value does not matter).  Doing
-                ## so will force this loop to iterate over all possible
-                ## assignments, even to these "missing" variables.  Another
-                ## possibility is to extract "interesting" variables from
-                ## the raw symbolic expression returned by symbolic_apply().
-
-                if testfile:
-                    vars = { model_unwrap(k, model):
-                             model_unwrap(model[k], model)
-                             for k in model
-                             if '!' not in model_unwrap(k, model) }
-                    if args.verbose_testgen:
-                        print 'New assignment', ncond, ':', vars
-                    testcases.append({
-                        'calls': [c.__name__ for c in callset],
-                        'vars':  vars,
-                    })
-
-                ncond += 1
-                if os.isatty(sys.stdout.fileno()):
-                    if ncond > 1:
-                        sys.stdout.write('\x1b[A\x1b[J')
-                    print '  %d testcases (%d/%d paths)' % \
-                        (ncond, pathi+1, len(conds[()]))
-
-                same = IsomorphicMatch(model)
-                notsame = same.notsame_cond()
-                if args.verbose_testgen:
-                    print 'Negation', ncond, ':', notsame
-                e = simsym.symand([e, notsame])
-
-        if not os.isatty(sys.stdout.fileno()):
-            print '  %d testcases (%d paths)' % (ncond, len(conds[()]))
-
-if testfile is not None:
-    ## Timestamp keeps track of generated test cases (a poor nonce)
-    x = { '__gen_ts': int(time.time()), base.__name__: testcases }
-    testfile.write(json.dumps(x, indent=2))
+test_writer.finish()

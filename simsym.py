@@ -997,12 +997,7 @@ def symbolic_apply(fn, *args):
 #    curgraph.show()
 
 def check(e):
-    global solver
-    clearsolver = False
-    if solver is None:
-        solver = z3.Solver()
-        clearsolver = True
-    solver.push()
+    solver = z3.Solver()
     solver.add(unwrap(e))
     c = solver.check()
     if c == z3.sat:
@@ -1012,9 +1007,6 @@ def check(e):
             m = solver.reason_unknown()
         else:
             m = None
-    solver.pop()
-    if clearsolver:
-        solver = None
     return (c, m)
 
 #

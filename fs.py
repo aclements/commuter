@@ -175,6 +175,10 @@ class Fs(model.Struct):
             if not pndirmap.contains(pnlast):
                 simsym.assume(simsym.symnot(self.iused(internal_alloc_inum)))
 
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].atime)
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].mtime)
+                simsym.assume(internal_time > self.i_map[internal_alloc_inum].ctime)
+
                 ## Allocating dummy variables, then assigning or asserting
                 ## to/about their struct fields, and finally doing whole-struct
                 ## assignment seems to be easier for Z3 than ## poking at struct
@@ -187,9 +191,6 @@ class Fs(model.Struct):
                 self.i_map[internal_alloc_inum] = idata
                 pndirmap[pnlast] = internal_alloc_inum
 
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].atime)
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].mtime)
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].ctime)
                 self.i_map[internal_alloc_inum].atime = internal_time
                 self.i_map[internal_alloc_inum].mtime = internal_time
                 self.i_map[internal_alloc_inum].ctime = internal_time

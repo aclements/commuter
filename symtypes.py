@@ -57,6 +57,10 @@ class SDictBase(Symbolic):
     def contains(self, key):
         return self._valid[key]
 
+    def create(self, key):
+        self._valid[key] = True
+        return self._map[key]
+
 def tdict(keyType, valueType):
     name = "SDict_" + keyType.__name__ + "_" + valueType.__name__
     base = tstruct(_map = tmap(keyType, valueType),

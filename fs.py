@@ -179,21 +179,12 @@ class Fs(model.Struct):
                 simsym.assume(internal_time > self.i_map[internal_alloc_inum].mtime)
                 simsym.assume(internal_time > self.i_map[internal_alloc_inum].ctime)
 
-                ## Allocating dummy variables, then assigning or asserting
-                ## to/about their struct fields, and finally doing whole-struct
-                ## assignment seems to be easier for Z3 than ## poking at struct
-                ## members in existing large structs.
-                data_empty = SData.any(simsym.anon_name('dummy_data'))
-                simsym.assume(data_empty._len == 0)
-                idata = SInode.any(simsym.anon_name('dummy_idata'))
-                idata.data = data_empty
-                idata.nlink = 1
-                self.i_map[internal_alloc_inum] = idata
+                inode = self.i_map[internal_alloc_inum]
+                inode.data._len = 0
+                inode.nlink = 1
+                inode.atime = inode.mtime = inode.ctime = internal_time
                 pndirmap[pnlast] = internal_alloc_inum
 
-                self.i_map[internal_alloc_inum].atime = internal_time
-                self.i_map[internal_alloc_inum].mtime = internal_time
-                self.i_map[internal_alloc_inum].ctime = internal_time
                 created = True
             else:
                 if excl: return ('err', errno.EEXIST)
@@ -207,9 +198,7 @@ class Fs(model.Struct):
                 simsym.assume(internal_time > self.i_map[inum].ctime)
                 self.i_map[inum].mtime = internal_time
                 self.i_map[inum].ctime = internal_time
-            data_empty = SData.any(simsym.anon_name('dummy_data'))
-            simsym.assume(data_empty._len == 0)
-            self.i_map[inum].data = data_empty
+            self.i_map[inum].data._len = 0
 
         simsym.assume(internal_ret_fd >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_ret_fd)))
@@ -222,11 +211,10 @@ class Fs(model.Struct):
                                otherfd < internal_ret_fd,
                                self.getproc(pid).fd_map.contains(otherfd)])))]))
 
-        fd_data = SFd.any(simsym.anon_name('dummy_fd_data'))
+        fd_data = self.getproc(pid).fd_map.create(internal_ret_fd)
         fd_data.inum = inum
         fd_data.off = 0
         fd_data.ispipe = False
-        self.getproc(pid).fd_map[internal_ret_fd] = fd_data
 
         return ('ok', internal_ret_fd)
 
@@ -249,10 +237,9 @@ class Fs(model.Struct):
                                self.proc1.fd_map._map[xfd].ispipe,
                                self.proc1.fd_map._map[xfd].pipeid == internal_pipeid]))])))
 
-        empty_pipe = SPipe.any(simsym.anon_name('dummy_pipe'))
+        empty_pipe = self.pipes[internal_pipeid]
         empty_pipe.nread = 0
-        simsym.assume(empty_pipe.data.len() == 0)
-        self.pipes[internal_pipeid] = empty_pipe
+        empty_pipe.data._len = 0
 
         ## lowest FD for read end
         simsym.assume(internal_fd_r >= 0)
@@ -261,11 +248,10 @@ class Fs(model.Struct):
                 simsym.symand([xfd >= 0,
                                xfd < internal_fd_r,
                                self.getproc(pid).fd_map.contains(xfd)]))))
-        fd_r_data = SFd.any(simsym.anon_name('dummy_fd_data'))
+        fd_r_data = self.getproc(pid).fd_map.create(internal_fd_r)
         fd_r_data.ispipe = True
         fd_r_data.pipeid = internal_pipeid
         fd_r_data.pipewriter = False
-        self.getproc(pid).fd_map[internal_fd_r] = fd_r_data
 
         ## lowest FD for write end
         simsym.assume(internal_fd_w >= 0)
@@ -274,11 +260,10 @@ class Fs(model.Struct):
                 simsym.symand([xfd >= 0,
                                xfd < internal_fd_w,
                                self.getproc(pid).fd_map.contains(xfd)]))))
-        fd_w_data = SFd.any(simsym.anon_name('dummy_fd_data'))
+        fd_w_data = self.getproc(pid).fd_map.create(internal_fd_w)
         fd_w_data.ispipe = True
         fd_w_data.pipeid = internal_pipeid
         fd_w_data.pipewriter = True
-        self.getproc(pid).fd_map[internal_fd_w] = fd_w_data
 
         return ('ok', internal_fd_r, internal_fd_w)
 
@@ -466,17 +451,17 @@ class Fs(model.Struct):
         if not fixed:
             va = internal_freeva
             simsym.assume(simsym.symnot(myproc.va_map.contains(va)))
-        vma = SVMA.any(simsym.anon_name('dummy_vma'))
-        vma.anon = anon
-        vma.writable = writable
         if not anon:
             if not myproc.fd_map.contains(fd):
                 return ('err', errno.EBADF)
             if myproc.fd_map[fd].ispipe:
                 return ('err', errno.EACCES)
+        vma = myproc.va_map.create(va)
+        vma.anon = anon
+        vma.writable = writable
+        if not anon:
             vma.off = off
             vma.inum = myproc.fd_map[fd].inum
-        myproc.va_map[va] = vma
         return ('ok', va)
 
     @model.methodwrap(va=SVa, pid=SPid)

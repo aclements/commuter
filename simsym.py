@@ -92,7 +92,7 @@ class Symbolic(object):
         raise NotImplementedError("_wrap_lvalue is abstract")
 
     @classmethod
-    def any(cls, name=None, model=None):
+    def var(cls, name=None, model=None):
         """Return a symbolic variable of this type.
 
         Initially, the variable's value will be unconstrained.  It may
@@ -103,21 +103,15 @@ class Symbolic(object):
         symbolic value (though the instances themselves will be
         distinct).
 
-        If model is provided, it must be a simsym.Model that can
-        interpret this symbolic value into a concrete Python value.
+        If model is provided, it must be a simsym.Model.  This
+        symbolic variable will be interpreted in this model to get a
+        concrete Python value.
         """
-
-        # XXX This function is somewhat misnamed, especially with the
-        # 'model' argument.  E.g., if you call any twice with the same
-        # name, the second time its value *might* be constrained.
-        # Maybe this should be "var" to mean simply "give me a
-        # symbolic variable of this type?  That is also natural to
-        # extend with a "interpreted in this model" argument.
 
         if name is None:
             name = anon_name()
         elif model is None:
-            var_constructors[name] = cls.any
+            var_constructors[name] = cls.var
         def mkValue(path, sort):
             if isinstance(sort, dict):
                 return {k: mkValue(path + (k,), v)
@@ -150,14 +144,14 @@ class SymbolicConst(Symbolic):
     deeply immutable values such as primitive types."""
 
     @classmethod
-    def any(cls, name=None, model=None):
+    def var(cls, name=None, model=None):
         # Const returns the most specific z3.*Ref type it can based on
-        # the sort.  This is equivalent to Symbolic.any, but jumps
+        # the sort.  This is equivalent to Symbolic.var, but jumps
         # through fewer hoops.
         if name is None:
             name = anon_name()
         elif model is None:
-            var_constructors[name] = cls.any
+            var_constructors[name] = cls.var
         constTypes[name] = (cls, ())
         return cls._wrap(z3.Const(name, cls._z3_sort()), model)
 
@@ -497,7 +491,7 @@ class SMapBase(Symbolic):
 
     @classmethod
     def _assumptions(cls, obj):
-        x = cls._indexType.any()
+        x = cls._indexType.var()
         return symand([obj.init_assumptions(),
                        forall(x, cls._valueType._assumptions(obj[x]))])
 
@@ -552,8 +546,8 @@ class SStructBase(Symbolic):
         supplied to name the symbolic constants for the omitted
         fields."""
 
-        # XXX This decays into any if there are no fields.  Maybe this
-        # should just override any?
+        # XXX This decays into var if there are no fields.  Maybe this
+        # should just override var?
 
         if __name is not None and __model is None:
             # Field values may be mutable Symbolic values, but we want
@@ -571,7 +565,7 @@ class SStructBase(Symbolic):
                 if __name is None:
                     raise ValueError(
                         "Name required for partially symbolic struct")
-                fvals[fname] = unwrap(typ.any(__name + "." + fname, __model))
+                fvals[fname] = unwrap(typ.var(__name + "." + fname, __model))
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
         return cls._new_lvalue(fvals, __model)
@@ -1106,7 +1100,7 @@ class Model(object):
     """A Model interprets symbolic expressions into concrete values.
 
     A Model object is indexed using the variable names that were
-    provided by the user for calls to Symbolic.any and constVal and
+    provided by the user for calls to Symbolic.var and constVal and
     their ilk.  Indexing into the Model will return concrete Python
     values or compound values that support indexing and field
     selection just like during symbolic execution.
@@ -1152,7 +1146,7 @@ class Model(object):
 # Helpers for tracking "internal" variables
 #
 
-internal_vars = {None: SInt.any('__dummy')}
+internal_vars = {None: SInt.var('__dummy')}
 
 def add_internal(v):
     internal_vars[str(v)] = v

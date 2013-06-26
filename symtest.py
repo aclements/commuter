@@ -3,19 +3,19 @@ from symtypes import *
 
 def test():
     # Maps
-    x = tmap(SInt, SBool).any("ib")
+    x = tmap(SInt, SBool).var("ib")
     x[1], x[2] = True, False
     assert x[1] == True
     assert x[2] == False
 
     # Maps of maps
-    x = tmap(SInt, tmap(SInt, SBool)).any("iib")
+    x = tmap(SInt, tmap(SInt, SBool)).var("iib")
     x[0][1], x[1][0] = True, False
     assert x[0][1] == True
     assert x[1][0] == False
 
     # Structs
-    x = tstruct(a=SInt, b=SBool, c=SInt, d=SInt).any("s1")
+    x = tstruct(a=SInt, b=SBool, c=SInt, d=SInt).var("s1")
     x.a, x.b, x.c = 1, True, x.d
     assert x.a == 1
     assert x.b == True
@@ -49,13 +49,13 @@ def test():
 
     # Assignment of structs in maps
     t1 = tstruct(a=SInt, b=SBool)
-    x = tmap(SInt, t1).any()
+    x = tmap(SInt, t1).var()
     x[0] = t1.constVal(a=42, b=True)
     assert x[0].a == 42
     assert x[0].b == True
 
     # Assignment of structs in maps with symbolic index
-    i = SInt.any()
+    i = SInt.var()
     x[i] = t1.constVal(a=43, b=False)
     assert x[i].a == 43
     assert x[i].b == False
@@ -63,7 +63,7 @@ def test():
     # Assignment of a whole struct
     t1 = tstruct(a=SInt, b=SBool)
     t2 = tstruct(sub=t1)
-    x = t2.any()
+    x = t2.var()
     x.sub = t1.constVal(a=42, b=True)
     assert x.sub.a == 42
     assert x.sub.b == True

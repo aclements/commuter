@@ -110,7 +110,7 @@ class SBagBase(Symbolic):
         self._imap[val] = self._imap[val] + 1
 
     def take(self):
-        v = self._valueType.any()
+        v = self._valueType.var()
         add_internal(v)
         assume(self._imap[v] > 0)
         self._imap[v] = self._imap[v] - 1

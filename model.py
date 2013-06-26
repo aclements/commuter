@@ -8,7 +8,7 @@ def methodwrap(**kwargs):
                 name = '%s.%s.%s' % (whichcall, m.__name__, arg)
                 if arg.startswith('internal_'):
                     name += '.%s' % whichseq
-                args[arg] = kwargs[arg].any(name)
+                args[arg] = kwargs[arg].var(name)
                 if arg.startswith('internal_'):
                     simsym.add_internal(args[arg])
             return m(self, **args)

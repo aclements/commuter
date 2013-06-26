@@ -8,7 +8,7 @@ class Counter(model.Struct):
         # XXX This name matters since it connects the initial counter
         # value of different Counter objects.  Will this scale to more
         # complex state?
-        self.counter = simsym.SInt.any('Counter.v')
+        self.counter = simsym.SInt.var('Counter.v')
         simsym.assume(self.counter >= 0)
 
     def sys_inc(self, which):

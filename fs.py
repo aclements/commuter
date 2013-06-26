@@ -91,16 +91,16 @@ class Fs(model.Struct):
                  ## XXX Non-directories impl:
                  'root_dir',
                 ]
-    root_inum = SInum.any('Inum.root')
+    root_inum = SInum.var('Inum.root')
 
     def __init__(self):
-        self.i_map = SIMap.any('Fs.imap')
-        self.proc0 = SProc.any('Fs.proc0')
-        self.proc1 = SProc.any('Fs.proc1')
-        self.pipes = SPipeMap.any('Fs.pipes')
+        self.i_map = SIMap.var('Fs.imap')
+        self.proc0 = SProc.var('Fs.proc0')
+        self.proc1 = SProc.var('Fs.proc1')
+        self.pipes = SPipeMap.var('Fs.pipes')
 
         ## XXX Non-directories impl:
-        self.root_dir = SDirMap.any('Fs.rootdir')
+        self.root_dir = SDirMap.var('Fs.rootdir')
 
     def getproc(self, pid):
         if pid == False:
@@ -108,10 +108,10 @@ class Fs(model.Struct):
         return self.proc1
 
     def iused(self, inum):
-        dir = SInum.any('dir')
-        fn = SFn.any('fn')
-        fd = SFdNum.any('fd')
-        pid = SPid.any('pid')
+        dir = SInum.var('dir')
+        fn = SFn.var('fn')
+        fd = SFdNum.var('fd')
+        pid = SPid.var('pid')
 
         # If we try to simply index into dirmap, its __getitem__
         # won't have access to the supposition that it contains the right
@@ -204,7 +204,7 @@ class Fs(model.Struct):
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_ret_fd)))
 
         ## Lowest FD
-        otherfd = SFdNum.any('fd')
+        otherfd = SFdNum.var('fd')
         simsym.assume(simsym.symor([anyfd,
             simsym.symnot(simsym.exists(otherfd,
                 simsym.symand([otherfd >= 0,
@@ -226,7 +226,7 @@ class Fs(model.Struct):
     def pipe(self, pid, internal_pipeid, internal_fd_r, internal_fd_w):
         self.add_selfpid(pid)
 
-        xfd = SFdNum.any('xfd')
+        xfd = SFdNum.var('xfd')
         simsym.assume(simsym.symnot(simsym.symor([
             simsym.exists(xfd,
                 simsym.symand([self.proc0.fd_map.contains(xfd),

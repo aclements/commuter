@@ -7,12 +7,12 @@ class UPipe(model.Struct):
     SItembag = symtypes.tbag(simsym.SInt)
 
     def __init__(self):
-        self.elems = self.SItembag.any('UPipe.items')
-        self.nitem = simsym.SInt.any('UPipe.nitem')
+        self.elems = self.SItembag.var('UPipe.items')
+        self.nitem = simsym.SInt.var('UPipe.nitem')
         simsym.assume(self.nitem >= 0)
 
     def u_write(self, which):
-        elem = simsym.SInt.any('UPipe.write[%s].data' % which)
+        elem = simsym.SInt.var('UPipe.write[%s].data' % which)
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 

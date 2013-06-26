@@ -58,6 +58,15 @@ class SDictBase(Symbolic):
         return self._valid[key]
 
     def create(self, key):
+        """Return the value at key, creating it if necessary.
+
+        Note that there are no guarantees about the returned value,
+        even if it is freshly created (e.g., if a value at this key
+        was previously deleted, this will revive that deleted value).
+        The caller should be sure to override anything that matters in
+        the returned value.
+        """
+
         self._valid[key] = True
         return self._map[key]
 

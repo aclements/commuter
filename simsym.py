@@ -57,20 +57,23 @@ class Symbolic(object):
         raise NotImplementedError("_z3_value is abstract")
 
     @classmethod
-    def _new_lvalue(cls, init):
+    def _new_lvalue(cls, init, model):
         """Return a new instance of Symbolic with the given initial value,
         which must be a compound Z3 value.  The returned instance's
-        state will not be shared with any existing instances.
+        state will not be shared with any existing instances.  model,
+        if not None, provides the simsym.Model in which to evaluate
+        concrete values.
         """
         val = [init]
         def setter(nval):
             val[0] = nval
-        obj = cls._wrap_lvalue(lambda: val[0], setter)
-        assume(cls._assumptions(obj))
+        obj = cls._wrap_lvalue(lambda: val[0], setter, model)
+        if model is None:
+            assume(cls._assumptions(obj))
         return obj
 
     @classmethod
-    def _wrap_lvalue(cls, getter, setter):
+    def _wrap_lvalue(cls, getter, setter, model):
         """Return a new instance of this class.
 
         Return an instance of this class wrapping the compound Z3
@@ -79,14 +82,42 @@ class Symbolic(object):
         current value.  If this object is mutable, it should use
         getter on demand and it should reflect changes to its value by
         calling setter with its updated compound Z3 value.
+
+        model, if not None, provides the simsym.Model in which to
+        evaluate concrete values.  Immutable, non-compound objects
+        should use this to evaluate their concrete Python value and
+        return this concrete value.  Mutable, compound objects should
+        pass this model down to their components.
         """
         raise NotImplementedError("_wrap_lvalue is abstract")
 
     @classmethod
-    def any(cls, name=None):
-        """Return a symbolic value whose concrete value is unknown."""
+    def any(cls, name=None, model=None):
+        """Return a symbolic variable of this type.
+
+        Initially, the variable's value will be unconstrained.  It may
+        become constrained or even concrete as the program progresses.
+
+        If this method is called multiple times with the same name,
+        the returned instances will represent the same underlying
+        symbolic value (though the instances themselves will be
+        distinct).
+
+        If model is provided, it must be a simsym.Model that can
+        interpret this symbolic value into a concrete Python value.
+        """
+
+        # XXX This function is somewhat misnamed, especially with the
+        # 'model' argument.  E.g., if you call any twice with the same
+        # name, the second time its value *might* be constrained.
+        # Maybe this should be "var" to mean simply "give me a
+        # symbolic variable of this type?  That is also natural to
+        # extend with a "interpreted in this model" argument.
+
         if name is None:
             name = anon_name()
+        elif model is None:
+            var_constructors[name] = cls.any
         def mkValue(path, sort):
             if isinstance(sort, dict):
                 return {k: mkValue(path + (k,), v)
@@ -96,7 +127,7 @@ class Symbolic(object):
             constTypes[strname] = (cls, path)
             # Create the Z3 constant
             return z3.Const(strname, sort)
-        return cls._new_lvalue(mkValue((), cls._z3_sort()))
+        return cls._new_lvalue(mkValue((), cls._z3_sort()), model)
 
     @classmethod
     def _assumptions(cls, obj):
@@ -119,20 +150,22 @@ class SymbolicConst(Symbolic):
     deeply immutable values such as primitive types."""
 
     @classmethod
-    def any(cls, name=None):
+    def any(cls, name=None, model=None):
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.  This is equivalent to Symbolic.any, but jumps
         # through fewer hoops.
         if name is None:
             name = anon_name()
+        elif model is None:
+            var_constructors[name] = cls.any
         constTypes[name] = (cls, ())
-        return cls._wrap(z3.Const(name, cls._z3_sort()))
+        return cls._wrap(z3.Const(name, cls._z3_sort()), model)
 
     @classmethod
-    def _wrap_lvalue(cls, getter, setter):
+    def _wrap_lvalue(cls, getter, setter, model):
         # Fetch the value immediately, rather than acting like an
         # lvalue.
-        return cls._wrap(getter())
+        return cls._wrap(getter(), model)
 
 #
 # Compounds
@@ -214,7 +247,7 @@ class MetaZ3Wrapper(type):
 
         return type.__new__(cls, classname, bases, classdict)
 
-    def _wrap(cls, z3ref):
+    def _wrap(cls, z3ref, model):
         """Construct an instance of 'cls' wrapping the given Z3 ref
         object."""
 
@@ -225,6 +258,10 @@ class MetaZ3Wrapper(type):
             raise TypeError("%s expected %s, got %s" %
                             (cls.__name__, cls.__ref_type__.__name__,
                              strtype(z3ref)))
+        if model:
+            # Interpret this symbolic value into a concrete value
+            # using the model
+            return model._eval(z3ref)
         obj = cls.__new__(cls)
         obj._v = z3ref
         return obj
@@ -394,12 +431,13 @@ class SConstMapBase(SExpr):
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys map to 'value'."""
-        return cls._wrap(z3.K(cls._z3_sort().domain(), unwrap(value)))
+        return cls._wrap(z3.K(cls._z3_sort().domain(), unwrap(value)), None)
 
     def store(self, index, value):
         """Return a new map that is identical for this map except that
         'index' will map to 'value'."""
-        return self._wrap(z3.Store(unwrap(self), unwrap(index), unwrap(value)))
+        return self._wrap(z3.Store(unwrap(self), unwrap(index), unwrap(value)),
+                          None)
 
 def tconstmap(indexType, valueType):
     """Return an immutable map type (a z3 "array") that maps from
@@ -417,8 +455,8 @@ def tconstmap(indexType, valueType):
 
 class SSynonymBase(Symbolic):
     @classmethod
-    def _wrap_lvalue(cls, getter, setter):
-        return cls._baseType._wrap_lvalue(getter, setter)
+    def _wrap_lvalue(cls, getter, setter, model):
+        return cls._baseType._wrap_lvalue(getter, setter, model)
 
 def tsynonym(name, baseType):
     """Return a new type that's equivalent to baseType."""
@@ -441,14 +479,16 @@ class SMapBase(Symbolic):
         # subclasses?
         indexSort = cls._indexType._z3_sort()
         return cls._new_lvalue(
-            compound_map(lambda val: z3.K(indexSort, val), unwrap(value)))
+            compound_map(lambda val: z3.K(indexSort, val), unwrap(value)),
+            None)
 
     @classmethod
-    def _wrap_lvalue(cls, getter, setter):
+    def _wrap_lvalue(cls, getter, setter, model):
         # XXX Make this generic?
         obj = cls.__new__(cls)
         obj._getter = getter
         obj._setter = setter
+        obj._model = model
         return obj
 
     def _z3_value(self):
@@ -473,7 +513,8 @@ class SMapBase(Symbolic):
         return self._valueType._wrap_lvalue(
             lambda: compound_map(
                 lambda z3val: z3.Select(z3val, z3idx), self._getter()),
-            lambda val: self.__setitem__(idx, val))
+            lambda val: self.__setitem__(idx, val),
+            self._model)
 
     def __setitem__(self, idx, val):
         """Change the value at index 'idx'."""
@@ -504,12 +545,23 @@ class SStructBase(Symbolic):
     different symbolic types."""
 
     @classmethod
-    def constVal(cls, __name=None, **fields):
+    def constVal(cls, __name=None, __model=None, **fields):
         """Return a struct instance with specified field values.  Any
         fields omitted from 'fields' will be unspecified.  If any
         fields are omitted, the first positional argument must be
         supplied to name the symbolic constants for the omitted
         fields."""
+
+        # XXX This decays into any if there are no fields.  Maybe this
+        # should just override any?
+
+        if __name is not None and model is None:
+            # Field values may be mutable Symbolic values, but we want
+            # to save their current value, so snapshot them by
+            # unwrapping their values.
+            fieldsSnapshot = {k: unwrap(v) for k,v in fields.items()}
+            var_constructors[__name] \
+                = lambda _, model: cls.constVal(__name, model, **fieldsSnapshot)
 
         fvals = {}
         for fname, typ in cls._fields.iteritems():
@@ -519,17 +571,18 @@ class SStructBase(Symbolic):
                 if __name is None:
                     raise ValueError(
                         "Name required for partially symbolic struct")
-                fvals[fname] = unwrap(typ.any(__name + "." + fname))
+                fvals[fname] = unwrap(typ.any(__name + "." + fname, model))
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
-        return cls._new_lvalue(fvals)
+        return cls._new_lvalue(fvals, model)
 
     @classmethod
-    def _wrap_lvalue(cls, getter, setter):
+    def _wrap_lvalue(cls, getter, setter, model):
         obj = cls.__new__(cls)
         # Don't go through the overridden __setattr__.
         object.__setattr__(obj, "_getter", getter)
         object.__setattr__(obj, "_setter", setter)
+        object.__setattr__(obj, "_model", model)
         return obj
 
     def _z3_value(self):
@@ -547,7 +600,8 @@ class SStructBase(Symbolic):
             raise AttributeError(name)
         return self._fields[name]._wrap_lvalue(
             lambda: self._getter()[name],
-            lambda val: self.__setattr__(name, val))
+            lambda val: self.__setattr__(name, val),
+            self._model)
 
     def __setattr__(self, name, val):
         if name not in self._fields:
@@ -638,13 +692,16 @@ def wrap(ref):
     if not isinstance(ref, z3.ExprRef):
         raise TypeError("Not a bool, int, long, float, or z3.ExprRef")
 
+    # XXX It's probably not correct to always pass None for the model
+    # below.  For example, in SMapBase.__eq__, we should probably pass
+    # in the map's model.
     if isinstance(ref, z3.ArithRef):
         if ref.is_int():
-            return SInt._wrap(ref)
-        return SArith._wrap(ref)
+            return SInt._wrap(ref, None)
+        return SArith._wrap(ref, None)
     if isinstance(ref, z3.BoolRef):
-        return SBool._wrap(ref)
-    return SExpr._wrap(ref)
+        return SBool._wrap(ref, None)
+    return SExpr._wrap(ref, None)
 
 def wraplist(reflist):
     """Convert a list of values to a list of simsym.Symbolic things,
@@ -809,6 +866,12 @@ curgraph = None
 cursched = None
 curschedidx = None
 
+# Map from user-provided Symbolic variable names to Symbolic instance
+# constructors.  Each instance constructor must take two arguments:
+# the user variable name and a simsym.Model object that binds the Z3
+# environment.
+var_constructors = {}
+
 # Map from Z3 constant names to (outer Symbolic type, compound path)
 constTypes = {}
 
@@ -915,9 +978,10 @@ class SymbolicApplyResult(object):
     Records the value returned by the application (which may itself be
     a symbolic value), and the path condition as a list of """
 
-    def __init__(self, value, path_condition_list):
+    def __init__(self, value, path_condition_list, var_constructors):
         self.__value = value
         self.__path_condition_list = path_condition_list
+        self.__var_constructors = var_constructors
 
     @property
     def value(self):
@@ -933,6 +997,24 @@ class SymbolicApplyResult(object):
     def path_condition(self):
         """The path condition as a single SBool conjunction."""
         return symand(self.__path_condition_list)
+
+    def get_model(self, z3_model=None):
+        """Return a Model interpreting the variables declared by this code path.
+
+        The returned Model represents satisfying, concrete assignments
+        consistent with self's path condition for all of the variables
+        created by self's code path.
+
+        By default, this will construct a model from the path
+        condition, but the caller can also provide a specific Z3 model
+        (which must be consistent with the path condition).
+        """
+
+        if z3_model is None:
+            sat, z3_model = check(self.path_condition)
+            assert sat == z3.sat
+
+        return Model(self.__var_constructors, z3_model)
 
 def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.
@@ -963,6 +1045,17 @@ def symbolic_apply(fn, *args):
         # into one object, it would be easy to swap in and out.
         raise Exception("Recursive symbolic_apply?")
 
+    global var_constructors
+    init_var_constructors = var_constructors.copy()
+
+    try:
+        for sar in __symbolic_apply_loop(fn, *args):
+            yield sar
+#        curgraph.show()
+    finally:
+        var_constructors = init_var_constructors
+
+def __symbolic_apply_loop(fn, *args):
     while len(schedq) > 0:
         global cursched
         cursched = schedq.pop()
@@ -975,7 +1068,8 @@ def symbolic_apply(fn, *args):
         try:
             rv = fn(*args)
             cursched[-1][1].set_label(rv)
-            yield SymbolicApplyResult(rv, wraplist(solver.assertions()))
+            yield SymbolicApplyResult(rv, wraplist(solver.assertions()),
+                                      var_constructors.copy())
         except UnsatisfiablePath:
             cursched[-1][1].set_label("Unsatisfiable path")
             cursched[-1][1].set_color("blue")
@@ -994,7 +1088,6 @@ def symbolic_apply(fn, *args):
             raise
         finally:
             solver = None
-#    curgraph.show()
 
 def check(e):
     solver = z3.Solver()
@@ -1008,6 +1101,52 @@ def check(e):
         else:
             m = None
     return (c, m)
+
+class Model(object):
+    """A Model interprets symbolic expressions into concrete values.
+
+    A Model object is indexed using the variable names that were
+    provided by the user for calls to Symbolic.any and constVal and
+    their ilk.  Indexing into the Model will return concrete Python
+    values or compound values that support indexing and field
+    selection just like during symbolic execution.
+    """
+
+    # The main complication here is that the Z3 constant names are
+    # derived from user-provided names, but may not be identical in
+    # the presence of compound types.  Hence, we actually use the same
+    # Symbolic types as the original variables were declared as to get
+    # the exact same expression transformations that we got during
+    # symbolic execution.  The difference is that we pass the model in
+    # to this instance hierarchy and when we reach a base value, we
+    # evaluate the expression used to reach the value in the model to
+    # get a concrete value.
+
+    def __init__(self, var_constructors, z3_model):
+        self.__var_constructors = var_constructors
+        self.__z3_model = z3_model
+
+    def __getitem__(self, name):
+        return self.__var_constructors[name](name, self)
+
+    def _eval(self, expr):
+        """Evaluate a Z3 expression to a concrete Python value."""
+
+        # model_completion asks Z3 to make up concrete values if they
+        # are not interpreted in the model.
+        val = self.__z3_model.evaluate(expr, model_completion=True)
+        if isinstance(val, z3.IntNumRef):
+            return val.as_long()
+        if z3.is_true(val):
+            return True
+        if z3.is_false(val):
+            return False
+        if val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
+            return val
+        # Either expr is not a concrete value, or we don't know how to
+        # extract its concrete value (it could be, e.g., an enum
+        # value)
+        raise Exception("Expression %s is not a concrete value" % expr)
 
 #
 # Helpers for tracking "internal" variables

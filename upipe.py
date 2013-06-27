@@ -2,14 +2,13 @@ import simsym
 import symtypes
 import model
 
-class UPipe(model.Struct):
-    __slots__ = ['elems', 'nitem']
-    SItembag = symtypes.tbag(simsym.SInt)
+SItembag = symtypes.tbag(simsym.SInt)
 
-    def __init__(self):
-        self.elems = self.SItembag.var('UPipe.items')
-        self.nitem = simsym.SInt.var('UPipe.nitem')
-        simsym.assume(self.nitem >= 0)
+class UPipe(simsym.tstruct(elems=SItembag, nitem=simsym.SInt)):
+    @classmethod
+    def _assumptions(cls, obj):
+        return simsym.symand([super(UPipe, cls)._assumptions(obj),
+                              obj.nitem >= 0])
 
     @model.methodwrap(elem=simsym.SInt)
     def u_write(self, elem):

@@ -14,7 +14,7 @@ def test(base, *calls):
     all_r = []
 
     for callseq in itertools.permutations(range(0, len(calls))):
-        s = base()
+        s = base.var(base.__name__)
         r = {}
         seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:

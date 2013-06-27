@@ -1,15 +1,13 @@
 import simsym
 import model
 
-class Counter(model.Struct):
+class Counter(simsym.tstruct(counter=simsym.SInt)):
     __slots__ = ["counter"]
 
-    def __init__(self):
-        # XXX This name matters since it connects the initial counter
-        # value of different Counter objects.  Will this scale to more
-        # complex state?
-        self.counter = simsym.SInt.var('Counter.v')
-        simsym.assume(self.counter >= 0)
+    @classmethod
+    def _assumptions(cls, obj):
+        return simsym.symand([super(Counter, cls)._assumptions(obj),
+                              obj.counter >= 0])
 
     @model.methodwrap()
     def sys_inc(self):

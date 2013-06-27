@@ -82,25 +82,10 @@ isomorphism_types = {
     SFdNum: "equal",
 }
 
-class Fs(model.Struct):
-    __slots__ = ['i_map',
-                 'proc0',
-                 'proc1',
-                 'pipes',
-
-                 ## XXX Non-directories impl:
-                 'root_dir',
-                ]
-    root_inum = SInum.var('Inum.root')
-
-    def __init__(self):
-        self.i_map = SIMap.var('Fs.imap')
-        self.proc0 = SProc.var('Fs.proc0')
-        self.proc1 = SProc.var('Fs.proc1')
-        self.pipes = SPipeMap.var('Fs.pipes')
-
+class Fs(simsym.tstruct(
+        i_map=SIMap, proc0=SProc, proc1=SProc, pipes=SPipeMap,
         ## XXX Non-directories impl:
-        self.root_dir = SDirMap.var('Fs.rootdir')
+        root_dir=SDirMap)):
 
     def getproc(self, pid):
         if pid == False:

@@ -11,14 +11,17 @@ class Counter(model.Struct):
         self.counter = simsym.SInt.var('Counter.v')
         simsym.assume(self.counter >= 0)
 
-    def sys_inc(self, which):
+    @model.methodwrap()
+    def sys_inc(self):
         self.counter = self.counter + 1
 
-    def sys_dec(self, which):
+    @model.methodwrap()
+    def sys_dec(self):
         simsym.assume(self.counter > 0)
         self.counter = self.counter - 1
 
-    def sys_iszero(self, which):
+    @model.methodwrap()
+    def sys_iszero(self):
         return self.counter == 0
 
 model_class = Counter

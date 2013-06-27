@@ -555,7 +555,7 @@ class SStructBase(Symbolic):
         # XXX This decays into any if there are no fields.  Maybe this
         # should just override any?
 
-        if __name is not None and model is None:
+        if __name is not None and __model is None:
             # Field values may be mutable Symbolic values, but we want
             # to save their current value, so snapshot them by
             # unwrapping their values.
@@ -571,10 +571,10 @@ class SStructBase(Symbolic):
                 if __name is None:
                     raise ValueError(
                         "Name required for partially symbolic struct")
-                fvals[fname] = unwrap(typ.any(__name + "." + fname, model))
+                fvals[fname] = unwrap(typ.any(__name + "." + fname, __model))
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
-        return cls._new_lvalue(fvals, model)
+        return cls._new_lvalue(fvals, __model)
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter, model):

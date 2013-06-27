@@ -11,12 +11,13 @@ class UPipe(model.Struct):
         self.nitem = simsym.SInt.var('UPipe.nitem')
         simsym.assume(self.nitem >= 0)
 
-    def u_write(self, which):
-        elem = simsym.SInt.var('UPipe.write[%s].data' % which)
+    @model.methodwrap(elem=simsym.SInt)
+    def u_write(self, elem):
         self.elems.add(elem)
         self.nitem = self.nitem + 1
 
-    def u_read(self, which):
+    @model.methodwrap()
+    def u_read(self):
         if self.nitem == 0:
             return None
         else:

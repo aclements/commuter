@@ -1151,7 +1151,8 @@ class Model(object):
 internal_vars = {None: SInt.var('__dummy')}
 
 def add_internal(v):
-    internal_vars[str(v)] = v
+    for sub in flatten_compound(v._z3_value()):
+        internal_vars[str(sub)] = sub
 
 def internals():
     return [v for _, v in internal_vars.iteritems()]

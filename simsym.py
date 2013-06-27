@@ -128,6 +128,10 @@ class Symbolic(object):
         """Return the assumptions that should apply to a fresh created
         lvalue of 'obj'."""
         # XXX Do we still need this?
+        # XXX This seems horribly roundabout.  Can this just be an
+        # instance method that just assumes stuff it cares about and
+        # does nothing if it doesn't need to do anything, rather than
+        # building up some huge symbolic and that's mostly Trues?
         return obj.init_assumptions()
 
     def init_assumptions(self):

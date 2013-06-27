@@ -33,30 +33,30 @@ def test():
     assert x[0][0] == 42
 
     # Constant structs
-    x = tstruct(a=SInt, b=SBool).constVal("s2", a=42)
+    x = tstruct(a=SInt, b=SBool).var("s2", a=42)
     assert x.a == 42
 
     # Maps of constant structs
     t1 = tstruct(a=SInt, b=SBool)
-    x = tmap(SInt, t1).constVal(t1.constVal("s3", a=42))
+    x = tmap(SInt, t1).constVal(t1.var("s3", a=42))
     assert x[0].a == 42
     assert x[0].b == x[1].b
 
     # Structs of constant maps
     t1 = tmap(SInt, SInt)
-    x = tstruct(a=t1).constVal(a=t1.constVal(42))
+    x = tstruct(a=t1).var(a=t1.constVal(42))
     assert x.a[0] == 42
 
     # Assignment of structs in maps
     t1 = tstruct(a=SInt, b=SBool)
     x = tmap(SInt, t1).var()
-    x[0] = t1.constVal(a=42, b=True)
+    x[0] = t1.var(a=42, b=True)
     assert x[0].a == 42
     assert x[0].b == True
 
     # Assignment of structs in maps with symbolic index
     i = SInt.var()
-    x[i] = t1.constVal(a=43, b=False)
+    x[i] = t1.var(a=43, b=False)
     assert x[i].a == 43
     assert x[i].b == False
 
@@ -64,7 +64,7 @@ def test():
     t1 = tstruct(a=SInt, b=SBool)
     t2 = tstruct(sub=t1)
     x = t2.var()
-    x.sub = t1.constVal(a=42, b=True)
+    x.sub = t1.var(a=42, b=True)
     assert x.sub.a == 42
     assert x.sub.b == True
 

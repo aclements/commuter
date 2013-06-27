@@ -79,11 +79,11 @@ def tdict(keyType, valueType):
 class SSetBase(Symbolic):
     @classmethod
     def empty(cls):
-        return cls.constVal(_bmap = cls._mapType.constVal(False))
+        return cls.var(_bmap = cls._mapType.constVal(False))
 
     @classmethod
     def all(cls):
-        return cls.constVal(_bmap = cls._mapType.constVal(True))
+        return cls.var(_bmap = cls._mapType.constVal(True))
 
     def add(self, val):
         self._bmap = self._bmap.store(val, True)

@@ -469,8 +469,6 @@ class SMapBase(Symbolic):
     @classmethod
     def constVal(cls, value):
         """Return a map where all keys initially map to 'value'."""
-        # XXX Should this simply be the role of __init__ in Symbolic
-        # subclasses?
         indexSort = cls._indexType._z3_sort()
         return cls._new_lvalue(
             compound_map(lambda val: z3.K(indexSort, val), unwrap(value)),
@@ -539,15 +537,15 @@ class SStructBase(Symbolic):
     different symbolic types."""
 
     @classmethod
-    def constVal(cls, __name=None, __model=None, **fields):
-        """Return a struct instance with specified field values.  Any
-        fields omitted from 'fields' will be unspecified.  If any
+    def var(cls, __name=None, __model=None, **fields):
+        """Return a struct instance with specified field values.
+
+        Any fields omitted from 'fields' will be unspecified.  If any
         fields are omitted, the first positional argument must be
         supplied to name the symbolic constants for the omitted
-        fields."""
-
-        # XXX This decays into var if there are no fields.  Maybe this
-        # should just override var?
+        fields.  If no field values are provided, this is equivalent
+        to Symbolic.var.
+        """
 
         if __name is not None and __model is None:
             # Field values may be mutable Symbolic values, but we want
@@ -555,7 +553,7 @@ class SStructBase(Symbolic):
             # unwrapping their values.
             fieldsSnapshot = {k: unwrap(v) for k,v in fields.items()}
             var_constructors[__name] \
-                = lambda _, model: cls.constVal(__name, model, **fieldsSnapshot)
+                = lambda _, model: cls.var(__name, model, **fieldsSnapshot)
 
         fvals = {}
         for fname, typ in cls._fields.iteritems():

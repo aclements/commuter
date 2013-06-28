@@ -4,6 +4,7 @@ import symtypes
 import errno
 import model
 import signal
+import fs_testgen
 
 class SFn(simsym.SExpr, simsym.SymbolicConst):
     __z3_sort__ = z3.DeclareSort('Fn')
@@ -512,3 +513,4 @@ model_functions = [
     Fs.mem_read,
     Fs.mem_write,
 ]
+model_testgen = fs_testgen.FsTestGenerator

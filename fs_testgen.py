@@ -1,10 +1,5 @@
-import json
-import sys
-import os
-import struct
-import errno
-import itertools
-import collections
+import testgen
+import z3
 
 class SetAllocator(object):
   def __init__(self, values):
@@ -19,6 +14,46 @@ class SetAllocator(object):
   def assigned(self):
     return self.map.keys()
 
+class UninterpretedMap(object):
+  """A dynamic map from uninterpreted constants to concrete values."""
+
+  def __init__(self, iterable):
+    """Concrete values will be drawn from iterable."""
+    self.__gen = iter(iterable)
+    self.__assigned = []
+
+  def __getitem__(self, const):
+    """Return a concrete value for const, drawn from self's iterable.
+
+    If const is structurally equivalent to a previously seen constant,
+    the same value as previously returned will be returned again.
+    Otherwise, a new value for this constant will be draw from self's
+    iterable.
+    """
+    if not z3.is_const(const):
+      raise TypeError("%r is not a Z3 constant" % const)
+    for kconst, interpreted in self.__assigned:
+      if const.eq(kconst):
+        return interpreted
+    try:
+      interpreted = self.__gen.next()
+    except StopIteration:
+      raise ValueError("Ran out of interpretations for %r" % const)
+    self.__assigned.append((const, interpreted))
+    return interpreted
+
+  def keys(self):
+    """Return an iterator over known uninterpreted constants."""
+    return (k for k, _ in self.__assigned)
+  __iter__ = keys
+
+  def values(self):
+    """Return an iterator over used concrete values."""
+    return (v for _, v in self.__assigned)
+
+  def items(self):
+    return iter(self.__assigned)
+
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
 fd_begin = 5
@@ -30,71 +65,57 @@ va_base = 0x12345600
 va_len = 4
 all_vas = range(va_base, va_base + va_len)
 
-def array_lookup_raw(array, idx):
-  for k, v in array[:-1]:
-    if idx == k: return v
-  return array[-1]
-
 class FsState(object):
-  def __init__(self, vars):
-    self.vars = vars
-    self.filenames = SetAllocator(all_filenames)
-    self.inodefiles = SetAllocator(['__i%d' % x for x in range(0, 6)])
+  def __init__(self, fs):
+    self.fs = fs
+    # Map from uninterpreted path names to concrete file names
+    self.filenames = UninterpretedMap(all_filenames)
+    # Map from uninterpreted inodes to inode file names
+    self.inodefiles = UninterpretedMap(['__i%d' % x for x in range(0, 6)])
+    # Map from uninterpreted data bytes to concrete byte values
+    self.databytes = UninterpretedMap(xrange(256))
     self.fds = { False: SetAllocator(all_fds),
                  True:  SetAllocator(all_fds) }
-    self.vas = { False: SetAllocator(all_vas),
-                 True:  SetAllocator(all_vas) }
-
-  def array_lookup(self, arraynamechain, idx, defval):
-    array = self.vars
-    for name in arraynamechain:
-      if name not in array: return defval
-      array = array[name]
-    return array_lookup_raw(array, idx)
-
-  def get_fn(self, v):
-    return self.filenames.get(v)
-
-  def get_ifn(self, v):
-    return self.inodefiles.get(v)
+    self.vas = { False: UninterpretedMap(all_vas),
+                 True:  UninterpretedMap(all_vas) }
 
   def get_fd(self, pid, v):
     return self.fds[pid].get(v)
 
   def get_va(self, pid, v):
-    return self.vas[pid].get(v) * 4096
+    return self.vas[pid][v] * 4096
 
-  def build_proc(self, pid, procname):
+  def build_proc(self, pid):
     fdmap = {}
-    for fd_idx in self.fds[pid].assigned():
-      if not self.array_lookup((procname, 'fd_map', '_valid'), fd_idx, False):
+    proc = self.fs.proc1 if pid else self.fs.proc0
+    for symfd in self.fds[pid].assigned():
+      if not proc.fd_map.contains(symfd):
         continue
-      fd_state = self.array_lookup((procname, 'fd_map', '_map'), fd_idx, 0)
-      fdmap[self.get_fd(pid, fd_idx)] = { 'ino': self.get_ifn(fd_state['inum']),
-                                          'off': fd_state['off'] }
+      fd_state = proc.fd_map[symfd]
+      fdmap[self.get_fd(pid, symfd)] = { 'ino': self.inodefiles[fd_state.inum],
+                                         'off': fd_state.off }
     vamap = {}
-    for va_idx in self.vas[pid].assigned():
-      if not self.array_lookup((procname, 'va_map', '_valid'), va_idx, False):
+    for symva, va in self.vas[pid].items():
+      if not proc.va_map.contains(symva):
         continue
-      va_state = self.array_lookup((procname, 'va_map', '_map'), va_idx, 0)
-      vamap[self.get_va(pid, va_idx)] = { 'ino': self.get_ifn(va_state['inum']),
-                                          'off': va_state['off'],
-                                          'anon': va_state['anon'],
-                                          'anondata': va_state['anondata'],
-                                          'writable': va_state['writable'] }
+      va_state = proc.va_map[symva]
+      vamap[va] = { 'ino': self.inodefiles[va_state.inum],
+                    'off': va_state.off,
+                    'anon': va_state.anon,
+                    'anondata': va_state.anondata,
+                    'writable': va_state.writable }
     return (fdmap, vamap)
 
   def setup_inodes(self):
     ccode = ''
     ccode += '\n  int fd __attribute__((unused));'
     ccode += '\n  char c __attribute__((unused));'
-    for ino_idx in self.inodefiles.assigned():
-      ifn = self.get_ifn(ino_idx)
+    for symino, ifn in self.inodefiles.items():
       ccode += '\n  fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn
 
-      inode = self.array_lookup(('Fs.imap',), ino_idx, None)
+      inode = self.fs.i_map[symino]
       if inode is not None:
-        len = inode['data']['_len']
+        len = inode.data.len()
         if len < 0:
           ## XXX hack -- maybe fix spec.py?
           len = 0
@@ -107,7 +128,7 @@ class FsState(object):
         ## to writes to different bytes, which is less interesting).
 
         for i in range(0, len):
-          ccode += '\n  c = %d;' % array_lookup_raw(inode['data']['_vals'], i)
+          ccode += '\n  c = %d;' % self.databytes[inode.data[i]]
           ccode += '\n  write(fd, &c, 1);'
 
       ccode += '\n  close(fd);'
@@ -121,8 +142,8 @@ class FsState(object):
 
   def setup_inodes_finalize(self):
     ccode = '' 
-    for ino_idx in self.inodefiles.assigned():
-      ccode += '\n  unlink("%s");' % self.get_ifn(ino_idx)
+    for inodefile in self.inodefiles.values():
+      ccode += '\n  unlink("%s");' % inodefile
     return ccode
 
   def setup_proc(self, fdmap, vamap):
@@ -142,7 +163,7 @@ class FsState(object):
         prot += ' | PROT_WRITE'
       if vamap[va]['anon']:
         ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);'
-        ccode += '\n  *va = %d;' % vamap[va]['anondata']
+        ccode += '\n  *va = %d;' % self.databytes[vamap[va]['anondata']]
       else:
         ccode += '\n  fd = open("%s", O_RDWR);' % vamap[va]['ino']
         ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % \
@@ -153,14 +174,14 @@ class FsState(object):
 
   def build_dir(self):
     fn_to_ino = {}
-    for fn_idx in self.filenames.assigned():
-      if not self.array_lookup(('Fs.rootdir', '_valid'), fn_idx, False):
+    for symfn, fn in self.filenames.items():
+      if not self.fs.root_dir.contains(symfn):
         continue
-      ino_idx = self.array_lookup(('Fs.rootdir', '_map'), fn_idx, 0)
-      fn_to_ino[self.get_fn(fn_idx)] = self.get_ifn(ino_idx)
+      symino = self.fs.root_dir[symfn]
+      fn_to_ino[fn] = self.inodefiles[symino]
 
-    (fdmap0, vamap0) = self.build_proc(False, 'Fs.proc0')
-    (fdmap1, vamap1) = self.build_proc(True,  'Fs.proc1')
+    (fdmap0, vamap0) = self.build_proc(False)
+    (fdmap1, vamap1) = self.build_proc(True)
 
     return {'common': self.setup_inodes() + self.setup_filenames(fn_to_ino),
             'proc0': self.setup_proc(fdmap0, vamap0),
@@ -168,140 +189,117 @@ class FsState(object):
             'final': self.setup_inodes_finalize(),
            }
 
-  def gen_code(self, m, which):
-    pid = self.vars.get('%s.%s.pid' % (which, m), False)
-    f = getattr(self, m)
-    return {'pid': pid,
-            'code': f(which, pid),
-           }
+  def gen_code(self, callname, args):
+    f = getattr(self, callname)
+    return f(args)
 
-  def open(self, which, pid):
-    fn_idx = self.vars['%s.open.pn' % which]
+  def open(self, args):
     flags = ['O_RDWR']
-    if self.vars.get('%s.open.excl' % which, False):
+    if args.excl:
       flags.append('O_EXCL')
-    if self.vars.get('%s.open.creat' % which, False):
+    if args.creat:
       flags.append('O_CREAT')
-    if self.vars.get('%s.open.trunc' % which, False):
+    if args.trunc:
       flags.append('O_TRUNC')
-    if self.vars.get('%s.open.anyfd' % which, False):
+    if args.anyfd:
       flags.append('O_ANYFD')
     ccode = ''
-    ccode += '\n  int r = open("%s", %s, 0666);' % (self.get_fn(fn_idx),
-                                                    ' | '.join(flags))
+    ccode += '\n  int r = open("%s", %s, 0666);' % \
+             (self.filenames[args.pn], ' | '.join(flags))
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  def pread(self, which, pid):
-    fd_idx = self.vars['%s.pread.fd' % which]
-    off = self.vars.get('%s.pread.off' % which, 0)
+  def pread(self, args):
     ccode = ''
     ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % (self.get_fd(pid, fd_idx), off)
+    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % \
+             (self.get_fd(args.pid, args.fd), args.off)
     ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
 
-  def pwrite(self, which, pid):
-    fd_idx = self.vars['%s.pwrite.fd' % which]
-    off = self.vars.get('%s.pwrite.off' % which, 0)
-    val = self.vars.get('%s.pwrite.databyte' % which, 0)
+  def pwrite(self, args):
     ccode = ''
-    ccode += '\n  char c = %d;' % val
-    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % (self.get_fd(pid, fd_idx), off)
+    ccode += '\n  char c = %d;' % self.databytes[args.databyte]
+    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % \
+             (self.get_fd(args.pid, args.fd), args.off)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
 
-  def read(self, which, pid):
-    fd_idx = self.vars['%s.read.fd' % which]
+  def read(self, args):
     ccode = ''
     ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % \
+             self.get_fd(args.pid, args.fd)
     ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
 
-  def write(self, which, pid):
-    fd_idx = self.vars['%s.write.fd' % which]
-    val = self.vars.get('%s.write.databyte' % which, 0)
+  def write(self, args):
     ccode = ''
-    ccode += '\n  char c = %d;' % val
-    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  char c = %d;' % self.databytes[args.databyte]
+    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % \
+             self.get_fd(args.pid, args.fd)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
 
-  def unlink(self, which, pid):
-    fn_idx = self.vars['%s.unlink.pn' % which]
+  def unlink(self, args):
     ccode = ''
-    ccode += '\n  int r = unlink("%s");' % self.get_fn(fn_idx)
+    ccode += '\n  int r = unlink("%s");' % self.filenames[args.pn]
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  def link(self, which, pid):
-    oldfn_idx = self.vars.get('%s.link.oldpn' % which, 0)
-    newfn_idx = self.vars.get('%s.link.newpn' % which, 0)
+  def link(self, args):
     ccode = ''
-    ccode += '\n  int r = link("%s", "%s");' % (self.get_fn(oldfn_idx),
-                                                self.get_fn(newfn_idx))
+    ccode += '\n  int r = link("%s", "%s");' % (self.filenames[args.oldpn],
+                                                self.filenames[args.newpn])
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  def rename(self, which, pid):
-    srcfn_idx = self.vars.get('%s.rename.src' % which, 0)
-    dstfn_idx = self.vars.get('%s.rename.dst' % which, 0)
+  def rename(self, args):
     ccode = ''
-    ccode += '\n  int r = rename("%s", "%s");' % (self.get_fn(srcfn_idx),
-                                                  self.get_fn(dstfn_idx))
+    ccode += '\n  int r = rename("%s", "%s");' % (self.filenames[args.src],
+                                                  self.filenames[args.dst])
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  def stat(self, which, pid):
-    fn_idx = self.vars['%s.stat.pn' % which]
+  def stat(self, args):
     ccode = ''
     ccode += '\n  struct stat st;'
-    ccode += '\n  int r = stat("%s", &st);' % self.get_fn(fn_idx)
+    ccode += '\n  int r = stat("%s", &st);' % self.filenames[args.pn]
     ccode += '\n  if (r < 0) return xerrno(r);'
     ccode += '\n  /* Hack, to test for approximate equality */'
     ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
     return ccode
 
-  def fstat(self, which, pid):
-    fd_idx = self.vars['%s.fstat.fd' % which]
+  def fstat(self, args):
     ccode = ''
     ccode += '\n  struct stat st;'
-    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(args.pid, args.fd)
     ccode += '\n  if (r < 0) return xerrno(r);'
     ccode += '\n  /* Hack, to test for approximate equality */'
     ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
     return ccode
 
-  def close(self, which, pid):
-    fd_idx = self.vars['%s.close.fd' % which]
+  def close(self, args):
     ccode = ''
-    ccode += '\n  int r = close(%d);' % self.get_fd(pid, fd_idx)
+    ccode += '\n  int r = close(%d);' % self.get_fd(args.pid, args.fd)
     ccode += '\n  return xerrno(r);'
     return ccode
 
-  def mmap(self, which, pid):
-    va_idx = self.vars.get('%s.mmap.va' % which, 0)
-    writable = self.vars.get('%s.mmap.writable' % which, True)
-    fixed = self.vars.get('%s.mmap.fixed' % which, True)
-    anon = self.vars.get('%s.mmap.anon' % which, True)
-    fd_idx = self.vars.get('%s.mmap.fd' % which, 0)
-    off = self.vars.get('%s.mmap.off' % which, 0)
-
+  def mmap(self, args):
     prot = 'PROT_READ'
-    if writable: prot += ' | PROT_WRITE'
+    if args.writable: prot += ' | PROT_WRITE'
 
-    if anon:
+    if args.anon:
       flags = 'MAP_PRIVATE | MAP_ANONYMOUS'
     else:
       flags = 'MAP_SHARED'
 
-    va = self.get_va(pid, va_idx)
-    if fixed:
+    va = self.get_va(args.pid, args.va)
+    if args.fixed:
       flags += ' | MAP_FIXED'
     else:
       va = 0
@@ -309,83 +307,50 @@ class FsState(object):
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % va
     ccode += '\n  return (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
-             (prot, flags, self.get_fd(pid, fd_idx), off)
+             (prot, flags, self.get_fd(args.pid, args.fd), args.off)
     return ccode
 
-  def munmap(self, which, pid):
-    va_idx = self.vars.get('%s.munmap.va' % which, 0)
+  def munmap(self, args):
     ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
     ccode += '\n  return munmap(va, 4096);'
     return ccode
 
-  def mprotect(self, which, pid):
-    va_idx = self.vars['%s.mprotect.va' % which]
-    writable = self.vars.get('%s.mprotect.writable' % which, False)
+  def mprotect(self, args):
     prot = 'PROT_READ'
-    if writable:
+    if args.writable:
       prot += ' | PROT_WRITE'
     ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
     ccode += '\n  return mprotect(va, 4096, %s);' % prot
     return ccode
 
-  def mem_read(self, which, pid):
-    va_idx = self.vars['%s.mem_read.va' % which]
+  def mem_read(self, args):
     ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
     ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
     ccode += '\n    return -1;'
     ccode += '\n  pf_active = 1;'
     ccode += '\n  return *p;'
     return ccode
 
-  def mem_write(self, which, pid):
-    va_idx = self.vars['%s.mem_write.va' % which]
-    val = self.vars.get('%s.mem_write.databyte' % which, 0)
+  def mem_write(self, args):
     ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(pid, va_idx)
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
     ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
     ccode += '\n    return -1;'
     ccode += '\n  pf_active = 1;'
-    ccode += '\n  *p = %d;' % val
+    ccode += '\n  *p = %d;' % self.databytes[args.databyte]
     ccode += '\n  return 0;'
     return ccode
 
-def cleanup():
-  ccode = ''
-  for fn in all_filenames:
-    ccode = ccode + '\n  unlink("%s");' % fn
-  return ccode
+class FsTestGenerator(testgen.TestGenerator):
+  def __init__(self, test_file_name):
+    super(FsTestGenerator, self).__init__(test_file_name)
+    self.test_file = open(test_file_name, 'w')
+    self.fstests = []
 
-def pretty_print_vars(d):
-  r = ''
-  for k in sorted(d):
-    r = r + '%s: %s\n' % (k, d[k])
-  return r
-
-def generate_fs(d):
-  print 'Number of test cases:', len(d['Fs'])
-  for tidx, t in enumerate(d['Fs']):
-    calls = t['calls']
-    vars = t['vars']
-
-    fs = FsState(vars)
-    for callidx, call in enumerate(calls):
-      code = fs.gen_code(call, chr(callidx + ord('a')))
-      testcode[tidx][callidx] = code
-    setupcode[tidx] = fs.build_dir()
-
-with open(sys.argv[1]) as f:
-  d = json.loads(f.read())
-  setupcode = {}
-  testcode = collections.defaultdict(dict)
-  cleanupcode = cleanup()
-  gen_ts = d['__gen_ts']
-  generate_fs(d)
-
-outprog = open(sys.argv[2], 'w')
-outprog.write("""\
+    self.emit("""\
 #define _GNU_SOURCE 1
 #include <errno.h>
 #include <fcntl.h>
@@ -410,48 +375,71 @@ static int __attribute__((unused)) xerrno(int r) {
   else
     return r;
 #endif
-}
-""")
+}""")
 
-for tidx in setupcode:
-  outprog.write("""
+  def emit(self, *code):
+    self.test_file.write("\n".join(code) + "\n")
+
+  def on_model(self, result, model):
+    super(FsTestGenerator, self).on_model(result, model)
+
+    emit = self.emit
+    tidx = len(self.fstests)
+
+    # XXX Include some information so a user can track it back to the model
+    emit("""\
+
 /*
  * calls: %s
- * vars:  %s
- */""" % (str(d['Fs'][tidx]['calls']),
-          pretty_print_vars(d['Fs'][tidx]['vars']).strip().replace('\n', '\n *        ')))
-
-  for phase in ('common', 'proc0', 'proc1', 'final'):
-    outprog.write("""
-static void setup_%d_%s(void) {%s
-}
-""" % (tidx, phase, setupcode[tidx][phase]))
-
-  for callidx in testcode[tidx]:
-    outprog.write("""
+ */""" % " ".join(self.callset_names))
+    fs = FsState(model['Fs'])
+    pids = []
+    for callidx, callname in enumerate(self.callset_names):
+      # Generate test code for this call.  As a side-effect, this will
+      # fill in structures we need to write the setup code.
+      args = self.get_call_args(callidx)
+      code = fs.gen_code(callname, args)
+      if hasattr(args, 'pid'):
+        pids.append(args.pid)
+      else:
+        # Some calls don't take a pid because their process doesn't matter
+        pids.append(False)
+      emit("""\
 static int test_%d_%d(void) {%s
-}
-""" % (tidx, callidx, testcode[tidx][callidx]['code']))
+}""" % (tidx, callidx, code))
+    # Write setup code
+    setup = fs.build_dir()
+    for phase in ('common', 'proc0', 'proc1', 'final'):
+      emit("""\
+static void setup_%d_%s(void) {%s
+}""" % (tidx, phase, setup[phase]))
+    self.test_file.flush()
 
-outprog.write("""
-static void cleanup(void) {%s
-}
-""" % cleanupcode)
+    self.fstests.append("""\
+  { "%(name)s",
+    &setup_%(tidx)d_common,
+    { { &setup_%(tidx)d_proc0 }, { &setup_%(tidx)d_proc1 } },
+    &setup_%(tidx)d_final,
+    { { &test_%(tidx)d_0, %(pid0)d, "%(name0)s" },
+      { &test_%(tidx)d_1, %(pid1)d, "%(name1)s" } },
+    &cleanup }""" % {'name' : 'fs-%d' % tidx,
+                     'tidx' : tidx,
+                     'pid0' : pids[0], 'pid1' : pids[1],
+                     'name0' : self.callset_names[0],
+                     'name1' : self.callset_names[1]})
 
-outprog.write("""
-struct fstest fstests[] = {""")
-for tidx in setupcode:
-  outprog.write("""
-  { "%s",
-    &setup_%d_common, { { &setup_%d_proc0 }, { &setup_%d_proc1 } }, &setup_%d_final,
-    { { &test_%d_0, %d, "%s" },
-      { &test_%d_1, %d, "%s" } },
-    &cleanup },""" \
-  % ('fs-%d-%d' % (gen_ts, tidx),
-     tidx, tidx, tidx, tidx,
-     tidx, testcode[tidx][0]['pid'], d['Fs'][tidx]['calls'][0],
-     tidx, testcode[tidx][1]['pid'], d['Fs'][tidx]['calls'][1]))
-outprog.write("""
-  { 0 }
-};
-""")
+  def finish(self):
+    emit = self.emit
+
+    # Generate cleanup code
+    emit('', 'static void cleanup(void) {')
+    for fn in all_filenames:
+      emit('  unlink("%s");' % fn)
+    emit('}')
+
+    # Generate test array
+    emit('', 'struct fstest fstests[] = {',
+         ',\n'.join(self.fstests),
+         '};')
+
+    self.test_file.close()

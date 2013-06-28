@@ -5,8 +5,6 @@ import collections
 import itertools
 import sys
 import argparse
-import json
-import time
 import os
 
 def test(base, *calls):
@@ -67,57 +65,6 @@ def var_unwrap(e, fnlist, modelctx):
     arg = e.arg(0)
     f = e.decl()
     return var_unwrap(arg, [modelctx[f]] + fnlist, modelctx)
-
-def model_unwrap(e, modelctx):
-    if e is None:
-        return None
-    if isinstance(e, z3.FuncDeclRef):
-        return e.name()
-    if isinstance(e, z3.IntNumRef):
-        return int(e.as_long())
-    if isinstance(e, z3.FuncInterp):
-        elist = e.as_list()
-        ## Sometimes Z3 gives us assignments like:
-        ##   k!21594 = [else -> k!21594!21599(k!21597(Var(0)))],
-        ##   k!21597 = [Fn!val!1 -> Fn!val!1, else -> Fn!val!0],
-        ##   k!21594!21599 = [Fn!val!0 -> True, else -> False],
-        ## Check if elist[0] contains a Var() thing; if so, unwrap the Var.
-        if len(elist) == 1:
-            var_elist = var_unwrap(elist[0], [], modelctx)
-            if var_elist is not None:
-                elist = var_elist
-        return [model_unwrap(x, modelctx) for x in elist]
-    if isinstance(e, z3.BoolRef):
-        if z3.is_true(e):
-            return True
-        if z3.is_false(e):
-            return False
-        raise Exception('Suspect boolean: %s' % e)
-    if isinstance(e, list):
-        return [model_unwrap(x, modelctx) for x in e]
-    if isinstance(e, z3.ExprRef) and e.sort().kind() == z3.Z3_UNINTERPRETED_SORT:
-        univ = modelctx.get_universe(e.sort())
-        if univ is None: univ = []
-        positions = [i for i, v in enumerate(univ) if v.eq(e)]
-        if len(positions) != 1:
-            raise Exception('could not find %s in %s' % (str(e), str(univ)))
-        return positions[0]
-    if isinstance(e, z3.DatatypeRef):
-        nc = None
-        for i in range(0, e.sort().num_constructors()):
-            if e.decl().eq(e.sort().constructor(i)): nc = i
-        if nc is None:
-            raise Exception('Could not find constructor for %s' % e)
-        dict = {}
-        for i in range(0, e.sort().constructor(nc).arity()):
-            fieldname = str(e.sort().accessor(nc, i))
-            dict[fieldname] = model_unwrap(e.arg(i), modelctx)
-        return dict
-    if isinstance(e, z3.ArrayRef):
-        if z3.is_as_array(e):
-            f = z3.get_as_array_func(e)
-            return model_unwrap(modelctx[f], modelctx)
-    raise Exception('%s: unknown type %s' % (e, simsym.strtype(e)))
 
 class IsomorphicMatch(object):
     ## Originally based on http://stackoverflow.com/questions/11867611
@@ -248,7 +195,11 @@ class IsomorphicMatch(object):
 
             assert isinstance(symtype, tuple)
 
-            ## Handle Var() things; see comment in model_unwrap().
+            ## Sometimes Z3 gives us assignments like:
+            ##   k!21594 = [else -> k!21594!21599(k!21597(Var(0)))],
+            ##   k!21597 = [Fn!val!1 -> Fn!val!1, else -> Fn!val!0],
+            ##   k!21594!21599 = [Fn!val!0 -> True, else -> False],
+            ## Check if flist[0] contains a Var() thing; if so, unwrap the Var.
             if len(flist) == 1:
                 var_flist = var_unwrap(flist[0], [], model)
                 if var_flist is not None:
@@ -351,7 +302,10 @@ class TestWriter(object):
         if isinstance(model_file, basestring):
             model_file = open(model_file, 'w')
         self.model_file, self.test_file = model_file, test_file
-        self.testcases = []
+        if test_file and testgen:
+            self.testgen = testgen(test_file)
+        else:
+            self.testgen = None
         self.__progress_shown = False
 
     def begin_call_set(self, callset):
@@ -363,6 +317,9 @@ class TestWriter(object):
         self.callset = callset
         self.npath = self.ncompath = self.nmodel = 0
 
+        if self.testgen:
+            self.testgen.begin_call_set(callset)
+
     def on_result(self, result):
         self.npath += 1
 
@@ -373,7 +330,7 @@ class TestWriter(object):
 
         self.ncompath += 1
 
-        if not self.model_file and not self.test_file:
+        if not self.model_file and not self.testgen:
             self.__progress(False)
             return
 
@@ -398,15 +355,20 @@ class TestWriter(object):
                 print 'Failure reason:', model
                 break
 
-            self.__on_model(model)
-
+            # Construct the isomorphism condition for model.  We do
+            # this before __on_model, since that may perform model
+            # completion, which may add more variable assignments to
+            # the model.
             same = IsomorphicMatch(model)
+
+            self.__on_model(result, model)
+
             notsame = same.notsame_cond()
             if args.verbose_testgen:
                 print 'Negation', self.nmodel, ':', notsame
             e = simsym.symand([e, notsame])
 
-    def __on_model(self, model):
+    def __on_model(self, result, model):
         self.nmodel += 1
 
         if self.model_file:
@@ -414,26 +376,8 @@ class TestWriter(object):
             print >> self.model_file
             self.model_file.flush()
 
-        if self.test_file:
-            ## What should we do about variables that do not show up
-            ## in the assignment (e.g., because they were eliminated
-            ## due to combining multiple paths)?  One possibility, to
-            ## generate more test cases, is to pick some default value
-            ## for them (since the exact value does not matter).  Doing
-            ## so will force this loop to iterate over all possible
-            ## assignments, even to these "missing" variables.  Another
-            ## possibility is to extract "interesting" variables from
-            ## the raw symbolic expression returned by symbolic_apply().
-            vars = { model_unwrap(k, model):
-                     model_unwrap(model[k], model)
-                     for k in model
-                     if '!' not in model_unwrap(k, model) }
-            if args.verbose_testgen:
-                print 'New assignment', self.nmodel, ':', vars
-            self.testcases.append({
-                'calls': [c.__name__ for c in self.callset],
-                'vars':  vars,
-            })
+        if self.testgen:
+            self.testgen.on_model(result, result.get_model(model))
 
         self.__progress(False)
 
@@ -448,17 +392,13 @@ class TestWriter(object):
         self.__progress_shown = not end
 
     def end_call_set(self):
+        if self.testgen:
+            self.testgen.end_call_set()
         self.__progress(True)
 
     def finish(self):
-        if self.test_file:
-            test_file = self.test_file
-            if isinstance(test_file, basestring):
-                test_file = open(test_file, 'w')
-
-            ## Timestamp keeps track of generated test cases (a poor nonce)
-            x = { '__gen_ts': int(time.time()), base.__name__: self.testcases }
-            test_file.write(json.dumps(x, indent=2))
+        if self.testgen:
+            self.testgen.finish()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--check-conds', action='store_true',
@@ -468,7 +408,7 @@ parser.add_argument('-p', '--print-conds', action='store_true',
 parser.add_argument('-m', '--model-file',
                     help='Z3 model output file')
 parser.add_argument('-t', '--test-file',
-                    help='JSON output file')
+                    help='Test generator output file')
 parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
                     help='Number of system calls to combine per test')
 parser.add_argument('-f', '--functions', action='store',
@@ -482,8 +422,6 @@ parser.add_argument('--verbose-testgen', default=False, action='store_true',
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()
-
-test_writer = TestWriter(args.model_file, args.test_file)
 
 def print_cond(msg, cond):
     if args.check_conds and simsym.check(cond)[0] == z3.unsat:
@@ -525,6 +463,11 @@ def print_cond(msg, cond):
 z3printer._PP.max_lines = float('inf')
 m = __import__(args.module)
 base = m.model_class
+testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
+if testgen is None and args.test_file:
+    parser.error("No test case generator for this module")
+
+test_writer = TestWriter(args.model_file, args.test_file)
 
 isomorphism_types = getattr(m, 'isomorphism_types', {})
 

@@ -57,6 +57,14 @@ class SDictBase(Symbolic):
     def contains(self, key):
         return self._valid[key]
 
+    def __contains__(self, key):
+        # The "in" operator will force our result to a boolean, which
+        # we don't want.  However, if we don't provide a __contains__,
+        # "in" will attempt to iterate over this object by calling
+        # __getitem__ for successive integers, which is *really* not
+        # what we want.  So complain.
+        raise Exception("Use SDictBase.contains instead of the 'in' operator")
+
     def create(self, key):
         """Return the value at key, creating it if necessary.
 

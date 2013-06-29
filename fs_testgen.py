@@ -55,6 +55,11 @@ va_base = 0x12345600
 va_len = 4
 all_vas = range(va_base, va_base + va_len)
 
+class PerProc(object):
+  def __init__(self):
+    self.fds = DynamicDict(all_fds)
+    self.vas = DynamicDict(all_vas)
+
 class FsState(object):
   def __init__(self, fs):
     self.fs = fs
@@ -64,28 +69,25 @@ class FsState(object):
     self.inodefiles = DynamicDict(['__i%d' % x for x in range(0, 6)])
     # Map from uninterpreted data bytes to concrete byte values
     self.databytes = DynamicDict(xrange(256))
-    self.fds = { False: DynamicDict(all_fds),
-                 True:  DynamicDict(all_fds) }
-    self.vas = { False: DynamicDict(all_vas),
-                 True:  DynamicDict(all_vas) }
+    self.procs = DynamicDict(iter(PerProc, None))
 
   def get_fd(self, pid, v):
-    return self.fds[pid][v]
+    return self.procs[pid].fds[v]
 
   def get_va(self, pid, v):
-    return self.vas[pid][v] * 4096
+    return self.procs[pid].vas[v] * 4096
 
   def build_proc(self, pid):
     fdmap = {}
     proc = self.fs.proc1 if pid else self.fs.proc0
-    for symfd, fd in self.fds[pid].items():
+    for symfd, fd in self.procs[pid].fds.items():
       if not proc.fd_map.contains(symfd):
         continue
       fd_state = proc.fd_map[symfd]
       fdmap[fd] = { 'ino': self.inodefiles[fd_state.inum],
                     'off': fd_state.off }
     vamap = {}
-    for symva, va in self.vas[pid].items():
+    for symva, va in self.procs[pid].vas.items():
       if not proc.va_map.contains(symva):
         continue
       va_state = proc.va_map[symva]

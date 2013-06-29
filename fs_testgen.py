@@ -69,12 +69,6 @@ class FsState(object):
     self.databytes = DynamicDict(xrange(256))
     self.procs = DynamicDict(iter(PerProc, None))
 
-  def get_fd(self, pid, v):
-    return self.procs[pid].fds[v]
-
-  def get_va(self, pid, v):
-    return self.procs[pid].vas[v]
-
   def build_proc(self, pid):
     fdmap = {}
     proc = self.fs.proc1 if pid else self.fs.proc0
@@ -203,7 +197,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c;'
     ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % \
-             (self.get_fd(args.pid, args.fd), args.off)
+             (self.procs[args.pid].fds[args.fd], args.off)
     ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
@@ -212,7 +206,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c = %d;' % self.databytes[args.databyte]
     ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % \
-             (self.get_fd(args.pid, args.fd), args.off)
+             (self.procs[args.pid].fds[args.fd], args.off)
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
@@ -221,7 +215,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c;'
     ccode += '\n  ssize_t cc = read(%d, &c, 1);' % \
-             self.get_fd(args.pid, args.fd)
+             self.procs[args.pid].fds[args.fd]
     ccode += '\n  if (cc <= 0) return xerrno(cc);'
     ccode += '\n  return c;'
     return ccode
@@ -230,7 +224,7 @@ class FsState(object):
     ccode = ''
     ccode += '\n  char c = %d;' % self.databytes[args.databyte]
     ccode += '\n  ssize_t cc = write(%d, &c, 1);' % \
-             self.get_fd(args.pid, args.fd)
+             self.procs[args.pid].fds[args.fd]
     ccode += '\n  if (cc < 0) return xerrno(cc);'
     ccode += '\n  return cc;'
     return ccode
@@ -267,7 +261,7 @@ class FsState(object):
   def fstat(self, args):
     ccode = ''
     ccode += '\n  struct stat st;'
-    ccode += '\n  int r = fstat(%d, &st);' % self.get_fd(args.pid, args.fd)
+    ccode += '\n  int r = fstat(%d, &st);' % self.procs[args.pid].fds[args.fd]
     ccode += '\n  if (r < 0) return xerrno(r);'
     ccode += '\n  /* Hack, to test for approximate equality */'
     ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
@@ -275,7 +269,7 @@ class FsState(object):
 
   def close(self, args):
     ccode = ''
-    ccode += '\n  int r = close(%d);' % self.get_fd(args.pid, args.fd)
+    ccode += '\n  int r = close(%d);' % self.procs[args.pid].fds[args.fd]
     ccode += '\n  return xerrno(r);'
     return ccode
 
@@ -288,7 +282,7 @@ class FsState(object):
     else:
       flags = 'MAP_SHARED'
 
-    va = self.get_va(args.pid, args.va)
+    va = self.procs[args.pid].vas[args.va]
     if args.fixed:
       flags += ' | MAP_FIXED'
     else:
@@ -297,12 +291,12 @@ class FsState(object):
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % va
     ccode += '\n  return (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
-             (prot, flags, self.get_fd(args.pid, args.fd), args.off)
+             (prot, flags, self.procs[args.pid].fds[args.fd], args.off)
     return ccode
 
   def munmap(self, args):
     ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
     ccode += '\n  return munmap(va, 4096);'
     return ccode
 
@@ -311,13 +305,13 @@ class FsState(object):
     if args.writable:
       prot += ' | PROT_WRITE'
     ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
+    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
     ccode += '\n  return mprotect(va, 4096, %s);' % prot
     return ccode
 
   def mem_read(self, args):
     ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
     ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
     ccode += '\n    return -1;'
     ccode += '\n  pf_active = 1;'
@@ -326,7 +320,7 @@ class FsState(object):
 
   def mem_write(self, args):
     ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.get_va(args.pid, args.va)
+    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
     ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
     ccode += '\n    return -1;'
     ccode += '\n  pf_active = 1;'

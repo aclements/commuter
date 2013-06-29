@@ -48,17 +48,15 @@ all_filenames = ['__f%d' % x for x in range(0, 6)]
 
 fd_begin = 5
 fd_end = 10
-all_fds = range(fd_begin, fd_end)
-assert(fd_begin > 3)
 
-va_base = 0x12345600
+va_base = 0x12345600000
 va_len = 4
-all_vas = range(va_base, va_base + va_len)
 
 class PerProc(object):
   def __init__(self):
-    self.fds = DynamicDict(all_fds)
-    self.vas = DynamicDict(all_vas)
+    assert(fd_begin > 3)
+    self.fds = DynamicDict(range(fd_begin, fd_end))
+    self.vas = DynamicDict((va_base + i * 4096) for i in range(va_len))
 
 class FsState(object):
   def __init__(self, fs):
@@ -75,7 +73,7 @@ class FsState(object):
     return self.procs[pid].fds[v]
 
   def get_va(self, pid, v):
-    return self.procs[pid].vas[v] * 4096
+    return self.procs[pid].vas[v]
 
   def build_proc(self, pid):
     fdmap = {}

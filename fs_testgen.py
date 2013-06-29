@@ -1,58 +1,48 @@
 import testgen
 import z3
 
-class SetAllocator(object):
-  def __init__(self, values):
-    self.avail = list(reversed(values))
-    self.map = {}
+class DynamicDict(object):
+  """A dynamically-filled dictionary.
 
-  def get(self, v):
-    if v not in self.map:
-      self.map[v] = self.avail.pop()
-    return self.map[v]
-
-  def assigned(self):
-    return self.map.keys()
-
-class UninterpretedMap(object):
-  """A dynamic map from uninterpreted constants to concrete values."""
+  Values for dictionary mappings are drawn from an iterable as they
+  are needed.  This has special support for Z3 constants, making it
+  useful for assigning concrete values to uninterpreted constants.
+  """
 
   def __init__(self, iterable):
-    """Concrete values will be drawn from iterable."""
     self.__gen = iter(iterable)
-    self.__assigned = []
+    self.__map = {}
+    self.__keys = []
 
-  def __getitem__(self, const):
-    """Return a concrete value for const, drawn from self's iterable.
+  def __getitem__(self, key):
+    """Return the value associated with key.
 
-    If const is structurally equivalent to a previously seen constant,
-    the same value as previously returned will be returned again.
-    Otherwise, a new value for this constant will be draw from self's
-    iterable.
+    If the dictionary does not currently contain a value for key, one
+    will be drawn from self's iterable.  key may be a Z3 constant.
     """
-    if not z3.is_const(const):
-      raise TypeError("%r is not a Z3 constant" % const)
-    for kconst, interpreted in self.__assigned:
-      if const.eq(kconst):
-        return interpreted
-    try:
-      interpreted = self.__gen.next()
-    except StopIteration:
-      raise ValueError("Ran out of interpretations for %r" % const)
-    self.__assigned.append((const, interpreted))
-    return interpreted
+
+    if z3.is_const(key):
+      idx = str(key)
+    else:
+      idx = key
+
+    if idx not in self.__map:
+      try:
+        self.__map[idx] = self.__gen.next()
+      except StopIteration:
+        raise ValueError("Ran out of values for %r" % key)
+      self.__keys.append((key, idx))
+    return self.__map[idx]
 
   def keys(self):
-    """Return an iterator over known uninterpreted constants."""
-    return (k for k, _ in self.__assigned)
+    return (real for real, _ in self.__keys)
   __iter__ = keys
 
   def values(self):
-    """Return an iterator over used concrete values."""
-    return (v for _, v in self.__assigned)
+    return (self.__map[idx] for _, idx in self.__keys)
 
   def items(self):
-    return iter(self.__assigned)
+    return ((real, self.__map[idx]) for real, idx in self.__keys)
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
@@ -69,18 +59,18 @@ class FsState(object):
   def __init__(self, fs):
     self.fs = fs
     # Map from uninterpreted path names to concrete file names
-    self.filenames = UninterpretedMap(all_filenames)
+    self.filenames = DynamicDict(all_filenames)
     # Map from uninterpreted inodes to inode file names
-    self.inodefiles = UninterpretedMap(['__i%d' % x for x in range(0, 6)])
+    self.inodefiles = DynamicDict(['__i%d' % x for x in range(0, 6)])
     # Map from uninterpreted data bytes to concrete byte values
-    self.databytes = UninterpretedMap(xrange(256))
-    self.fds = { False: SetAllocator(all_fds),
-                 True:  SetAllocator(all_fds) }
-    self.vas = { False: UninterpretedMap(all_vas),
-                 True:  UninterpretedMap(all_vas) }
+    self.databytes = DynamicDict(xrange(256))
+    self.fds = { False: DynamicDict(all_fds),
+                 True:  DynamicDict(all_fds) }
+    self.vas = { False: DynamicDict(all_vas),
+                 True:  DynamicDict(all_vas) }
 
   def get_fd(self, pid, v):
-    return self.fds[pid].get(v)
+    return self.fds[pid][v]
 
   def get_va(self, pid, v):
     return self.vas[pid][v] * 4096
@@ -88,12 +78,12 @@ class FsState(object):
   def build_proc(self, pid):
     fdmap = {}
     proc = self.fs.proc1 if pid else self.fs.proc0
-    for symfd in self.fds[pid].assigned():
+    for symfd, fd in self.fds[pid].items():
       if not proc.fd_map.contains(symfd):
         continue
       fd_state = proc.fd_map[symfd]
-      fdmap[self.get_fd(pid, symfd)] = { 'ino': self.inodefiles[fd_state.inum],
-                                         'off': fd_state.off }
+      fdmap[fd] = { 'ino': self.inodefiles[fd_state.inum],
+                    'off': fd_state.off }
     vamap = {}
     for symva, va in self.vas[pid].items():
       if not proc.va_map.contains(symva):

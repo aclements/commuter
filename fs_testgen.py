@@ -75,19 +75,12 @@ class FsState(object):
     for symfd, fd in self.procs[pid].fds.items():
       if not proc.fd_map.contains(symfd):
         continue
-      fd_state = proc.fd_map[symfd]
-      fdmap[fd] = { 'ino': self.inodefiles[fd_state.inum],
-                    'off': fd_state.off }
+      fdmap[fd] = proc.fd_map[symfd]
     vamap = {}
     for symva, va in self.procs[pid].vas.items():
       if not proc.va_map.contains(symva):
         continue
-      va_state = proc.va_map[symva]
-      vamap[va] = { 'ino': self.inodefiles[va_state.inum],
-                    'off': va_state.off,
-                    'anon': va_state.anon,
-                    'anondata': va_state.anondata,
-                    'writable': va_state.writable }
+      vamap[va] = proc.va_map[symva]
     return (fdmap, vamap)
 
   def setup_inodes(self):
@@ -133,25 +126,25 @@ class FsState(object):
   def setup_proc(self, fdmap, vamap):
     ccode = ''
     ccode += '\n  int fd __attribute__((unused));'
-    for fd in fdmap:
-      ccode += '\n  fd = open("%s", O_RDWR);' % fdmap[fd]['ino']
-      ccode += '\n  lseek(fd, %d, SEEK_SET);' % fdmap[fd]['off']
+    for fd, fdinfo in fdmap.items():
+      ccode += '\n  fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum]
+      ccode += '\n  lseek(fd, %d, SEEK_SET);' % fdinfo.off
       ccode += '\n  dup2(fd, %d);' % fd
       ccode += '\n  close(fd);'
 
     ccode += '\n  int* va __attribute__((unused));'
-    for va in vamap:
+    for va, vainfo in vamap.items():
       ccode += '\n  va = (void*) 0x%lxUL;' % va
       prot = 'PROT_READ'
-      if vamap[va]['writable']:
+      if vainfo.writable:
         prot += ' | PROT_WRITE'
-      if vamap[va]['anon']:
+      if vainfo.anon:
         ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);'
-        ccode += '\n  *va = %d;' % self.databytes[vamap[va]['anondata']]
+        ccode += '\n  *va = %d;' % self.databytes[vainfo.anondata]
       else:
-        ccode += '\n  fd = open("%s", O_RDWR);' % vamap[va]['ino']
+        ccode += '\n  fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum]
         ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % \
-                 vamap[va]['off']
+                 vainfo.off
         ccode += '\n  mprotect(va, 4096, %s);' % prot
         ccode += '\n  close(fd);'
     return ccode

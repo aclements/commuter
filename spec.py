@@ -264,6 +264,12 @@ class IsomorphicMatch(object):
 
         sort = val.sort()
         if sort.kind() == z3.Z3_UNINTERPRETED_SORT or pseudo_sort == "equal":
+            # XXX This is buggy: for interpreted sorts, since we group
+            # by Z3 sort, we may group things that have the same Z3
+            # sort but different simsym synonym types.  Luckily, we
+            # currently only have one such pseudo-sort, so we're
+            # actually okay.  We could pass symtype instead of sort
+            # were it not for uninterp_representative.
             self.add_assignment_uninterp(expr, val, sort)
             return
 

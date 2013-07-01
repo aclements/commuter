@@ -901,7 +901,6 @@ def simplify(expr, try_harder=False):
         core_simplifier = 'ctx-solver-simplify'
     t = z3.Repeat(z3.Then(z3.With('simplify', expand_select_store=True,
                                               ite_extra_rules=True,
-                                              sort_eq=True,
                                               expand_store_eq=True),
                           'propagate-values',
                           'ctx-simplify',

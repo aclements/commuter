@@ -306,7 +306,6 @@ class TestWriter(object):
             self.testgen = testgen(test_file)
         else:
             self.testgen = None
-        self.__progress_shown = False
 
     def begin_call_set(self, callset):
         if self.model_file:
@@ -383,13 +382,25 @@ class TestWriter(object):
 
     def __progress(self, end):
         if os.isatty(sys.stdout.fileno()):
-            if self.__progress_shown:
-                sys.stdout.write('\x1b[A\x1b[J')
+            sys.stdout.write('\r')
         elif not end:
             return
-        print '  %d paths (%d commutative), %d testcases' % \
-            (self.npath, self.ncompath, self.nmodel)
-        self.__progress_shown = not end
+        sys.stdout.write('  %d paths (%d commutative), %d testcases' % \
+                         (self.npath, self.ncompath, self.nmodel))
+        if os.isatty(sys.stdout.fileno()):
+            # Clear to end of line
+            sys.stdout.write('\033[K')
+            if end:
+                sys.stdout.write('\n')
+            else:
+                # Put cursor in wrap-around column.  If we print
+                # anything more after this, it will immediately wrap
+                # and print on the next line.  But we can still \r to
+                # overwrite this line with another progress update.
+                sys.stdout.write('\033[K\033[999C ')
+        else:
+            sys.stdout.write('\n')
+        sys.stdout.flush()
 
     def end_call_set(self):
         if self.testgen:

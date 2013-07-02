@@ -454,15 +454,9 @@ def tconstmap(indexType, valueType):
 # Type synonyms
 #
 
-class SSynonymBase(Symbolic):
-    @classmethod
-    def _wrap_lvalue(cls, getter, setter, model):
-        return cls._baseType._wrap_lvalue(getter, setter, model)
-
 def tsynonym(name, baseType):
     """Return a new type that's equivalent to baseType."""
-    return type(name, (SSynonymBase,),
-                {"_baseType" : baseType, "__z3_sort__" : baseType._z3_sort()})
+    return type(name, (baseType,), {})
 
 #
 # Compound objects
@@ -738,17 +732,13 @@ def symbolic_type(const):
 
     outerType, path = constTypes[str(const)]
     def rec(outerType, path):
-        origType = outerType
-        while issubclass(outerType, SSynonymBase):
-            outerType = outerType._baseType
-
         if issubclass(outerType, SStructBase) and len(path):
             return rec(outerType._fields[path[0]], path[1:])
         elif issubclass(outerType, SMapBase):
             return (rec(outerType._indexType, ()),
                     rec(outerType._valueType, path))
         elif issubclass(outerType, SymbolicConst) and not len(path):
-            return origType
+            return outerType
         else:
             raise Exception("Failed to resolve type of %s" % const)
     return rec(outerType, path)

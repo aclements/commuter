@@ -258,12 +258,12 @@ class MetaZ3Wrapper(type):
             raise TypeError("%s expected %s, got %s" %
                             (cls.__name__, cls.__ref_type__.__name__,
                              strtype(z3ref)))
+        obj = cls.__new__(cls)
+        obj._v = z3ref
         if model:
             # Interpret this symbolic value into a concrete value
             # using the model
-            return model._eval(z3ref)
-        obj = cls.__new__(cls)
-        obj._v = z3ref
+            return model._eval(obj)
         return obj
 
 class SExpr(Symbolic):
@@ -1116,32 +1116,59 @@ class Model(object):
     def __init__(self, var_constructors, z3_model):
         self.__var_constructors = var_constructors
         self.__z3_model = z3_model
+        self.__track = False
+        self.__asignments = []
 
     def __getitem__(self, name):
         return self.__var_constructors[name](name, self)
 
+    def track_assignments(self, enable=True):
+        """Enable or disable assignment tracking."""
+        self.__track = enable
+
+    def assignments(self):
+        """Return a list of expressions evaluated by the model.
+
+        The returned list consists of pairs of (expression, value)
+        where both expression and value are instances of Symbolic.
+        The list will be in the order the expressions were evaluated,
+        with duplicate expressions suppressed.
+        """
+        return self.__asignments
+
     def _eval(self, expr):
-        """Evaluate a Z3 expression to a concrete Python value."""
+        """Evaluate a Symbolic expression to a concrete Python value."""
 
         # model_completion asks Z3 to make up concrete values if they
         # are not interpreted in the model.
-        val = self.__z3_model.evaluate(expr, model_completion=True)
-        if isinstance(val, z3.IntNumRef):
-            return val.as_long()
-        if z3.is_true(val):
-            return True
-        if z3.is_false(val):
-            return False
-        if val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
+        z3val = self.__z3_model.evaluate(unwrap(expr), model_completion=True)
+        if z3.is_int_value(z3val):
+            res = z3val.as_long()
+        elif z3.is_true(z3val):
+            res = True
+        elif z3.is_false(z3val):
+            res = False
+        elif z3val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
             # XXX This leaks a Z3 type.  We can't just str it, since
             # the caller may need to index into a map using it, but we
             # could introduce a new wrapper type for uninterpreted
             # sorts.
-            return val
-        # Either expr is not a concrete value, or we don't know how to
-        # extract its concrete value (it could be, e.g., an enum
-        # value)
-        raise Exception("Expression %s is not a concrete value" % expr)
+            res = z3val
+        else:
+            # Either expr is not a concrete value, or we don't know
+            # how to extract its concrete value (it could be, e.g., an
+            # enum value)
+            raise Exception("Expression %s is not a concrete value" % expr)
+
+        if self.__track:
+            for aexpr, _ in self.__asignments:
+                if unwrap(expr).eq(unwrap(aexpr)):
+                    break
+            else:
+                val = type(expr)._wrap(z3val, None)
+                self.__asignments.append((expr, val))
+
+        return res
 
 #
 # Helpers for tracking "internal" variables

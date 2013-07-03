@@ -564,7 +564,10 @@ class SStructBase(Symbolic):
                 if __name is None:
                     raise ValueError(
                         "Name required for partially symbolic struct")
-                fvals[fname] = unwrap(typ.var(__name + "." + fname, __model))
+                # Note that we do *not* pass __model here, since we
+                # want this to remain unevaluated until the user
+                # explicitly retrieves the field.
+                fvals[fname] = unwrap(typ.var(__name + "." + fname))
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
         return cls._new_lvalue(fvals, __model)

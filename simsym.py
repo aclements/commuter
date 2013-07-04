@@ -384,6 +384,18 @@ class SBool(SExpr, SymbolicConst):
         curschedidx = curschedidx + 1
         return rv
 
+class SUninterpretedBase(SExpr):
+    pass
+
+def tuninterpreted(name):
+    """Return a new uninterpreted symbolic type.
+
+    This type is inhabited by an unbounded number of distinct
+    constants.
+    """
+    return type(name, (SUninterpretedBase, SymbolicConst),
+                {"__z3_sort__": z3.DeclareSort(name)})
+
 class SEnumBase(SExpr):
     __ref_type__ = z3.DatatypeRef
 

@@ -1,4 +1,3 @@
-import z3
 import simsym
 import symtypes
 import errno
@@ -6,20 +5,11 @@ import model
 import signal
 import fs_testgen
 
-class SFn(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('Fn')
-
-class SInum(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('Inum')
-
-class SDataByte(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('DataByte')
-
-class SVa(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('VA')
-
-class SPipeId(simsym.SExpr, simsym.SymbolicConst):
-    __z3_sort__ = z3.DeclareSort('PipeId')
+SFn = simsym.tuninterpreted("SFn")
+SInum = simsym.tuninterpreted("SInum")
+SDataByte = simsym.tuninterpreted("SDataByte")
+SVa = simsym.tuninterpreted("SVa")
+SPipeId = simsym.tuninterpreted("SPipeId")
 
 SPid = simsym.SBool
 SOffset = simsym.tsynonym("SOffset", simsym.SInt)

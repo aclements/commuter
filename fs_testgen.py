@@ -275,9 +275,9 @@ class FsState(object):
     else:
       flags = 'MAP_SHARED'
 
-    va = self.procs[args.pid].vas[args.va]
     if args.fixed:
       flags += ' | MAP_FIXED'
+      va = self.procs[args.pid].vas[args.va]
     else:
       va = 0
 

@@ -77,9 +77,7 @@ SPathname = SFn
 ## any compound types before checking this.
 
 isomorphism_types = {
-    SNLink: "ignore",  # Unused for test generation
-    SOffset: "ignore", # Too many cases in link*link (XXX maybe fixed?)
-    STime: "ignore",   # Irrelevant for test generation for now
+    SOffset: "equal",
     SFdNum: "equal",
     # Ignore data bytes or we'll try to enumerate all distinct
     # equivalence classes for file contents.

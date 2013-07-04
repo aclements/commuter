@@ -6,6 +6,8 @@ import itertools
 import sys
 import argparse
 import os
+import z3util
+import pprint
 
 def test(base, *calls):
     all_s = []
@@ -66,242 +68,215 @@ def var_unwrap(e, fnlist, modelctx):
     f = e.decl()
     return var_unwrap(arg, [modelctx[f]] + fnlist, modelctx)
 
-class IsomorphicMatch(object):
-    ## Originally based on http://stackoverflow.com/questions/11867611
+def expr_vars(e):
+    """Return an AstSet of uninterpreted constants in e.
 
-    ## We need to construct a condition for two assignments being isomorphic
-    ## to each other.  This is interesting for uninterpreted sorts, where
-    ## we don't care about the specific value assignment from Z3, and care
-    ## only about whether the equality pattern looks the same.  This is
-    ## made more complicated by the fact that uninterpreted sorts show up
-    ## all over the place: as values of a variable, as values in an array,
-    ## as keys in an array, as default 'else' values in an array, etc.
+    Uninterpreted constants are what people normally think of as
+    "variables".  This is in contrast with interpreted constants such
+    as the number 2.  Note that this will also return values that
+    belong to universes of uninterpreted sorts, since there is no
+    distinguishable difference between these and other uninterpreted
+    constants.
+    """
+
+    res = z3util.AstSet()
+    def rec(e):
+        if z3.is_const(e) and e.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+            res.add(e)
+            return
+        for child in e.children():
+            rec(child)
+    rec(simsym.unwrap(e))
+    return res
+
+class IsomorphicMatch(object):
+    """Construct an expression that matches isomorphisms of a set of conditions.
+
+    By using the negation of the constructed expression, we can
+    enumerate non-isomorphic models."""
 
     ## XXX handling FDs and timestamps might be better done by treating
     ## them as supporting order, rather than supporting just equality;
     ## the isomorphism condition would be the values being in the same
     ## order, rather than in the same equality pattern.
 
-    def __init__(self, model):
-        self.uninterps = collections.defaultdict(list)
-        self.conds = [z3.BoolVal(True)]
+    def __init__(self, isomorphism_types={}):
+        self.__isomorphism_types = isomorphism_types
 
-        # Try to reach a fixed-point with expressions of uninterpreted
-        # sorts used in array indexes.
-        self.groups_changed = True
-        while self.groups_changed:
-            self.groups_changed = False
-            self.process_model(model)
+        # This maps from the simsym.Symbolic subclass of each type
+        # with "equal" isomorphism type to representative maps.  A
+        # representative map is a dictionary from HashableAst value to
+        # the Z3 expression that represents that value.
+        self.__representatives = collections.defaultdict(dict)
+        # Set of isomorphism conditions, except for representative
+        # distinctness.
+        self.__conds = z3util.AstSet()
 
-        self.process_uninterp()
+    def add(self, expr, val):
+        """Add a condition on the value of expr.
 
-    def process_model(self, model):
-        for decl in model:
-            ## Do not bother including "internal" variables in the wrapped model;
-            ## otherwise Z3 can iterate over different assignments to these
-            ## variables, while we care only about assignments to "external"
-            ## variables.
-            if '!' in str(decl) or 'internal_' in str(decl) or 'dummy_' in str(decl):
-                continue
-            self.process_decl_assignment(decl, model[decl], model)
+        expr and val must be instances of simsym.Symbolic.
 
-    def process_decl_assignment(self, decl, val, model):
-        """Process a single assignment in a model.
+        For most expr's, this will require that an isomorphic
+        assignment assign val to expr.
 
-        decl must be a z3.FuncDeclRef assigned to z3.ExprRef val in
-        the given model.
+        If expr's sort is uninterpreted or has isomorphism type
+        "equal", then expr's of the same sort will be grouped into
+        equivalence classes by val and the isomorphism assignment will
+        require that these expr's form the same equivalence classes.
+
+        If expr's sort has isomorphism type "ignore", then this
+        condition will be ignored.
+
+        Before adding any expr that uses an uninterpreted value, the
+        caller must add an expr that is equal to that uninterpreted
+        value.  (This happens naturally when conditions are added in
+        the order they arise during test generation.)
         """
 
-        if decl.arity() > 0:
-            raise Exception('handle nonzero arity')
+        if not isinstance(expr, simsym.Symbolic):
+            raise TypeError("Expected instance of simsym.Symbolic, got %r" % expr)
+        if not isinstance(val, simsym.Symbolic):
+            raise TypeError("Expected instance of simsym.Symbolic, got %r" % val)
 
-            ## Handle FuncDeclRef objects -- XXX old code.
-            assert(decl.arity() == 1)
+        # Resolve the isomorphism type of expr
+        symtype = type(expr)
+        isomorphism_type = self.__get_iso_type(symtype)
+        if isomorphism_type == None and not issubclass(symtype, simsym.SBool):
+            print 'WARNING: Interpreted sort assignment:', type(expr), expr, val
 
-            val_list = val.as_list()
-            for valarg, valval in val_list[:-1]:
-                self.add_equal(decl(self.uwrap(valarg)), valval)
-
-            domain_sorts = [decl.domain(i) for i in range(0, decl.arity())]
-            domain_anon = [z3.Const(simsym.anon_name(), s) for s in domain_sorts]
-            elsecond = z3.ForAll(domain_anon,
-                          z3.Or([decl(*domain_anon) == self.uwrap(val_list[-1])] +
-                                [domain_anon[0] == self.uwrap(x)
-                                 for x, _ in val_list[:-1]]))
-            self.conds.append(elsecond)
+        # Don't bother with rewriting and such if we're going to
+        # ignore this condition anyway
+        if isomorphism_type == "ignore":
             return
 
-        # Calling a FuncDeclRef returns the Z3 function application
-        # expression (which, since we weeded out non-zero arity above,
-        # will be just the constant being bound by the model,
-        # satisfying is_app and is_const).
-        dconst = decl()
+        z3expr, z3val = simsym.unwrap(expr), simsym.unwrap(val)
 
-        symtype = simsym.symbolic_type(dconst)
-        self.process_const_assignment(dconst, val, symtype, model)
-
-    def process_const_assignment(self, dconst, val, symtype, model):
-        """Process a single constant assignment in model.
-
-        dconst is a projected constant expression, which is either a
-        Z3 constant expression, a projection of a projected constant
-        expression, or a select of a projected constant expression.
-        val is the assignment of dconst in model.  The sort of dconst
-        must agree with the type of val (for primitive sorts, they are
-        equal; for array sorts, val must be a FuncInterp).  symtype is
-        the pseudo-Symbolic type of dconst, as defined by
-        simsym.symbolic_type.
-
-        Effectively, this starts with the assignment (dconst == val)
-        and recursively decomposes compound values on both sides until
-        both dconst and val are primitive sorts.  At this point it
-        calls add_assignment to register the primitive assignment.
-        """
-
-        dsort = dconst.sort()
-
-        if dsort.kind() == z3.Z3_DATATYPE_SORT:
-            raise Exception("Z3_DATATYPE_SORT in process_const_assignment")
-            # XXX Should be unused now.  If we do still need this, we
-            # need to flow symtype through below.
-            nc = None
-            for i in range(0, dsort.num_constructors()):
-                if val.decl().eq(dsort.constructor(i)): nc = i
-            if nc is None:
-                raise Exception('Could not find constructor for %s' % str(dconst))
-            for i in range(0, dsort.constructor(nc).arity()):
-                dconst_field = dsort.accessor(nc, i)(dconst)
-                childval = val.children()[i]
-                self.process_const_assignment(dconst_field, childval, model)
+        # Rewrite expression to use representatives.  The requirement
+        # on the order that the caller adds conditions means that
+        # we'll always have a representative for uninterpreted values
+        # in expr.  This also means we never have to worry about
+        # cyclic representatives (where the representative expression
+        # depends on some uninterpreted value whose representative
+        # depends on the first representative).
+        rexpr = self.__rewrite(z3expr, symtype)
+        if rexpr is None:
             return
 
-        if dsort.kind() in [z3.Z3_INT_SORT,
-                            z3.Z3_BOOL_SORT,
-                            z3.Z3_UNINTERPRETED_SORT]:
-            if not z3.is_const(val):
-                print 'WARNING: Not a constant:', val
-            assert issubclass(symtype, simsym.Symbolic)
-            self.add_assignment(dconst, val, symtype)
+        # Register representative expressions.  We do this after
+        # rewriting the expression so we won't have uninterpreted
+        # values in the representative expression.
+        if isomorphism_type == "equal":
+            hval = z3util.HashableAst(z3val)
+            self.__representatives[symtype].setdefault(hval, rexpr)
+
+        # Rewrite the value to use representatives.  We do this
+        # after registering representative expressions in case we
+        # just registered the representative for this value.
+        rval = self.__rewrite(z3val, symtype)
+        if rval is None:
             return
 
-        if dsort.kind() == z3.Z3_ARRAY_SORT:
-            if z3.is_as_array(val):
-                func_interp = model[z3.get_as_array_func(val)]
-            else:
-                func_interp = val
-            assert(isinstance(func_interp, z3.FuncInterp))
+        # Handle assignment
+        if isomorphism_type == "equal" or isomorphism_type == None:
+            self.__conds.add(rexpr == rval)
+        else:
+            raise ValueError("Unknown isomorphism type %r" % isomorphism_type)
 
-            flist = func_interp.as_list()
+    def __get_iso_type(self, symtype):
+        """Return the isomorphism type of symtype."""
 
-            assert isinstance(symtype, tuple)
+        for cls in symtype.__mro__:
+            if cls in self.__isomorphism_types:
+                return self.__isomorphism_types[cls]
 
-            ## Sometimes Z3 gives us assignments like:
-            ##   k!21594 = [else -> k!21594!21599(k!21597(Var(0)))],
-            ##   k!21597 = [Fn!val!1 -> Fn!val!1, else -> Fn!val!0],
-            ##   k!21594!21599 = [Fn!val!0 -> True, else -> False],
-            ## Check if flist[0] contains a Var() thing; if so, unwrap the Var.
-            if len(flist) == 1:
-                var_flist = var_unwrap(flist[0], [], model)
-                if var_flist is not None:
-                    flist = var_flist
-
-            ## Handle everything except the "else" value
-            for fidx, fval in flist[:-1]:
-                fidxrep = self.uninterp_representative(fidx)
-                if fidxrep is None: continue
-                self.process_const_assignment(
-                    dconst[fidxrep], fval, symtype[1], model)
-
-            ## One problem is what to do with ArrayRef assignments (in the form of
-            ## a FuncInterp), because FuncInterp assigns a value for every index,
-            ## but we only care about specific indexes.  (It's not useful to receive
-            ## another model that differs only in some index we never cared about.)
-            ## To deal with this problem, we add FuncInterp constraints only for
-            ## indexes that are interesting.  For uninterpreted sorts, this
-            ## is the universe of values for that sort.  For interpreted sorts
-            ## (integers), we add constraints for values explicitly listed in
-            ## the FuncInterp, and skip the "else" clause altogether.  This is
-            ## imprecise: it means self.conds is less constrained than it should
-            ## be, so its negation is too strict, and might preclude some
-            ## otherwise-interesting assignments.
-
-            if dconst.domain().kind() == z3.Z3_UNINTERPRETED_SORT:
-                univ = model.get_universe(dconst.domain())
-                if univ is None: univ = []
-                for idx in univ:
-                    if any([idx.eq(i) for i, _ in flist[:-1]]): continue
-                    idxrep = self.uninterp_representative(idx)
-                    if idxrep is None: continue
-                    self.process_const_assignment(
-                        dconst[idxrep], flist[-1], symtype[1], model)
-            return
-
-        print dsort.kind()
-        raise Exception('handle %s = %s' % (dconst, val))
-
-    def uninterp_groups(self, sort):
-        groups = []
-        for expr, val in self.uninterps[sort]:
-            found = False
-            for group_val, group_exprs in groups:
-                if val.eq(group_val):
-                    group_exprs.append(expr)
-                    found = True
-            if not found:
-                groups.append((val, [expr]))
-        return groups
-
-    def uninterp_representative(self, val):
-        for expr2, val2 in self.uninterps[val.sort()]:
-            if val.eq(val2):
-                return expr2
+        kind = symtype._z3_sort().kind()
+        if kind == z3.Z3_UNINTERPRETED_SORT:
+            return "equal"
         return None
 
-    def add_assignment(self, expr, val, symtype):
-        pseudo_sort = isomorphism_types.get(symtype)
-        if pseudo_sort == "ignore":
-            return
+    def __rewrite(self, expr, symtype):
+        """Replace uninterpreted values in expr with their representatives."""
 
-        sort = val.sort()
-        if sort.kind() == z3.Z3_UNINTERPRETED_SORT or pseudo_sort == "equal":
-            # XXX This is buggy: for interpreted sorts, since we group
-            # by Z3 sort, we may group things that have the same Z3
-            # sort but different simsym synonym types.  Luckily, we
-            # currently only have one such pseudo-sort, so we're
-            # actually okay.  We could pass symtype instead of sort
-            # were it not for uninterp_representative.
-            self.add_assignment_uninterp(expr, val, sort)
-            return
+        # The expression may consist of constants and selects.  We
+        # need to map every select index to its Symbolic type to
+        # figure out its isomorphism type, so we unwind the whole
+        # expression, get the pseudo-Symbolic type of the base
+        # constant, and use this to work out the types of the indexes.
 
-        if expr.sort().kind() != z3.Z3_BOOL_SORT:
-            print 'WARNING: Interpreted sort assignment:', expr, val
+        class Ignore(Exception): pass
 
-        cond = (expr == val)
-        if not any([c.eq(cond) for c in self.conds]):
-            self.conds.append(cond)
+        def rec(expr):
+            if z3.is_select(expr):
+                array, idx = expr.children()
+                array2, pseudo_type = rec(array)
+                idx2 = rewrite_const(idx, pseudo_type[0], True)
+                return array2[idx2], pseudo_type[1]
+            elif z3.is_const(expr):
+                return expr, simsym.symbolic_type(expr)
+            else:
+                raise Exception("Unexpected AST type %r" % expr)
 
-    def add_assignment_uninterp(self, expr, val, sort):
-        new_group = True
-        for uexpr, uval in self.uninterps[sort]:
-            if uval.eq(val):
-                new_group = False
-                if uexpr.eq(expr): return
-        if new_group:
-            self.groups_changed = True
-        self.uninterps[sort].append((expr, val))
+        def rewrite_const(const, symtype, is_index):
+            rep = self.__representatives[symtype].get(z3util.HashableAst(const))
+            if rep is not None:
+                if args.verbose_testgen:
+                    print "Replacing", const, "of type", symtype, "with", rep
+                return rep
+            elif const.sort().kind() == z3.Z3_UNINTERPRETED_SORT and \
+                 '!' in str(const):
+                # This is one of the Z3-generated values from this
+                # sort's universe.
+                if is_index:
+                    # This is used as an array index.  Since there's
+                    # no expression actually equal to this index
+                    # value, there's no way this value of the array
+                    # can matter, so we just ignore it.
+                    if args.verbose_testgen:
+                        print "Ignoring unrepresented index in", expr
+                    raise Ignore()
+                # If this was not just an array index, we can't
+                # express an isomorphism.
+                raise Exception("No representative for %r in %r" %
+                                (const, expr))
+            else:
+                # No transformation
+                return const
 
-    def process_uninterp(self):
-        for sort in self.uninterps:
-            groups = self.uninterp_groups(sort)
-            for _, exprs in groups:
-                for otherexpr in exprs[1:]:
-                    self.conds.append(exprs[0] == otherexpr)
-            representatives = [exprs[0] for _, exprs in groups]
+        if z3.is_const(expr):
+            # If we're called with a constant, it could be something
+            # like z3.IntNumRef(42), which doesn't carry enough of its
+            # own type information for us to resolve it bottom-up, but
+            # we do know its type from the top down.
+            return rewrite_const(expr, symtype, False)
+        else:
+            # If we're not called with a constant, it must be a
+            # select, in which case the recursive base of the select
+            # must be an uninterpreted constant, which we can resolve
+            # type information for bottom-up.  Ugh.
+            try:
+                return rec(expr)[0]
+            except Ignore:
+                return None
+
+    @staticmethod
+    def __xand(exprs):
+        if len(exprs) == 0:
+            return True
+        return z3.And(exprs)
+
+    def __same_cond(self):
+        conds = list(self.__conds)
+
+        for rep_map in self.__representatives.values():
+            representatives = rep_map.values()
             if len(representatives) > 1:
-                self.conds.append(z3.Distinct(representatives))
+                conds.append(z3.Distinct(representatives))
+
+        return self.__xand(conds)
 
     def notsame_cond(self):
-        return simsym.wrap(z3.Not(z3.And(self.conds)))
+        return simsym.wrap(z3.Not(self.__same_cond()))
 
 class TestWriter(object):
     def __init__(self, model_file=None, test_file=None):
@@ -351,6 +326,17 @@ class TestWriter(object):
         ## produces 3204 test cases without simplify, and 3182 with.
         e = simsym.simplify(e)
 
+        if args.verbose_testgen:
+            print "Simplified path condition:"
+            print e
+
+        # Find the uninterpreted constants in e.  We use the
+        # simplified expression because the final state comparison in
+        # original expression contains a lot of trivial expressions
+        # like x==x for all state variables x, and we don't care about
+        # these uninterpreted constants.
+        e_vars = expr_vars(e)
+
         while self.nmodel < args.max_testcases:
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
@@ -361,13 +347,36 @@ class TestWriter(object):
                 print 'Failure reason:', model
                 break
 
-            # Construct the isomorphism condition for model.  We do
-            # this before __on_model, since that may perform model
-            # completion, which may add more variable assignments to
-            # the model.
-            same = IsomorphicMatch(model)
+            if args.verbose_testgen:
+                print "Model:"
+                print model
 
-            self.__on_model(result, model)
+            assignments = self.__on_model(result, model)
+            if assignments is None:
+                break
+            if args.verbose_testgen:
+                print 'Assignments:'
+                pprint.pprint(assignments)
+
+            # Construct the isomorphism condition for the assignments
+            # used by testgen.  This tells us exactly what values
+            # actually mattered to test case generation.  However,
+            # this set isn't perfect: testgen may have queried
+            # assignments that didn't actually matter to the
+            # function's behavior (e.g., flags that didn't matter
+            # because the function will return an error anyway, etc).
+            # To filter out such uninterpreted constants, we only
+            # consider those that were *both* used in an assignment by
+            # testgen and appeared in the path condition expression.
+            # XXX We should revisit this and see how much difference
+            # this makes.
+            same = IsomorphicMatch(isomorphism_types)
+            for aexpr, val in assignments:
+                aexpr_vars = expr_vars(aexpr)
+                if not aexpr_vars.isdisjoint(e_vars):
+                    same.add(aexpr, val)
+                elif args.verbose_testgen:
+                    print 'Ignoring assignment:', (aexpr, val)
 
             notsame = same.notsame_cond()
             if args.verbose_testgen:
@@ -379,6 +388,7 @@ class TestWriter(object):
 
     def __on_model(self, result, model):
         self.nmodel += 1
+        res = None
 
         if self.model_file:
             print >> self.model_file, model.sexpr()
@@ -386,7 +396,12 @@ class TestWriter(object):
             self.model_file.flush()
 
         if self.testgen:
-            self.testgen.on_model(result, result.get_model(model))
+            smodel = result.get_model(model)
+            smodel.track_assignments(True)
+            self.testgen.on_model(result, smodel)
+            res = smodel.assignments()
+
+        return res
 
     def __progress(self, end):
         if os.isatty(sys.stdout.fileno()):

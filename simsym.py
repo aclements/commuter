@@ -1161,11 +1161,7 @@ class Model(object):
         elif z3.is_false(z3val):
             res = False
         elif z3val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
-            # XXX This leaks a Z3 type.  We can't just str it, since
-            # the caller may need to index into a map using it, but we
-            # could introduce a new wrapper type for uninterpreted
-            # sorts.
-            res = z3val
+            res = type(expr)._wrap(z3val, None)
         else:
             # Either expr is not a concrete value, or we don't know
             # how to extract its concrete value (it could be, e.g., an

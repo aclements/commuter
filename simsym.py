@@ -204,13 +204,15 @@ def flatten_compound(compound):
 # Z3 wrappers
 #
 
-# We construct a type hierarchy that parallels Z3's expression type
-# hierarchy.  Each type wraps the equivalent Z3 type and defers to the
-# Z3 methods for all symbolic operations (unwrapping the arguments and
-# re-wrapping the results).  However, these types add methods specific
-# to symbolic execution; most notably __nonzero__.  The leaves of this
-# type hierarchy also provide Python types corresponding to Z3 sorts
-# that we care about.
+# Below, we construct Symbolic subclasses that parallel Z3 sorts.
+# These are organized into a functional class hierarchy so that, for
+# example, all sorts supporting arithmetic operations can share a
+# superclass that wraps the arithmetic operations.  (These functional
+# superclasses are not strictly abstract; because our wrapping of Z3
+# sorts is not complete, we may wrap a Z3 expression using one of
+# these superclasses if we don't know its specific sort.)  Most of the
+# methods in these classes simply wrap underlying Z3 methods
+# (unwrapping the arguments and re-wrapping the result).
 
 class MetaZ3Wrapper(type):
     """Metaclass to generate wrappers for Z3 ref object methods.
@@ -291,9 +293,10 @@ class SInt(SArith, SymbolicConst):
     __pass_type__ = int
     __z3_sort__ = z3.IntSort()
 
-    # We're still wrapping ArithRef here (not IntNumRef).  This class
-    # exists separately from SArith so we have Python type to parallel
-    # Z3's int sort.  wrap will use this for any integral expression.
+    # Note that we're wrapping ArithRefs, not IntNumRefs.  Z3's Ref
+    # hierarchy reflects AST structure, while our types reflect Z3
+    # sorts (which Z3 can't do because its C implementation can't
+    # construct new types on the fly like we can in Python).
 
 class UncheckableConstraintError(RuntimeError):
     def __init__(self, expr, reason):

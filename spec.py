@@ -346,6 +346,7 @@ class TestWriter(object):
         e = simsym.simplify(e)
 
         while self.nmodel < args.max_testcases:
+            # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
             if check == z3.unsat: break
             if check == z3.unknown:

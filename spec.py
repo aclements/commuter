@@ -367,6 +367,9 @@ class TestWriter(object):
                 print 'Negation', self.nmodel, ':', notsame
             e = simsym.symand([e, notsame])
 
+            self.__progress(False)
+        self.__progress(False)
+
     def __on_model(self, result, model):
         self.nmodel += 1
 
@@ -377,8 +380,6 @@ class TestWriter(object):
 
         if self.testgen:
             self.testgen.on_model(result, result.get_model(model))
-
-        self.__progress(False)
 
     def __progress(self, end):
         if os.isatty(sys.stdout.fileno()):

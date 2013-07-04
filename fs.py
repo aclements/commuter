@@ -81,6 +81,9 @@ isomorphism_types = {
     SOffset: "ignore", # Too many cases in link*link (XXX maybe fixed?)
     STime: "ignore",   # Irrelevant for test generation for now
     SFdNum: "equal",
+    # Ignore data bytes or we'll try to enumerate all distinct
+    # equivalence classes for file contents.
+    SDataByte: "ignore",
 }
 
 class Fs(simsym.tstruct(

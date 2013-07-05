@@ -13,7 +13,10 @@ SPipeId = simsym.tuninterpreted("SPipeId")
 
 SPid = simsym.SBool
 SOffset = simsym.tsynonym("SOffset", simsym.SInt)
-SData = symtypes.tlist(SDataByte, lenType=SOffset)
+class SData(symtypes.tlist(SDataByte, lenType=SOffset)):
+    def _declare_assumptions(self, assume):
+        super(SData, self)._declare_assumptions(assume)
+        assume(self._len <= 16)
 SPipe = simsym.tstruct(data = SData,
                        nread = SOffset)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)

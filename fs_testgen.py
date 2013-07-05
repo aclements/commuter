@@ -97,12 +97,7 @@ class FsState(object):
       inode = self.fs.i_map[symino]
       if inode is not None:
         len = inode.data.len()
-        if len < 0:
-          ## XXX hack -- maybe fix spec.py?
-          len = 0
-        if len > 16:
-          ## XXX hack -- maybe fix spec.py?
-          len = 16
+        assert 0 <= len <= 16
         ## XXX
         ## We may want to implement each Databyte as a separate 4KB page,
         ## to check for scalability of writes to different pages (as opposed

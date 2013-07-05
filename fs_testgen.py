@@ -154,6 +154,7 @@ class FsState(object):
     return ccode
 
   def build_dir(self):
+    # Reads filenames; extends inodefiles
     fn_to_ino = {}
     for symfn, fn in self.filenames.items():
       if not self.fs.root_dir.contains(symfn):
@@ -161,14 +162,20 @@ class FsState(object):
       symino = self.fs.root_dir[symfn]
       fn_to_ino[fn] = self.inodefiles[symino]
 
+    # Reads procs[pid].fds and procs[pid].vas; extends nothing
     (fdmap0, vamap0) = self.build_proc(False)
     (fdmap1, vamap1) = self.build_proc(True)
 
-    return {'common': self.setup_inodes() + self.setup_filenames(fn_to_ino),
-            'proc0': self.setup_proc(fdmap0, vamap0),
-            'proc1': self.setup_proc(fdmap1, vamap1),
-            'final': self.setup_inodes_finalize(),
-           }
+    return {
+      # setup_proc reads nothing; extends inodefiles, databytes
+      'proc0': self.setup_proc(fdmap0, vamap0),
+      'proc1': self.setup_proc(fdmap1, vamap1),
+      # setup_inodes reads inodefiles; extends databytes
+      # setup_filenames reads nothing; extends nothing
+      'common': self.setup_inodes() + self.setup_filenames(fn_to_ino),
+      # setup_inodes_finalize reads inodefiles; extends nothing
+      'final': self.setup_inodes_finalize(),
+    }
 
   def gen_code(self, callname, args):
     f = getattr(self, callname)

@@ -2,8 +2,9 @@ import z3
 from simsym import *
 
 class SListBase(Symbolic):
-    def init_assumptions(self):
-        return self._len >= 0
+    def _declare_assumptions(self, assume):
+        super(SListBase, self)._declare_assumptions(assume)
+        assume(self._len >= 0)
 
     def __check_idx(self, idx):
         if idx < 0:

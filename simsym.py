@@ -69,7 +69,7 @@ class Symbolic(object):
             val[0] = nval
         obj = cls._wrap_lvalue(lambda: val[0], setter, model)
         if model is None:
-            assume(cls._assumptions(obj))
+            obj._declare_assumptions(assume)
         return obj
 
     @classmethod
@@ -123,19 +123,25 @@ class Symbolic(object):
             return z3.Const(strname, sort)
         return cls._new_lvalue(mkValue((), cls._z3_sort()), model)
 
-    @classmethod
-    def _assumptions(cls, obj):
-        """Return the assumptions that should apply to a fresh created
-        lvalue of 'obj'."""
-        # XXX Do we still need this?
-        # XXX This seems horribly roundabout.  Can this just be an
-        # instance method that just assumes stuff it cares about and
-        # does nothing if it doesn't need to do anything, rather than
-        # building up some huge symbolic and that's mostly Trues?
-        return obj.init_assumptions()
+    def _declare_assumptions(self, assume):
+        """Declare assumptions for a new lvalue self.
 
-    def init_assumptions(self):
-        return wrap(z3.BoolVal(True))
+        This is called for newly created lvalues and should be
+        implemented by subclasses requiring assumption declarations.
+        Implementations should call the argument 'assume' with boolean
+        expressions involving self that must be true.  Usually
+        'assume' is simply simsym.assume, but in situations involving
+        extensional arrays (i.e., maps) it may bind quantifiers.
+
+        Subclasses that override this method should always invoke the
+        parent class' _declare_assumptions method.
+
+        For compound types, since only the compound itself is a newly
+        created lvalue, the implementation of _declare_assumptions
+        should project the components of the compound and call each
+        component's _declare_assumptions method.
+        """
+        pass
 
     def __ne__(self, o):
         r = self == o
@@ -423,6 +429,9 @@ def ttuple(name, *types):
     and will have properties for retrieving each component of the
     tuple."""
 
+    # XXX Broken: synonym types, assumptions
+    raise Exception("Sorry, ttuple is broken right now")
+
     sort = z3.Datatype(name)
     sort.declare(name, *[(fname, typ._z3_sort()) for fname, typ in types])
     sort = sort.create()
@@ -500,11 +509,10 @@ class SMapBase(Symbolic):
         # XXX Make this generic, too?
         return self._getter()
 
-    @classmethod
-    def _assumptions(cls, obj):
-        x = cls._indexType.var()
-        return symand([obj.init_assumptions(),
-                       forall(x, cls._valueType._assumptions(obj[x]))])
+    def _declare_assumptions(self, assume):
+        super(SMapBase, self)._declare_assumptions(assume)
+        x = self._indexType.var()
+        self[x]._declare_assumptions(lambda expr: assume(forall(x, expr)))
 
     def __eq__(self, o):
         if not isinstance(o, type(self)):
@@ -595,6 +603,11 @@ class SStructBase(Symbolic):
 
     def _z3_value(self):
         return self._getter()
+
+    def _declare_assumptions(self, assume):
+        super(SStructBase, self)._declare_assumptions(assume)
+        for fname in self._fields:
+            getattr(self, fname)._declare_assumptions(assume)
 
     def __eq__(self, o):
         # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?

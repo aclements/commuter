@@ -4,10 +4,9 @@ import model
 class Counter(simsym.tstruct(counter=simsym.SInt)):
     __slots__ = ["counter"]
 
-    @classmethod
-    def _assumptions(cls, obj):
-        return simsym.symand([super(Counter, cls)._assumptions(obj),
-                              obj.counter >= 0])
+    def _declare_assumptions(self, assume):
+        super(Counter, self)._declare_assumptions(assume)
+        assume(self.counter >= 0)
 
     @model.methodwrap()
     def sys_inc(self):

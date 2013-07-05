@@ -192,6 +192,13 @@ class FsState(object):
     ccode += '\n  return xerrno(r);'
     return ccode
 
+  def pipe(self, args):
+    ccode = ''
+    ccode += '\n  int fds[2];'
+    ccode += '\n  int r = pipe(fds);'
+    ccode += '\n  return xerrno(r);'
+    return ccode
+
   def pread(self, args):
     ccode = ''
     ccode += '\n  char c;'

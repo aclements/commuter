@@ -1,5 +1,6 @@
 import testgen
 import z3
+import z3util
 
 class DynamicDict(object):
   """A dynamically-filled dictionary.
@@ -12,7 +13,6 @@ class DynamicDict(object):
   def __init__(self, iterable):
     self.__gen = iter(iterable)
     self.__map = {}
-    self.__keys = []
 
   def __getitem__(self, key):
     """Return the value associated with key.
@@ -21,28 +21,24 @@ class DynamicDict(object):
     will be drawn from self's iterable.  key may be a Z3 constant.
     """
 
-    if z3.is_const(key):
-      idx = str(key)
-    else:
-      idx = key
+    hkey = z3util.HashableAst(key)
 
-    if idx not in self.__map:
+    if hkey not in self.__map:
       try:
-        self.__map[idx] = self.__gen.next()
+        self.__map[hkey] = self.__gen.next()
       except StopIteration:
         raise ValueError("Ran out of values for %r" % key)
-      self.__keys.append((key, idx))
-    return self.__map[idx]
+    return self.__map[hkey]
 
   def keys(self):
-    return (real for real, _ in self.__keys)
+    return (hkey.ast for hkey in self.__map.iterkeys())
   __iter__ = keys
 
   def values(self):
-    return (self.__map[idx] for _, idx in self.__keys)
+    return self.__map.itervalues()
 
   def items(self):
-    return ((real, self.__map[idx]) for real, idx in self.__keys)
+    return ((hkey.ast, val) for hkey, val in self.__map.iteritems())
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 

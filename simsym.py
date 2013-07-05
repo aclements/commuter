@@ -518,7 +518,7 @@ class SMapBase(Symbolic):
         if not isinstance(o, type(self)):
             return NotImplemented
         av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
-        return wrap(z3.And([af == bf for af, bf in zip(av, bv)]))
+        return symand([wrap(af == bf) for af, bf in zip(av, bv)])
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
@@ -614,7 +614,7 @@ class SStructBase(Symbolic):
         if not isinstance(o, type(self)):
             return NotImplemented
         av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
-        return wrap(z3.And([af == bf for af, bf in zip(av, bv)]))
+        return symand([wrap(af == bf) for af, bf in zip(av, bv)])
 
     def __getattr__(self, name):
         if name not in self._fields:
@@ -676,12 +676,16 @@ def implies(a, b):
 def exists(vars, e, patterns=[]):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]
+    if not isinstance(e, (Symbolic, z3.ExprRef)):
+        return e
     return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e),
                           patterns=map(unwrap, patterns)))
 
 def forall(vars, e, patterns=[]):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]
+    if not isinstance(e, (Symbolic, z3.ExprRef)):
+        return e
     return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e),
                           patterns=map(unwrap, patterns)))
 

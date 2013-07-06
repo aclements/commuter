@@ -296,14 +296,16 @@ class FsState(object):
 
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % va
-    ccode += '\n  return (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
+    ccode += '\n  int r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
              (prot, flags, self.procs[args.pid].fds[args.fd], args.off)
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def munmap(self, args):
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  return munmap(va, 4096);'
+    ccode += '\n  int r = munmap(va, 4096);'
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def mprotect(self, args):
@@ -312,7 +314,8 @@ class FsState(object):
       prot += ' | PROT_WRITE'
     ccode = ''
     ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  return mprotect(va, 4096, %s);' % prot
+    ccode += '\n  int r = mprotect(va, 4096, %s);' % prot
+    ccode += '\n  return xerrno(r);'
     return ccode
 
   def mem_read(self, args):

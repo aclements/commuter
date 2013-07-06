@@ -300,6 +300,9 @@ class TestWriter(object):
         if self.testgen:
             self.testgen.begin_call_set(callset)
 
+    def keep_going(self):
+        return self.nmodel < args.max_testcases
+
     def on_result(self, result):
         self.npath += 1
 
@@ -337,7 +340,7 @@ class TestWriter(object):
         # these uninterpreted constants.
         e_vars = expr_vars(e)
 
-        while self.nmodel < args.max_testcases:
+        while self.keep_going():
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
             if check == z3.unsat: break
@@ -515,11 +518,19 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
     test_writer.begin_call_set(callset)
 
     condlists = collections.defaultdict(list)
+    terminated = False
     for sar in simsym.symbolic_apply(test, base, *callset):
         condlists[sar.value].append(sar.path_condition)
         test_writer.on_result(sar)
+        if not test_writer.keep_going():
+            terminated = True
+            break
 
     test_writer.end_call_set()
+
+    if terminated:
+        print '  enumeration incomplete; skipping conditions'
+        continue
 
     conds = collections.defaultdict(lambda: [simsym.wrap(z3.BoolVal(False))])
     for result, condlist in condlists.items():

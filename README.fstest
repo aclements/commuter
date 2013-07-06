@@ -1,9 +1,6 @@
 generating test cases:
-  # construct symbolic test cases:
-  python spec.py fs -t test.out
-
-  # generate testgen.c:
-  python fs-test.py test.out testgen.c
+  # construct test cases:
+  python spec.py fs -t testgen.c
 
   # copy testgen.c to xv6:
   cp testgen.c ~/proj/xv6/libutil/testgen.c

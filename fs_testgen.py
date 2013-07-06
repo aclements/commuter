@@ -429,7 +429,8 @@ static void setup_%d_%s(void) {%s
 
     # Generate test array
     emit('', 'struct fstest fstests[] = {',
-         ',\n'.join(self.fstests),
+         '\n'.join('%s,' % x for x in self.fstests),
+         '  {}',
          '};')
 
     self.test_file.close()

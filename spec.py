@@ -28,11 +28,6 @@ def test(base, *calls):
     if simsym.symor([all_s[0] != s for s in all_s[1:]]):
         diverge += ('state',)
 
-    ## XXX precisely keeping track of what diverges incurs overhead.
-    ## Avoid the needless book-keeping for now.
-    if len(diverge) == 0: return ()
-    return ('something',)
-
     return diverge
 
 def contains_var(expr):
@@ -547,8 +542,10 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
 
     condlists = collections.defaultdict(list)
     terminated = False
+    diverged = set()
     for sar in simsym.symbolic_apply(test, base, *callset):
-        condlists[sar.value].append(sar.path_condition)
+        diverged.update(sar.value)
+        condlists[sar.value == ()].append(sar.path_condition)
         test_writer.on_result(sar)
         if not test_writer.keep_going():
             terminated = True
@@ -564,18 +561,20 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
     for result, condlist in condlists.items():
         conds[result] = condlist
 
-    # Internal variables help deal with situations where, for the same
-    # assignment of initial state + external inputs, two operations both
-    # can commute and can diverge (depending on internal choice, like the
-    # inode number for file creation).
-    commute = simsym.symor(conds[()])
-    cannot_commute = simsym.symnot(simsym.exists(simsym.internals(), commute))
+    if True in condlists:
+        commute = simsym.symor(condlists[True])
+        # Internal variables help deal with situations where, for the
+        # same assignment of initial state + external inputs, two
+        # operations both can commute and can diverge (depending on
+        # internal choice, like the inode number for file creation).
+        cannot_commute = simsym.symnot(simsym.exists(simsym.internals(), commute))
+        print_cond('can commute', commute)
+    else:
+        cannot_commute = True
 
-    for diverge, condlist in sorted(conds.items()):
-        if diverge == ():
-            print_cond('can commute', simsym.symor(condlist))
-        else:
-            print_cond('cannot commute, %s can diverge' % ', '.join(diverge),
-                       simsym.symand([simsym.symor(condlist), cannot_commute]))
+    if False in condlists:
+        diverge = simsym.symor(condlists[False])
+        print_cond('cannot commute; %s can diverge' % ', '.join(diverged),
+                   simsym.symand([diverge, cannot_commute]))
 
 test_writer.finish()

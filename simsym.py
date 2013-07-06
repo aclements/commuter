@@ -1074,6 +1074,11 @@ def symbolic_apply(fn, *args):
 #        curgraph.show()
     finally:
         var_constructors = init_var_constructors
+        # Don't permanently block symbolic_apply.  This is
+        # particularly important if the caller terminated its
+        # iteration early and we're exiting because of a
+        # GeneratorExit.
+        schedq = []
 
 def __symbolic_apply_loop(fn, *args):
     while len(schedq) > 0:

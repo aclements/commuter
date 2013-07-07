@@ -296,7 +296,7 @@ class TestWriter(object):
 
     def begin_call_set(self, callset):
         if self.model_file:
-            print >> self.model_file, "=== Models for %s ===" % \
+            print >> self.model_file, "==== Call set %s ====" % \
                 " ".join(c.__name__ for c in callset)
             print >> self.model_file
 
@@ -324,7 +324,7 @@ class TestWriter(object):
             return
 
         if self.model_file:
-            print >> self.model_file, "== Path %d ==" % self.ncompath
+            print >> self.model_file, "=== Path %s ===" % result.pathid
             print >> self.model_file
 
         e = result.path_condition
@@ -349,6 +349,7 @@ class TestWriter(object):
         if self.testgen:
             self.testgen.begin_path(result)
 
+        self.npathmodel = 0
         while self.keep_going():
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
@@ -418,6 +419,8 @@ class TestWriter(object):
         res = None
 
         if self.model_file:
+            print >> self.model_file, "== Path %s model %d ==" % \
+                (result.pathid, self.npathmodel)
             print >> self.model_file, model.sexpr()
             print >> self.model_file
             self.model_file.flush()
@@ -428,6 +431,7 @@ class TestWriter(object):
             self.testgen.on_model(smodel)
             res = smodel.assignments()
 
+        self.npathmodel += 1
         return res
 
     def __progress(self, end):

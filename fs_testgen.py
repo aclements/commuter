@@ -342,6 +342,7 @@ class FsTestGenerator(testgen.TestGenerator):
     super(FsTestGenerator, self).__init__(test_file_name)
     self.test_file = open(test_file_name, 'w')
     self.fstests = []
+    self.pathid = self.modelno = None
 
     self.emit("""\
 #define _GNU_SOURCE 1
@@ -373,10 +374,17 @@ static int __attribute__((unused)) xerrno(int r) {
   def emit(self, *code):
     self.test_file.write("\n".join(code) + "\n")
 
+  def begin_path(self, result):
+    super(FsTestGenerator, self).begin_path(result)
+    self.pathid = result.pathid
+    self.modelno = 0
+
   def on_model(self, model):
     super(FsTestGenerator, self).on_model(model)
 
     emit = self.emit
+    name = "%s_%s_%d" % ("_".join(self.callset_names), self.pathid,
+                         self.modelno)
     tidx = len(self.fstests)
 
     # XXX Include some information so a user can track it back to the model
@@ -398,28 +406,33 @@ static int __attribute__((unused)) xerrno(int r) {
         # Some calls don't take a pid because their process doesn't matter
         pids.append(False)
       emit("""\
-static int test_%d_%d(void) {%s
-}""" % (tidx, callidx, code))
+static int test_%s_%d(void) {%s
+}""" % (name, callidx, code))
     # Write setup code
     setup = fs.build_dir()
     for phase in ('common', 'proc0', 'proc1', 'final'):
       emit("""\
-static void setup_%d_%s(void) {%s
-}""" % (tidx, phase, setup[phase]))
+static void setup_%s_%s(void) {%s
+}""" % (name, phase, setup[phase]))
     self.test_file.flush()
 
     self.fstests.append("""\
-  { "%(name)s",
-    &setup_%(tidx)d_common,
-    { { &setup_%(tidx)d_proc0 }, { &setup_%(tidx)d_proc1 } },
-    &setup_%(tidx)d_final,
-    { { &test_%(tidx)d_0, %(pid0)d, "%(name0)s" },
-      { &test_%(tidx)d_1, %(pid1)d, "%(name1)s" } },
-    &cleanup }""" % {'name' : 'fs-%d' % tidx,
-                     'tidx' : tidx,
+  { "fs-%(name)s",
+    &setup_%(name)s_common,
+    { { &setup_%(name)s_proc0 }, { &setup_%(name)s_proc1 } },
+    &setup_%(name)s_final,
+    { { &test_%(name)s_0, %(pid0)d, "%(name0)s" },
+      { &test_%(name)s_1, %(pid1)d, "%(name1)s" } },
+    &cleanup }""" % {'name' : name,
                      'pid0' : pids[0], 'pid1' : pids[1],
                      'name0' : self.callset_names[0],
                      'name1' : self.callset_names[1]})
+
+    self.modelno += 1
+
+  def end_path(self):
+    super(FsTestGenerator, self).end_path()
+    self.pathid = self.modelno = None
 
   def finish(self):
     super(FsTestGenerator, self).finish()

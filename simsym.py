@@ -576,21 +576,23 @@ class SStructBase(Symbolic):
             var_constructors[__name] \
                 = lambda _, model: cls.var(__name, model, **fieldsSnapshot)
 
-        fvals = {}
-        for fname, typ in cls._fields.iteritems():
-            if fname in fields:
-                fvals[fname] = unwrap(fields.pop(fname))
-            else:
-                if __name is None:
-                    raise ValueError(
-                        "Name required for partially symbolic struct")
-                # Note that we do *not* pass __model here, since we
-                # want this to remain unevaluated until the user
-                # explicitly retrieves the field.
-                fvals[fname] = unwrap(typ.var(__name + "." + fname))
+        def mkValue(path, sort):
+            if len(path) == 1 and path[0] in fields:
+                return unwrap(fields.pop(path[0]))
+            if isinstance(sort, dict):
+                return {k: mkValue(path + (k,), v)
+                        for k, v in sort.iteritems()}
+            if __name is None:
+                raise ValueError(
+                    "Name required for partially symbolic struct")
+            strname = ".".join((__name,) + path)
+            # Record the simsym type of this constant
+            constTypes[strname] = (cls, path)
+            # Create the Z3 constant
+            return z3.Const(strname, sort)
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
-        return cls._new_lvalue(fvals, __model)
+        return cls._new_lvalue(mkValue((), cls._z3_sort()), __model)
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter, model):

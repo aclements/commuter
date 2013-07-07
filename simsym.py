@@ -354,12 +354,14 @@ class SBool(SExpr, SymbolicConst):
 
             # Extend the schedule
             if canTrue == z3.sat and canFalse == z3.unsat:
-                cursched.append((True, cursched[-1][1]))
+                cursched.append(
+                    SchedNode("branch_det", True, cursched[-1].gnode))
             elif canTrue == z3.unsat and canFalse == z3.sat:
-                cursched.append((False, cursched[-1][1]))
+                cursched.append(
+                    SchedNode("branch_det", False, cursched[-1].gnode))
             else:
                 # Both are possible; take both paths
-                gnode = cursched[-1][1]
+                gnode = cursched[-1].gnode
                 gnode.set_label(self, get_caller())
                 tnode, fnode = curgraph.new_node(), curgraph.new_node()
                 curgraph.new_edge(gnode, tnode, "T")
@@ -367,31 +369,34 @@ class SBool(SExpr, SymbolicConst):
 
                 newsched = list(cursched)
                 if canTrue == z3.sat:
-                    cursched.append((True, tnode))
+                    cursched.append(SchedNode("branch_nondet", True, tnode))
                 else:
-                    cursched.append((UncheckableConstraintError(
-                                self._v, canTrueReason), tnode))
+                    cursched.append(
+                        SchedNode("exception",
+                                  UncheckableConstraintError(
+                                      self._v, canTrueReason), tnode))
                 if canFalse == z3.sat:
-                    newsched.append((False, fnode))
+                    newsched.append(SchedNode("branch_nondet", False, fnode))
                 else:
-                    newsched.append((UncheckableConstraintError(
-                                z3.Not(self._v), canFalseReason), fnode))
+                    newsched.append(
+                        SchedNode("exception",
+                                  UncheckableConstraintError(
+                                      z3.Not(self._v), canFalseReason), fnode))
                 scheduler.queue_schedule(newsched)
 
         # Follow the schedule (which we may have just extended)
-        rv = cursched[path_state.schedidx][0]
-        if rv == True:
-            solver.add(self._v)
-        elif rv == False:
-            solver.add(z3.Not(self._v))
-        elif isinstance(rv, UncheckableConstraintError):
-            raise rv
-        else:
-            raise RuntimeError("Bad schedule entry %r" %
-                               cursched[path_state.schedidx])
-        #assert solver.check() == z3.sat
+        node = cursched[path_state.schedidx]
         path_state.schedidx += 1
-        return rv
+        if node.is_branch():
+            if node.val == True:
+                solver.add(self._v)
+            else:
+                solver.add(z3.Not(self._v))
+            return node.val
+        elif node.typ == "exception":
+            raise node.val
+        else:
+            raise RuntimeError("Bad schedule entry %r" % node)
 
 class SUninterpretedBase(SExpr):
     pass
@@ -898,17 +903,52 @@ class Env(object):
 Env.global_env = Env(None)
 Env.global_env.activate()
 
+class SchedNode(object):
+    """A node in the schedule graph.
+
+    There are several types of nodes:
+
+    - "branch_nondet" for a non-deterministic branch.  val must be
+      True or False.
+
+    - "branch_det" for a deterministic branch.  val must be True or
+      False.  These are recorded for replay purposes; if we didn't
+      record these, we would have to invoke the solver on every branch
+      just to find out if we should consult the schedule.
+
+    - "exception" for an exception.  val must be the exception to
+      raise at this point in the schedule.
+
+    - "assumption" for an assumption.  val must be None.
+    """
+
+    def __init__(self, typ, val, gnode):
+        if typ not in ("branch_nondet", "branch_det", "exception",
+                       "assumption"):
+            raise ValueError("Bad SchedNode type %r" % typ)
+        self.typ = typ
+        self.val = val
+        self.gnode = gnode
+
+    def __repr__(self):
+        return "SchedNode(%r, %r, %r)" % (self.typ, self.val, self.gnode)
+
+    def is_branch(self):
+        return self.typ == "branch_nondet" or self.typ == "branch_det"
+
 class Scheduler(object):
     """Tracks the schedule for the current symbolic apply."""
 
     def __init__(self):
+        # Stack of schedules; each schedule is a list of SchedNodes
         self.schedq = []
         self.graph = Graph()
 
         # Prime the schedule with a root node.  We skip this during
         # execution, but it means we can always use graph node
-        # sched[-1][1].
-        self.queue_schedule([(None, self.graph.new_node())])
+        # sched[-1].gnode.
+        self.queue_schedule(
+            [SchedNode("assumption", None, self.graph.new_node())])
 
     def queue_schedule(self, s):
         self.schedq.append(s)
@@ -983,16 +1023,16 @@ def assume(e):
     if len(cursched) == path_state.schedidx:
         curgraph = scheduler.graph
         if len(cursched):
-            gnode = cursched[-1][1]
+            gnode = cursched[-1].gnode
         else:
             gnode = curgraph.new_node()
         gnode.set_label(e, get_caller())
         nextnode = curgraph.new_node()
         curgraph.new_edge(gnode, nextnode, "")
 
-        cursched.append((None, nextnode))
+        cursched.append(SchedNode("assumption", None, nextnode))
 
-    assert cursched[path_state.schedidx][0] is None
+    assert cursched[path_state.schedidx].typ == "assumption"
     path_state.schedidx += 1
 
     solver.add(unwrap(e))
@@ -1109,18 +1149,18 @@ def symbolic_apply(fn, *args):
         sar = None
         try:
             rv = fn(*args)
-            cursched[-1][1].set_label(rv)
+            cursched[-1].gnode.set_label(rv)
             sar = SymbolicApplyResult(rv, Env.current())
         except UnsatisfiablePath:
-            cursched[-1][1].set_label("Unsatisfiable path")
-            cursched[-1][1].set_color("blue")
+            cursched[-1].gnode.set_label("Unsatisfiable path")
+            cursched[-1].gnode.set_color("blue")
         except UncheckableConstraintError as e:
-            cursched[-1][1].set_label("Exception: " + str(e))
-            cursched[-1][1].set_color("red")
+            cursched[-1].gnode.set_label("Exception: " + str(e))
+            cursched[-1].gnode.set_color("red")
             print str(e)
         except Exception as e:
-            cursched[-1][1].set_label("Exception: " + str(e))
-            cursched[-1][1].set_color("red")
+            cursched[-1].gnode.set_label("Exception: " + str(e))
+            cursched[-1].gnode.set_color("red")
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' %
                           (e.args[0], path_state.str_path()),)

@@ -111,14 +111,14 @@ class Symbolic(object):
         if name is None:
             name = anon_name()
         elif model is None:
-            var_constructors[name] = cls.var
+            Env.current().var_constructors[name] = cls.var
         def mkValue(path, sort):
             if isinstance(sort, dict):
                 return {k: mkValue(path + (k,), v)
                         for k, v in sort.iteritems()}
             strname = ".".join((name,) + path)
             # Record the simsym type of this constant
-            constTypes[strname] = (cls, path)
+            Env.current().const_types[strname] = (cls, path)
             # Create the Z3 constant
             return z3.Const(strname, sort)
         return cls._new_lvalue(mkValue((), cls._z3_sort()), model)
@@ -161,8 +161,8 @@ class SymbolicConst(Symbolic):
         if name is None:
             name = anon_name()
         elif model is None:
-            var_constructors[name] = cls.var
-        constTypes[name] = (cls, ())
+            Env.current().var_constructors[name] = cls.var
+        Env.current().const_types[name] = (cls, ())
         return cls._wrap(z3.Const(name, cls._z3_sort()), model)
 
     @classmethod
@@ -318,10 +318,12 @@ class SBool(SExpr, SymbolicConst):
     __z3_sort__ = z3.BoolSort()
 
     def __nonzero__(self):
-        solver = get_solver()
+        scheduler, path_state = Env.scheduler(), Env.path_state()
+        curgraph = scheduler.graph
+        solver = path_state.solver
+        cursched = path_state.sched
 
-        global cursched, curschedidx
-        if len(cursched) == curschedidx:
+        if len(cursched) == path_state.schedidx:
             # We've reached the end of replay; extend the schedule
             solver.push()
             solver.add(self._v)
@@ -374,10 +376,10 @@ class SBool(SExpr, SymbolicConst):
                 else:
                     newsched.append((UncheckableConstraintError(
                                 z3.Not(self._v), canFalseReason), fnode))
-                queue_schedule(newsched)
+                scheduler.queue_schedule(newsched)
 
         # Follow the schedule (which we may have just extended)
-        rv = cursched[curschedidx][0]
+        rv = cursched[path_state.schedidx][0]
         if rv == True:
             solver.add(self._v)
         elif rv == False:
@@ -385,9 +387,10 @@ class SBool(SExpr, SymbolicConst):
         elif isinstance(rv, UncheckableConstraintError):
             raise rv
         else:
-            raise RuntimeError("Bad schedule entry %r" % cursched[curschedidx])
+            raise RuntimeError("Bad schedule entry %r" %
+                               cursched[path_state.schedidx])
         #assert solver.check() == z3.sat
-        curschedidx = curschedidx + 1
+        path_state.schedidx += 1
         return rv
 
 class SUninterpretedBase(SExpr):
@@ -573,7 +576,7 @@ class SStructBase(Symbolic):
             # to save their current value, so snapshot them by
             # unwrapping their values.
             fieldsSnapshot = {k: unwrap(v) for k,v in fields.items()}
-            var_constructors[__name] \
+            Env.current().var_constructors[__name] \
                 = lambda _, model: cls.var(__name, model, **fieldsSnapshot)
 
         def mkValue(path, sort):
@@ -587,7 +590,7 @@ class SStructBase(Symbolic):
                     "Name required for partially symbolic struct")
             strname = ".".join((__name,) + path)
             # Record the simsym type of this constant
-            constTypes[strname] = (cls, path)
+            Env.current().const_types[strname] = (cls, path)
             # Create the Z3 constant
             return z3.Const(strname, sort)
         if fields:
@@ -841,42 +844,96 @@ class GraphNode(object):
 # Symbolic executor
 #
 
-solver = None
-schedq = []
-curgraph = None
-cursched = None
-curschedidx = None
+class Env(object):
+    """Execution environment.
 
-# Map from user-provided Symbolic variable names to Symbolic instance
-# constructors.  Each instance constructor must take two arguments:
-# the user variable name and a simsym.Model object that binds the Z3
-# environment.
-var_constructors = {}
+    An execution environment tracks symbolic declarations, the current
+    scheduler, and the current path state.  Execution environments
+    form a tree.  There is always a global execution environment, even
+    when we're not performing symbolic execution, since symbolic
+    declarations can occur anywhere.
+    """
 
-# Map from Z3 constant names to (outer Symbolic type, compound path)
-constTypes = {}
+    def __init__(self, parent, scheduler=None, path_state=None):
+        self.scheduler, self.path_state = scheduler, path_state
 
-def get_solver():
-    """Return the current z3.Solver(), or raise RuntimeError if no
-    solver is active."""
-    if solver is None:
-        raise RuntimeError("Symbolic execution attempted outside symbolic_apply")
-    return solver
+        # Map from user-provided Symbolic variable names to Symbolic
+        # instance constructors.  Each instance constructor must take
+        # two arguments: the user variable name and a simsym.Model
+        # object that binds the Z3 environment.
+        self.var_constructors = parent.var_constructors.copy() if parent else {}
 
-def queue_schedule(s):
-    # print "currently in schedule", cursched
-    # print "queueing schedule", s
-    schedq.append(s)
+        # Map from Z3 constant names to (outer Symbolic type, compound
+        # path)
+        self.const_types = parent.const_types.copy() if parent else {}
 
-def str_state():
-    """Return the current path constraint as a string, or None if the
-    path is unconstrained."""
+    __current = None
 
-    asserts = get_solver().assertions()
-    if len(asserts) == 0:
-        return None
-    return str(z3.simplify(z3.And(*asserts),
-                           expand_select_store=True))
+    @classmethod
+    def current(cls):
+        """Return the current Env."""
+        return cls.__current
+
+    @classmethod
+    def scheduler(cls):
+        """Return the current Scheduler.
+
+        Raise RuntimeError if no Scheduler is active."""
+        if cls.__current.scheduler is None:
+            raise RuntimeError("Symbolic execution attempted outside symbolic_apply")
+        return cls.__current.scheduler
+
+    @classmethod
+    def path_state(cls):
+        """Return the current PathState.
+
+        Raise RuntimeError if no PathState is active."""
+        if cls.__current.path_state is None:
+            raise RuntimeError("Symbolic execution attempted outside symbolic_apply")
+        return cls.__current.path_state
+
+    def activate(self):
+        """Make this environment current."""
+        Env.__current = self
+Env.global_env = Env(None)
+Env.global_env.activate()
+
+class Scheduler(object):
+    """Tracks the schedule for the current symbolic apply."""
+
+    def __init__(self):
+        self.schedq = []
+        self.graph = Graph()
+
+        # Prime the schedule with a root node.  We skip this during
+        # execution, but it means we can always use graph node
+        # sched[-1][1].
+        self.queue_schedule([(None, self.graph.new_node())])
+
+    def queue_schedule(self, s):
+        self.schedq.append(s)
+
+    def schedule_generator(self):
+        while len(self.schedq) > 0:
+            yield self.schedq.pop()
+
+class PathState(object):
+    """Tracks state for the current symbolic execution code path."""
+
+    def __init__(self, sched):
+        self.sched = sched
+        self.schedidx = 1
+        self.solver = z3.Solver()
+
+    def str_path(self):
+        """Return the current path constraint as a string, or None if the
+        path is unconstrained."""
+
+        asserts = self.solver.assertions()
+        if len(asserts) == 0:
+            return None
+        return str(z3.simplify(z3.And(*asserts),
+                               expand_select_store=True))
 
 def simplify(expr, try_harder=False):
     core_simplifier = 'ctx-simplify'
@@ -905,11 +962,13 @@ def assume(e):
     if e is True:
         return
 
+    scheduler, path_state = Env.scheduler(), Env.path_state()
+
     # Is this assumption already implied?  This isn't strictly
     # necessary, but it cleans up generated expressions and the
     # execution graph.  It also sometimes lets z3 decide a path
     # condition that it otherwise can't (which is probably a z3 bug).
-    solver = get_solver()
+    solver = path_state.solver
     solver.push()
     solver.add(unwrap(symnot(e)))
     sat = solver.check()
@@ -920,8 +979,9 @@ def assume(e):
     # Update the schedule and execution graph.  (We wouldn't need to
     # track assumptions in the schedule except that we want to avoid
     # duplicate nodes in the execution graph.)
-    global cursched, curschedidx
-    if len(cursched) == curschedidx:
+    cursched = path_state.sched
+    if len(cursched) == path_state.schedidx:
+        curgraph = scheduler.graph
         if len(cursched):
             gnode = cursched[-1][1]
         else:
@@ -932,8 +992,8 @@ def assume(e):
 
         cursched.append((None, nextnode))
 
-    assert cursched[curschedidx][0] is None
-    curschedidx = curschedidx + 1
+    assert cursched[path_state.schedidx][0] is None
+    path_state.schedidx += 1
 
     solver.add(unwrap(e))
     sat = solver.check()
@@ -951,12 +1011,12 @@ def assume(e):
 class SymbolicApplyResult(object):
     """The result of a symbolic application."""
 
-    def __init__(self, value, path_condition_list, var_constructors,
-                 const_types):
+    def __init__(self, value, env):
         self.__value = value
-        self.__path_condition_list = path_condition_list
-        self.__var_constructors = var_constructors
-        self.__const_types = const_types
+        self.__path_condition_list \
+            = wraplist(env.path_state.solver.assertions())
+        self.__var_constructors = env.var_constructors
+        self.__const_types = env.const_types
 
     @property
     def value(self):
@@ -1037,58 +1097,20 @@ def symbolic_apply(fn, *args):
     constraint, this prints a warning and terminates that path.
     """
 
-    global curgraph
-    curgraph = Graph()
+    if Env.current() != Env.global_env:
+        raise Exception("Recursive symbolic_apply")
 
-    # Prime the schedule with a root node.  We skip this during
-    # execution, but it means we can always use graph node
-    # cursched[-1][1].
-    queue_schedule([(None, curgraph.new_node())])
+    scheduler = Scheduler()
 
-    global schedq
-    if len(schedq) != 1:
-        # XXX Given that this is a generator, it would be nice if you
-        # could have more than one symbolic_apply going at once.  We
-        # probably still need global state, but if we bundled it all
-        # into one object, it would be easy to swap in and out.
-        raise Exception("Recursive symbolic_apply?")
-
-    global var_constructors
-    init_var_constructors = var_constructors.copy()
-
-    try:
-        for sar in __symbolic_apply_loop(fn, *args):
-            yield sar
-#        curgraph.show()
-    finally:
-        var_constructors = init_var_constructors
-        # Don't permanently block symbolic_apply.  This is
-        # particularly important if the caller terminated its
-        # iteration early and we're exiting because of a
-        # GeneratorExit.
-        schedq = []
-
-def __symbolic_apply_loop(fn, *args):
-    while len(schedq) > 0:
-        global cursched
-        cursched = schedq.pop()
-
-        global curschedidx
-        curschedidx = 1
-
-        # XXX Some variables are declared outside the symbolic_apply
-        # environment.  Do we need to keep track of those, too?
-        global constTypes
-        constTypes = {}
-
-        global solver
-        solver = z3.Solver()
+    for cursched in scheduler.schedule_generator():
+        old_env = Env.current()
+        path_state = PathState(cursched)
+        Env(Env.global_env, scheduler, path_state).activate()
+        sar = None
         try:
             rv = fn(*args)
             cursched[-1][1].set_label(rv)
-            yield SymbolicApplyResult(rv, wraplist(solver.assertions()),
-                                      var_constructors.copy(),
-                                      constTypes.copy())
+            sar = SymbolicApplyResult(rv, Env.current())
         except UnsatisfiablePath:
             cursched[-1][1].set_label("Unsatisfiable path")
             cursched[-1][1].set_color("blue")
@@ -1100,13 +1122,17 @@ def __symbolic_apply_loop(fn, *args):
             cursched[-1][1].set_label("Exception: " + str(e))
             cursched[-1][1].set_color("red")
             if len(e.args) == 1:
-                e.args = ('%s in symbolic state:\n%s' % (e.args[0], str_state()),)
+                e.args = ('%s in symbolic state:\n%s' %
+                          (e.args[0], path_state.str_path()),)
             else:
-                e.args = e.args + (str_state(),)
-            curgraph.show()
+                e.args = e.args + (path_state.str_path(),)
+            scheduler.graph.show()
             raise
         finally:
-            solver = None
+            old_env.activate()
+
+        if sar is not None:
+            yield sar
 
 def check(e):
     solver = z3.Solver()

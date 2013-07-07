@@ -1,5 +1,12 @@
 class TestGenerator(object):
-    """Base class for test case generators."""
+    """Base class for test case generators.
+
+    The methods of this class will be invoked as symbolic execution
+    and model enumeration proceed in the following order:
+      (begin_call_set (begin_path on_model+ end_path)* end_call_set)* finish
+    Subclasses may override any of these methods, but should always
+    call the superclass method.
+    """
 
     def __init__(self, test_file_name):
         """Initialize the test generator.
@@ -12,9 +19,10 @@ class TestGenerator(object):
     def begin_call_set(self, callset):
         """Handle the beginning of a call set.
 
-        callset is a list of method objects.  This saves this
-        information so information about the current callset can be
-        queried later.
+        callset is a list of method objects representing the methods
+        being tested for commutativity.
+
+        Execution of the call set will yield zero or more code paths.
         """
         self.__callset = callset
 
@@ -29,19 +37,32 @@ class TestGenerator(object):
                     self.__callset[callno].__name__)
         return self.__model[var_name]
 
-    def on_model(self, result, model):
-        """Generate a test for a single code path and concrete assignment.
+    def begin_path(self, result):
+        """Handle the beginning of a code path.
 
         result is the simsym.SymbolicApplyResult representing this
-        code path.  model is the simsym.Model object giving the
-        concrete assignment.
+        code path.
 
-        The default implementation of this method saves the result and
-        model for methods that look up information from them.
-        Subclasses should override this method to process each model,
-        but the implementation must first call the superclass method.
+        The code path will have one or more models that satisfy its
+        path condition.
+        """
+        pass
+
+    def on_model(self, model):
+        """Handle a concrete assignment for the current code path.
+
+        model is the simsym.Model object giving the concrete
+        assignment.
+
+        This method may be called more than once for a single code
+        path.  Each call's model will differ in the value of at least
+        one expression that was evaluated by past calls to on_model.
         """
         self.__model = model
+
+    def end_path(self):
+        """Handle the end of a code path."""
+        pass
 
     def end_call_set(self):
         """Handle the end of a call set."""

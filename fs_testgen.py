@@ -373,8 +373,8 @@ static int __attribute__((unused)) xerrno(int r) {
   def emit(self, *code):
     self.test_file.write("\n".join(code) + "\n")
 
-  def on_model(self, result, model):
-    super(FsTestGenerator, self).on_model(result, model)
+  def on_model(self, model):
+    super(FsTestGenerator, self).on_model(model)
 
     emit = self.emit
     tidx = len(self.fstests)
@@ -422,6 +422,8 @@ static void setup_%d_%s(void) {%s
                      'name1' : self.callset_names[1]})
 
   def finish(self):
+    super(FsTestGenerator, self).finish()
+
     emit = self.emit
 
     # Generate cleanup code

@@ -346,6 +346,9 @@ class TestWriter(object):
         # these uninterpreted constants.
         e_vars = expr_vars(e)
 
+        if self.testgen:
+            self.testgen.begin_path(result)
+
         while self.keep_going():
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
@@ -405,6 +408,9 @@ class TestWriter(object):
             e = simsym.symand([e, notsame])
 
             self.__progress(False)
+
+        if self.testgen:
+            self.testgen.end_path()
         self.__progress(False)
 
     def __on_model(self, result, model):
@@ -419,7 +425,7 @@ class TestWriter(object):
         if self.testgen:
             smodel = result.get_model(model)
             smodel.track_assignments(True)
-            self.testgen.on_model(result, smodel)
+            self.testgen.on_model(smodel)
             res = smodel.assignments()
 
         return res

@@ -112,10 +112,12 @@ class IsomorphicMatch(object):
         # distinctness.
         self.__conds = z3util.AstSet()
 
-    def add(self, expr, val):
+    def add(self, expr, val, env):
         """Add a condition on the value of expr.
 
-        expr and val must be instances of simsym.Symbolic.
+        expr and val must be instances of simsym.Symbolic.  env must
+        be a simsym.SymbolicApplyResult that provides the context for
+        interpreting constants in expr and val.
 
         For most expr's, this will require that an isomorphic
         assignment assign val to expr.
@@ -159,7 +161,7 @@ class IsomorphicMatch(object):
         # cyclic representatives (where the representative expression
         # depends on some uninterpreted value whose representative
         # depends on the first representative).
-        rexpr = self.__rewrite(z3expr, symtype)
+        rexpr = self.__rewrite(z3expr, symtype, env)
         if rexpr is None:
             return
 
@@ -173,7 +175,7 @@ class IsomorphicMatch(object):
         # Rewrite the value to use representatives.  We do this
         # after registering representative expressions in case we
         # just registered the representative for this value.
-        rval = self.__rewrite(z3val, symtype)
+        rval = self.__rewrite(z3val, symtype, env)
         if rval is None:
             return
 
@@ -195,8 +197,12 @@ class IsomorphicMatch(object):
             return "equal"
         return None
 
-    def __rewrite(self, expr, symtype):
-        """Replace uninterpreted values in expr with their representatives."""
+    def __rewrite(self, expr, symtype, env):
+        """Replace uninterpreted values in expr with their representatives.
+
+        env must be a simsym.SymbolicApplyResult that provides the
+        environment for this rewriting.
+        """
 
         # The expression may consist of constants and selects.  We
         # need to map every select index to its Symbolic type to
@@ -213,7 +219,7 @@ class IsomorphicMatch(object):
                 idx2 = rewrite_const(idx, pseudo_type[0], True)
                 return array2[idx2], pseudo_type[1]
             elif z3.is_const(expr):
-                return expr, simsym.symbolic_type(expr)
+                return expr, env.symbolic_type(expr)
             else:
                 raise Exception("Unexpected AST type %r" % expr)
 
@@ -377,7 +383,7 @@ class TestWriter(object):
             for aexpr, val in assignments:
                 aexpr_vars = expr_vars(aexpr)
                 if not aexpr_vars.isdisjoint(e_vars):
-                    same.add(aexpr, val)
+                    same.add(aexpr, val, result)
                 elif args.verbose_testgen:
                     print 'Ignoring assignment:', (aexpr, val)
 

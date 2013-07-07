@@ -734,48 +734,6 @@ def wraplist(reflist):
     return [wrap(ref) for ref in reflist]
 
 #
-# Symbolic types of Z3 constants
-#
-
-def symbolic_type(const):
-    """Return a representation of the Symbolic type of a Z3 constant.
-
-    const must satisfy z3.is_const.  This will map its type back to a
-    pseudo-Symbolic type.  Because the Z3 type hierarchy does not
-    match the Symbolic type hierarchy, const may not have a direct
-    mapping to a Symbolic type, so this pseudo-Symbolic type will have
-    one of the following forms:
-
-    * Symbolic subclass - An exact Symbolic type.  This will be a
-      synonym type if possible (this allows additional information to
-      be associated with the Symbolic type that would otherwise be
-      lost inside Z3).
-
-    * (index pseudo-Symbolic type, value pseudo-Symbolic type) - A Z3
-      array from the index to the value type.
-    """
-
-    # XXX The result of this will only give Symbolic types for
-    # primitives.  Should this perhaps represent the whole type
-    # hierarchy?  Like
-    #  ("struct", SStruct | SSynonym, field type) |
-    #  ("map", SMap | SSynonym, index type, value type) |
-    #  ("primitive", type)
-
-    outerType, path = constTypes[str(const)]
-    def rec(outerType, path):
-        if issubclass(outerType, SStructBase) and len(path):
-            return rec(outerType._fields[path[0]], path[1:])
-        elif issubclass(outerType, SMapBase):
-            return (rec(outerType._indexType, ()),
-                    rec(outerType._valueType, path))
-        elif issubclass(outerType, SymbolicConst) and not len(path):
-            return outerType
-        else:
-            raise Exception("Failed to resolve type of %s" % const)
-    return rec(outerType, path)
-
-#
 # AST matching code.  Unused because the simplifier aggressively
 # rewrites things back to its own preferred representation, and
 # it is difficult to rewrite just one child in an AST (no generic
@@ -991,10 +949,12 @@ def assume(e):
 class SymbolicApplyResult(object):
     """The result of a symbolic application."""
 
-    def __init__(self, value, path_condition_list, var_constructors):
+    def __init__(self, value, path_condition_list, var_constructors,
+                 const_types):
         self.__value = value
         self.__path_condition_list = path_condition_list
         self.__var_constructors = var_constructors
+        self.__const_types = const_types
 
     @property
     def value(self):
@@ -1029,6 +989,44 @@ class SymbolicApplyResult(object):
 
         return Model(self.__var_constructors, z3_model)
 
+    def symbolic_type(self, const):
+        """Return a representation of the Symbolic type of a Z3 constant.
+
+        const must satisfy z3.is_const.  This will map its type back
+        to a pseudo-Symbolic type.  Because the Z3 type hierarchy does
+        not match the Symbolic type hierarchy, const may not have a
+        direct mapping to a Symbolic type, so this pseudo-Symbolic
+        type will have one of the following forms:
+
+        * Symbolic subclass - An exact Symbolic type.  This will be a
+          synonym type if possible (this allows additional information
+          to be associated with the Symbolic type that would otherwise
+          be lost inside Z3).
+
+        * (index pseudo-Symbolic type, value pseudo-Symbolic type) - A
+          Z3 array from the index to the value type.
+        """
+
+        # XXX The result of this will only give Symbolic types for
+        # primitives.  Should this perhaps represent the whole type
+        # hierarchy?  Like
+        #  ("struct", SStruct | SSynonym, field type) |
+        #  ("map", SMap | SSynonym, index type, value type) |
+        #  ("primitive", type)
+
+        outer_type, path = self.__const_types[str(const)]
+        def rec(outer_type, path):
+            if issubclass(outer_type, SStructBase) and len(path):
+                return rec(outer_type._fields[path[0]], path[1:])
+            elif issubclass(outer_type, SMapBase):
+                return (rec(outer_type._indexType, ()),
+                        rec(outer_type._valueType, path))
+            elif issubclass(outer_type, SymbolicConst) and not len(path):
+                return outer_type
+            else:
+                raise Exception("Failed to resolve type of %s" % const)
+        return rec(outer_type, path)
+
 def symbolic_apply(fn, *args):
     """Evaluate fn(*args) under symbolic execution.
 
@@ -1039,11 +1037,6 @@ def symbolic_apply(fn, *args):
 
     global curgraph
     curgraph = Graph()
-
-    # XXX Some variables are declared outside the symbolic_apply
-    # environment.  Do we need to keep track of those, too?
-    global constTypes
-    constTypes = {}
 
     # Prime the schedule with a root node.  We skip this during
     # execution, but it means we can always use graph node
@@ -1081,13 +1074,19 @@ def __symbolic_apply_loop(fn, *args):
         global curschedidx
         curschedidx = 1
 
+        # XXX Some variables are declared outside the symbolic_apply
+        # environment.  Do we need to keep track of those, too?
+        global constTypes
+        constTypes = {}
+
         global solver
         solver = z3.Solver()
         try:
             rv = fn(*args)
             cursched[-1][1].set_label(rv)
             yield SymbolicApplyResult(rv, wraplist(solver.assertions()),
-                                      var_constructors.copy())
+                                      var_constructors.copy(),
+                                      constTypes.copy())
         except UnsatisfiablePath:
             cursched[-1][1].set_label("Unsatisfiable path")
             cursched[-1][1].set_color("blue")

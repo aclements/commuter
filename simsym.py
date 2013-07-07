@@ -1057,6 +1057,7 @@ class SymbolicApplyResult(object):
             = wraplist(env.path_state.solver.assertions())
         self.__var_constructors = env.var_constructors
         self.__const_types = env.const_types
+        self.__schedule = env.path_state.sched
 
     @property
     def value(self):
@@ -1072,6 +1073,31 @@ class SymbolicApplyResult(object):
     def path_condition(self):
         """The path condition as a single SBool conjunction."""
         return symand(self.__path_condition_list)
+
+    @property
+    def pathid(self):
+        """Return a string that uniquely identifies this path.
+
+        The returned string will consist of a 'p' followed by hex
+        digits.  This is formed by creating a bit string from left to
+        right representing each fork in the path, padding its length
+        to a multiple of 4, and converting this to hex.  As a result,
+        strings with identical prefixes represent code paths with
+        identical prefixes.
+        """
+        bitstring = length = 0
+        for node in self.__schedule:
+            if node.typ == "branch_nondet":
+                bitstring = (bitstring << 1) | node.val
+                length += 1
+            elif node.typ in ("branch_det", "assumption"):
+                continue
+            else:
+                raise ValueError("Can't encode schedule node %r" % node)
+        # Pad the bitstring to a multiple of four
+        bitstring <<= 3 - ((length + 3) % 4)
+        # Convert to hex
+        return "p%0*.x" % ((length + 3) / 4, bitstring)
 
     def get_model(self, z3_model=None):
         """Return a Model interpreting the variables declared by this code path.

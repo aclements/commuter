@@ -989,10 +989,7 @@ def assume(e):
         raise UncheckableConstraintError(unwrap(e), reason)
 
 class SymbolicApplyResult(object):
-    """The result of a symbolic application.
-
-    Records the value returned by the application (which may itself be
-    a symbolic value), and the path condition as a list of """
+    """The result of a symbolic application."""
 
     def __init__(self, value, path_condition_list, var_constructors):
         self.__value = value

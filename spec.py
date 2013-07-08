@@ -9,13 +9,15 @@ import os
 import z3util
 import pprint
 
+TestResult = collections.namedtuple('TestResult', 'diverge results')
+
 def test(base, *calls):
     all_s = []
     all_r = []
 
     for callseq in itertools.permutations(range(0, len(calls))):
         s = base.var(base.__name__)
-        r = {}
+        r = [None] * len(callseq)
         seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:
             r[idx] = calls[idx](s, chr(idx + ord('a')), seqname)
@@ -28,7 +30,7 @@ def test(base, *calls):
     if simsym.symor([all_s[0] != s for s in all_s[1:]]):
         diverge += ('state',)
 
-    return diverge
+    return TestResult(diverge, all_r)
 
 def contains_var(expr):
     if z3.is_var(expr):
@@ -308,7 +310,7 @@ class TestWriter(object):
         self.npath += 1
 
         # Filter out non-commutative results
-        if result.value != ():
+        if result.value.diverge != ():
             self.__progress(False)
             return
 
@@ -544,8 +546,9 @@ for callset in itertools.combinations_with_replacement(calls, args.ncomb):
     terminated = False
     diverged = set()
     for sar in simsym.symbolic_apply(test, base, *callset):
-        diverged.update(sar.value)
-        condlists[sar.value == ()].append(sar.path_condition)
+        is_commutative = (sar.value.diverge == ())
+        diverged.update(sar.value.diverge)
+        condlists[is_commutative].append(sar.path_condition)
         test_writer.on_result(sar)
         if not test_writer.keep_going():
             terminated = True

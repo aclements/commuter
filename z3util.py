@@ -1,5 +1,6 @@
 import collections
 import z3
+import simsym
 
 def predicates(expr):
     """Return a list of Z3 predicate names satisfied by expr.
@@ -31,17 +32,24 @@ def predicates(expr):
     return res
 
 class HashableAst(object):
-    """Wrapper for Z3 ASTs for Python hashing and equality.
+    """Wrapper for simsym/Z3 ASTs for Python hashing and equality.
 
     HashableAsts implement Python's hashing and equality operation
-    using structural hashing and equality of Z3 ASTs.  Plain Z3 AST
-    objects use default object hashing and equality constructs a Z3
-    equality expression.  This is good for building expressions, but
-    makes ASTs unsuitable for direct use in dictionaries and sets.
+    using structural hashing and equality of simsym and Z3 ASTs.  Both
+    types of ASTs overload == to construct equality expressions.  This
+    is good for building expressions, but makes ASTs unsuitable for
+    direct use in dictionaries and sets.  Z3 ASTs additionally use
+    default object hashing, making them further unsuitable.
     """
 
     def __init__(self, ast):
         self.ast = ast
+        if z3.is_ast(ast):
+            self.__type = "z3"
+        elif isinstance(ast, simsym.Symbolic):
+            self.__type = "simsym"
+        else:
+            self.__type = "value"
 
     def __str__(self):
         return "HashableAst(%s)" % self.ast
@@ -50,16 +58,17 @@ class HashableAst(object):
         return "HashableAst(%r)" % self.ast
 
     def __eq__(self, o):
-        if z3.is_ast(self.ast) and z3.is_ast(o.ast):
-            return self.ast.eq(o.ast)
-        if z3.is_ast(self.ast) or z3.is_ast(o.ast):
+        if self.__type != o.__type:
             # We could return False here, but it's way too easy to try
             # to compare Python values with things like z3.IntNumRef.
-            raise TypeError("Cannot compare AST and non-AST")
-        return self.ast == o.ast
+            raise TypeError("Cannot compare different HashableAst types")
+        if self.__type == "z3" or self.__type == "simsym":
+            return self.ast.eq(o.ast)
+        else:
+            return self.ast == o.ast
 
     def __hash__(self):
-        if z3.is_ast(self.ast):
+        if self.__type == "z3":
             return self.ast.hash()
         return hash(self.ast)
 

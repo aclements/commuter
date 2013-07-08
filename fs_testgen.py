@@ -1,6 +1,7 @@
 import testgen
 import z3
 import z3util
+import simsym
 
 class DynamicDict(object):
   """A dynamically-filled dictionary.
@@ -27,6 +28,13 @@ class DynamicDict(object):
     hkey = z3util.HashableAst(key)
 
     if hkey not in self.__map:
+      if isinstance(key, simsym.Symbolic) and \
+         not z3.is_const(simsym.unwrap(key)):
+        # There's nothing wrong with supporting arbitrary ASTs, but in
+        # every place we use DynamicDict, this indicates an
+        # easy-to-miss bug.
+        raise ValueError("Key is not a constant: %r" % key)
+
       if self.__gen is None:
         raise ValueError("DynamicDict has been read; cannot be extended")
       try:

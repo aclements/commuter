@@ -356,6 +356,18 @@ class TestWriter(object):
                 print 'Failure reason:', model
                 break
 
+            if check == z3.sat and 'array-ext' in model.sexpr():
+                # Work around some non-deterministic bug that causes
+                # Z3 to occasionally produce models containing
+                # 'array-ext' applications that break evaluation.
+                print 'Warning: Working around array-ext bug'
+                for i in range(10):
+                    check, model = simsym.check(e)
+                    if 'array-ext' not in model.sexpr():
+                        break
+                else:
+                    print 'Workaround failed; this won\' end well'
+
             if args.verbose_testgen:
                 print "Model:"
                 print model

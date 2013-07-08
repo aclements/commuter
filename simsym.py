@@ -149,6 +149,25 @@ class Symbolic(object):
             return NotImplemented
         return symnot(r)
 
+    def eq(self, o):
+        """Return True if self and o are structurally identical.
+
+        This is what Python's == would usually mean, but Symbolic
+        overrides == to return symbolic equality expressions.
+        """
+        def rec(a, b):
+            if isinstance(a, dict) != isinstance(b, dict):
+                return False
+            if isinstance(a, dict):
+                return all(rec(asub, bsub)
+                           for asub, bsub in zip(a.values(), b.values()))
+            # XXX Will do the wrong thing if there are concrete values
+            return a.eq(b)
+        return rec(self._z3_value(), o._z3_value())
+
+    def __hash__(self):
+        return hash(compound_map(lambda val: val.hash(), self._z3_value()))
+
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
     deeply immutable values such as primitive types."""

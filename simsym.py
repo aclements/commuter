@@ -1248,7 +1248,10 @@ class Model(object):
             # Either expr is not a concrete value, or we don't know
             # how to extract its concrete value (it could be, e.g., an
             # enum value)
-            raise Exception("Expression %s is not a concrete value" % expr)
+            # XXX Use sexpr because regular formatting has been
+            # freezing on me.
+            raise Exception("Expression %s => %s is not a concrete value" %
+                            (expr, z3val.sexpr()))
 
         if self.__track:
             for aexpr, _ in self.__asignments:

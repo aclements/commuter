@@ -73,3 +73,30 @@ class TestGenerator(object):
 
         The default implementation of this method does nothing."""
         pass
+
+class CodeWriter(object):
+    def __init__(self, fp=None):
+        self.__fp = fp
+        if fp is None:
+            self.__blocks = []
+
+    def __call__(self, *blocks):
+        if self.__fp:
+            self.__fp.write('\n'.join(map(str, blocks)) + '\n')
+            self.__fp.flush()
+        else:
+            self.__blocks.extend(blocks)
+        return self
+
+    def __repr__(self):
+        return 'CodeWriter(%r)' % self.__fp
+
+    def __str__(self):
+        if self.__fp:
+            return repr(self)
+        return '\n'.join(map(str, self.__blocks))
+
+    def indent(self, levels=1):
+        indent_str = "  " * levels
+        indented = indent_str + str(self).replace('\n', '\n' + indent_str)
+        return CodeWriter()(indented)

@@ -96,11 +96,11 @@ class FsState(object):
     return (fdmap, vamap)
 
   def setup_inodes(self):
-    ccode = ''
-    ccode += '\n  int fd __attribute__((unused));'
-    ccode += '\n  char c __attribute__((unused));'
+    emit = self.emit
+    emit('int fd __attribute__((unused));',
+         'char c __attribute__((unused));')
     for symino, ifn in self.inodefiles.items():
-      ccode += '\n  fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn
+      emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn)
 
       inode = self.fs.i_map[symino]
       if inode is not None:
@@ -112,49 +112,42 @@ class FsState(object):
         ## to writes to different bytes, which is less interesting).
 
         for i in range(0, len):
-          ccode += '\n  c = %d;' % self.databytes[inode.data[i]]
-          ccode += '\n  write(fd, &c, 1);'
+          emit('c = %d;' % self.databytes[inode.data[i]],
+               'write(fd, &c, 1);')
 
-      ccode += '\n  close(fd);'
-    return ccode
+      emit('close(fd);')
 
   def setup_filenames(self, fn_to_ino):
-    ccode = ''
     for fn in fn_to_ino:
-      ccode += '\n  link("%s", "%s");' % (fn_to_ino[fn], fn)
-    return ccode
+      self.emit('link("%s", "%s");' % (fn_to_ino[fn], fn))
 
   def setup_inodes_finalize(self):
-    ccode = '' 
     for inodefile in self.inodefiles.values():
-      ccode += '\n  unlink("%s");' % inodefile
-    return ccode
+      self.emit('unlink("%s");' % inodefile)
 
   def setup_proc(self, fdmap, vamap):
-    ccode = ''
-    ccode += '\n  int fd __attribute__((unused));'
+    emit = self.emit
+    emit('int fd __attribute__((unused));')
     for fd, fdinfo in fdmap.items():
-      ccode += '\n  fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum]
-      ccode += '\n  lseek(fd, %d, SEEK_SET);' % fdinfo.off
-      ccode += '\n  dup2(fd, %d);' % fd
-      ccode += '\n  close(fd);'
+      emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
+           'lseek(fd, %d, SEEK_SET);' % fdinfo.off,
+           'dup2(fd, %d);' % fd,
+           'close(fd);')
 
-    ccode += '\n  int* va __attribute__((unused));'
+    emit('int* va __attribute__((unused));')
     for va, vainfo in vamap.items():
-      ccode += '\n  va = (void*) 0x%lxUL;' % va
+      emit('va = (void*) 0x%lxUL;' % va)
       prot = 'PROT_READ'
       if vainfo.writable:
         prot += ' | PROT_WRITE'
       if vainfo.anon:
-        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);'
-        ccode += '\n  *va = %d;' % self.databytes[vainfo.anondata]
+        emit('mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);',
+             '*va = %d;' % self.databytes[vainfo.anondata])
       else:
-        ccode += '\n  fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum]
-        ccode += '\n  mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % \
-                 vainfo.off
-        ccode += '\n  mprotect(va, 4096, %s);' % prot
-        ccode += '\n  close(fd);'
-    return ccode
+        emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
+             'mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % vainfo.off,
+            'mprotect(va, 4096, %s);' % prot,
+            'close(fd);')
 
   def build_dir(self):
     # Reads filenames; extends inodefiles
@@ -169,20 +162,33 @@ class FsState(object):
     (fdmap0, vamap0) = self.build_proc(False)
     (fdmap1, vamap1) = self.build_proc(True)
 
-    return {
+    setup = {'common': testgen.CodeWriter(),
+             'proc0': testgen.CodeWriter(),
+             'proc1': testgen.CodeWriter(),
+             'final': testgen.CodeWriter()}
+
+    try:
       # setup_proc reads nothing; extends inodefiles, databytes
-      'proc0': self.setup_proc(fdmap0, vamap0),
-      'proc1': self.setup_proc(fdmap1, vamap1),
+      self.emit = setup['proc0']; self.setup_proc(fdmap0, vamap0)
+      self.emit = setup['proc1']; self.setup_proc(fdmap1, vamap1),
       # setup_inodes reads inodefiles; extends databytes
+      self.emit = setup['common']; self.setup_inodes()
       # setup_filenames reads nothing; extends nothing
-      'common': self.setup_inodes() + self.setup_filenames(fn_to_ino),
+      self.emit = setup['common']; self.setup_filenames(fn_to_ino)
       # setup_inodes_finalize reads inodefiles; extends nothing
-      'final': self.setup_inodes_finalize(),
-    }
+      self.emit = setup['final']; self.setup_inodes_finalize()
+    finally:
+      self.emit = None
+    return setup
 
   def gen_code(self, callname, args):
     f = getattr(self, callname)
-    return f(args)
+    self.emit = writer = testgen.CodeWriter()
+    try:
+      f(args)
+    finally:
+      self.emit = None
+    return writer
 
   def open(self, args):
     flags = ['O_RDWR']
@@ -194,98 +200,84 @@ class FsState(object):
       flags.append('O_TRUNC')
     if args.anyfd:
       flags.append('O_ANYFD')
-    ccode = ''
-    ccode += '\n  int r = open("%s", %s, 0666);' % \
-             (self.filenames[args.pn], ' | '.join(flags))
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int r = open("%s", %s, 0666);' %
+      (self.filenames[args.pn], ' | '.join(flags)),
+      'return xerrno(r);')
 
   def pipe(self, args):
-    ccode = ''
-    ccode += '\n  int fds[2];'
-    ccode += '\n  int r = pipe(fds);'
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int fds[2];',
+      'int r = pipe(fds);',
+      'return xerrno(r);')
 
   def pread(self, args):
-    ccode = ''
-    ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = pread(%d, &c, 1, %d);' % \
-             (self.procs[args.pid].fds[args.fd], args.off)
-    ccode += '\n  if (cc <= 0) return xerrno(cc);'
-    ccode += '\n  return c;'
-    return ccode
+    self.emit(
+      'char c;',
+      'ssize_t cc = pread(%d, &c, 1, %d);' %
+      (self.procs[args.pid].fds[args.fd], args.off),
+      'if (cc <= 0) return xerrno(cc);',
+      'return c;')
 
   def pwrite(self, args):
-    ccode = ''
-    ccode += '\n  char c = %d;' % self.databytes[args.databyte]
-    ccode += '\n  ssize_t cc = pwrite(%d, &c, 1, %d);' % \
-             (self.procs[args.pid].fds[args.fd], args.off)
-    ccode += '\n  if (cc < 0) return xerrno(cc);'
-    ccode += '\n  return cc;'
-    return ccode
+    self.emit(
+      'char c = %d;' % self.databytes[args.databyte],
+      'ssize_t cc = pwrite(%d, &c, 1, %d);' % \
+      (self.procs[args.pid].fds[args.fd], args.off),
+      'if (cc < 0) return xerrno(cc);',
+      'return cc;')
 
   def read(self, args):
-    ccode = ''
-    ccode += '\n  char c;'
-    ccode += '\n  ssize_t cc = read(%d, &c, 1);' % \
-             self.procs[args.pid].fds[args.fd]
-    ccode += '\n  if (cc <= 0) return xerrno(cc);'
-    ccode += '\n  return c;'
-    return ccode
+    self.emit(
+      'char c;',
+      'ssize_t cc = read(%d, &c, 1);' % self.procs[args.pid].fds[args.fd],
+      'if (cc <= 0) return xerrno(cc);',
+      'return c;')
 
   def write(self, args):
-    ccode = ''
-    ccode += '\n  char c = %d;' % self.databytes[args.databyte]
-    ccode += '\n  ssize_t cc = write(%d, &c, 1);' % \
-             self.procs[args.pid].fds[args.fd]
-    ccode += '\n  if (cc < 0) return xerrno(cc);'
-    ccode += '\n  return cc;'
-    return ccode
+    self.emit(
+      'char c = %d;' % self.databytes[args.databyte],
+      'ssize_t cc = write(%d, &c, 1);' % self.procs[args.pid].fds[args.fd],
+      'if (cc < 0) return xerrno(cc);',
+      'return cc;')
 
   def unlink(self, args):
-    ccode = ''
-    ccode += '\n  int r = unlink("%s");' % self.filenames[args.pn]
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int r = unlink("%s");' % self.filenames[args.pn],
+      'return xerrno(r);')
 
   def link(self, args):
-    ccode = ''
-    ccode += '\n  int r = link("%s", "%s");' % (self.filenames[args.oldpn],
-                                                self.filenames[args.newpn])
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int r = link("%s", "%s");' % (self.filenames[args.oldpn],
+                                     self.filenames[args.newpn]),
+      'return xerrno(r);')
 
   def rename(self, args):
-    ccode = ''
-    ccode += '\n  int r = rename("%s", "%s");' % (self.filenames[args.src],
-                                                  self.filenames[args.dst])
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int r = rename("%s", "%s");' % (self.filenames[args.src],
+                                       self.filenames[args.dst]),
+      'return xerrno(r);')
 
   def stat(self, args):
-    ccode = ''
-    ccode += '\n  struct stat st;'
-    ccode += '\n  int r = stat("%s", &st);' % self.filenames[args.pn]
-    ccode += '\n  if (r < 0) return xerrno(r);'
-    ccode += '\n  /* Hack, to test for approximate equality */'
-    ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
-    return ccode
+    self.emit(
+      'struct stat st;',
+      'int r = stat("%s", &st);' % self.filenames[args.pn],
+      'if (r < 0) return xerrno(r);',
+      '/* Hack, to test for approximate equality */',
+      'return st.st_ino ^ st.st_nlink ^ st.st_size;')
 
   def fstat(self, args):
-    ccode = ''
-    ccode += '\n  struct stat st;'
-    ccode += '\n  int r = fstat(%d, &st);' % self.procs[args.pid].fds[args.fd]
-    ccode += '\n  if (r < 0) return xerrno(r);'
-    ccode += '\n  /* Hack, to test for approximate equality */'
-    ccode += '\n  return st.st_ino ^ st.st_nlink ^ st.st_size;'
-    return ccode
+    self.emit(
+      'struct stat st;',
+      'int r = fstat(%d, &st);' % self.procs[args.pid].fds[args.fd],
+      'if (r < 0) return xerrno(r);',
+      '/* Hack, to test for approximate equality */',
+      'return st.st_ino ^ st.st_nlink ^ st.st_size;')
 
   def close(self, args):
-    ccode = ''
-    ccode += '\n  int r = close(%d);' % self.procs[args.pid].fds[args.fd]
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int r = close(%d);' % self.procs[args.pid].fds[args.fd],
+      'return xerrno(r);')
 
   def mmap(self, args):
     prot = 'PROT_READ'
@@ -302,53 +294,48 @@ class FsState(object):
     else:
       va = 0
 
-    ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % va
-    ccode += '\n  int r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' % \
-             (prot, flags, self.procs[args.pid].fds[args.fd], args.off)
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int* va = (int*) 0x%lxUL;' % va,
+      'int r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' %
+      (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
+      'return xerrno(r);')
 
   def munmap(self, args):
-    ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  int r = munmap(va, 4096);'
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'int r = munmap(va, 4096);',
+      'return xerrno(r);')
 
   def mprotect(self, args):
     prot = 'PROT_READ'
     if args.writable:
       prot += ' | PROT_WRITE'
-    ccode = ''
-    ccode += '\n  int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  int r = mprotect(va, 4096, %s);' % prot
-    ccode += '\n  return xerrno(r);'
-    return ccode
+    self.emit(
+      'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'int r = mprotect(va, 4096, %s);' % prot,
+      'return xerrno(r);')
 
   def mem_read(self, args):
-    ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
-    ccode += '\n    return -1;'
-    ccode += '\n  pf_active = 1;'
-    ccode += '\n  return *p;'
-    return ccode
+    self.emit(
+      'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'if (sigsetjmp(pf_jmpbuf, 1))',
+      '  return -1;',
+      'pf_active = 1;',
+      'return *p;')
 
   def mem_write(self, args):
-    ccode = ''
-    ccode += '\n  int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va]
-    ccode += '\n  if (sigsetjmp(pf_jmpbuf, 1))'
-    ccode += '\n    return -1;'
-    ccode += '\n  pf_active = 1;'
-    ccode += '\n  *p = %d;' % self.databytes[args.databyte]
-    ccode += '\n  return 0;'
-    return ccode
+    self.emit(
+      'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'if (sigsetjmp(pf_jmpbuf, 1))',
+      '  return -1;',
+      'pf_active = 1;',
+      '*p = %d;' % self.databytes[args.databyte],
+      'return 0;')
 
 class FsTestGenerator(testgen.TestGenerator):
   def __init__(self, test_file_name):
     super(FsTestGenerator, self).__init__(test_file_name)
-    self.test_file = open(test_file_name, 'w')
+    self.emit = testgen.CodeWriter(open(test_file_name, 'w'))
     self.fstests = []
     self.pathid = self.modelno = None
 
@@ -379,9 +366,6 @@ static int __attribute__((unused)) xerrno(int r) {
 #endif
 }""")
 
-  def emit(self, *code):
-    self.test_file.write("\n".join(code) + "\n")
-
   def begin_path(self, result):
     super(FsTestGenerator, self).begin_path(result)
     self.pathid = result.pathid
@@ -407,22 +391,20 @@ static int __attribute__((unused)) xerrno(int r) {
       # Generate test code for this call.  As a side-effect, this will
       # fill in structures we need to write the setup code.
       args = self.get_call_args(callidx)
-      code = fs.gen_code(callname, args)
+      emit('static int test_%s_%d(void) {' % (name, callidx),
+           fs.gen_code(callname, args).indent(),
+           '}')
       if hasattr(args, 'pid'):
         pids.append(args.pid)
       else:
         # Some calls don't take a pid because their process doesn't matter
         pids.append(False)
-      emit("""\
-static int test_%s_%d(void) {%s
-}""" % (name, callidx, code))
     # Write setup code
     setup = fs.build_dir()
     for phase in ('common', 'proc0', 'proc1', 'final'):
-      emit("""\
-static void setup_%s_%s(void) {%s
-}""" % (name, phase, setup[phase]))
-    self.test_file.flush()
+      emit('static void setup_%s_%s(void) {' % (name, phase),
+           setup[phase].indent(),
+           '}')
 
     self.fstests.append("""\
   { "fs-%(name)s",
@@ -458,5 +440,3 @@ static void setup_%s_%s(void) {%s
          '\n'.join('%s,' % x for x in self.fstests),
          '  {}',
          '};')
-
-    self.test_file.close()

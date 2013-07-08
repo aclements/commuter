@@ -1,3 +1,5 @@
+import simsym
+
 class TestGenerator(object):
     """Base class for test case generators.
 
@@ -14,7 +16,7 @@ class TestGenerator(object):
         test_file_name is the file name for test output.  The subclass
         may derive other file names from this.
         """
-        self.__callset = self.__model = None
+        self.__callset = self.__result = self.__model = None
 
     def begin_call_set(self, callset):
         """Handle the beginning of a call set.
@@ -31,6 +33,32 @@ class TestGenerator(object):
         """A list of string names of the methods in the current call set."""
         return [c.__name__ for c in self.__callset]
 
+    def get_result(self, callno, permno=0):
+        """Return the result for the callno'th call.
+
+        This may contain unevaluated symbolic expressions.  These
+        should be passed to self.eval to evaluate them to concrete
+        values.
+        """
+        return self.__result.value.results[permno][callno]
+
+    def eval(self, expr):
+        """Evaluate a symbolic expression.
+
+        This isn't necessary for things retrieved from the model such
+        as call arguments and state since those are automatically
+        evaluated, but result values from model methods require
+        explicit evaluation.
+        """
+        if isinstance(expr, simsym.Symbolic):
+            # This is used for result values, so don't track explicit
+            # evaluations or we'll try to enumerate result values
+            # (testgen should never use a result value that isn't
+            # completely deterministic, but IsomorphicMatch will still
+            # try to destructure any tracked evaluations)
+            return self.__model._eval(expr, track=False)
+        return expr
+
     def get_call_args(self, callno):
         """Return the arguments struct for the callno'th call."""
         var_name = (chr(ord('a') + callno) + "." +
@@ -46,7 +74,7 @@ class TestGenerator(object):
         The code path will have one or more models that satisfy its
         path condition.
         """
-        pass
+        self.__result = result
 
     def on_model(self, model):
         """Handle a concrete assignment for the current code path.
@@ -62,7 +90,7 @@ class TestGenerator(object):
 
     def end_path(self):
         """Handle the end of a code path."""
-        pass
+        self.__result = None
 
     def end_call_set(self):
         """Handle the end of a call set."""

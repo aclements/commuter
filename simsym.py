@@ -1279,7 +1279,7 @@ class Model(object):
         """
         return self.__asignments
 
-    def _eval(self, expr):
+    def _eval(self, expr, track=True):
         """Evaluate a Symbolic expression to a concrete Python value."""
 
         # model_completion asks Z3 to make up concrete values if they
@@ -1302,7 +1302,7 @@ class Model(object):
             raise Exception("Expression %s => %s is not a concrete value" %
                             (expr, z3val.sexpr()))
 
-        if self.__track:
+        if self.__track and track:
             for aexpr, _ in self.__asignments:
                 if unwrap(expr).eq(unwrap(aexpr)):
                     break

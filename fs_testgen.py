@@ -394,7 +394,7 @@ class FsState(object):
     if 'r:data' in res:
       res['r'] = self.databytes[res.pop('r:data')]
     self.emit(
-      'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
       'int r, signal;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
@@ -407,7 +407,7 @@ class FsState(object):
 
   def mem_write(self, args, res):
     self.emit(
-      'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
       'int signal, r = 0;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',

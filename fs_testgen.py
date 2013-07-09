@@ -137,6 +137,9 @@ class FsState(object):
     emit('int fd __attribute__((unused));',
          'int r __attribute__((unused));')
     for fd, fdinfo in fdmap.items():
+      if fdinfo.ispipe:
+        # XXX Support pipes
+        raise SkipTest("Unimplemented: pipe FDs")
       emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
            'if (fd < 0) setup_error("open");',
            'r = lseek(fd, %d, SEEK_SET);' % fdinfo.off,

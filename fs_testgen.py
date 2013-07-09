@@ -181,16 +181,31 @@ class FsState(object):
       self.emit = None
     return setup
 
-  def gen_code(self, callname, args):
+  def gen_code(self, callname, args, res):
     f = getattr(self, callname)
     self.emit = writer = testgen.CodeWriter()
     try:
-      f(args)
+      f(args, res.copy())
     finally:
       self.emit = None
     return writer
 
-  def open(self, args):
+  def __check(self, res):
+    """Return code to check the expected values of res.
+
+    res must be a dictionary mapping variable names to expected
+    values.  'errno' is handled specially.
+    """
+    emit = testgen.CodeWriter()
+    for var, val in res.items():
+      if var == 'errno':
+        continue
+      emit('expect_result("%s", %s, %d);' % (var, var, val))
+    if 'errno' in res:
+      emit('expect_errno(%d);' % res['errno'])
+    return emit
+
+  def open(self, args, res):
     flags = ['O_RDWR']
     if args.excl:
       flags.append('O_EXCL')
@@ -200,86 +215,117 @@ class FsState(object):
       flags.append('O_TRUNC')
     if args.anyfd:
       flags.append('O_ANYFD')
+    if res['r'] >= 0:
+      # XXX Can we match up the symbolic FD with the real FD?
+      del res['r']
     self.emit(
       'int r = open("%s", %s, 0666);' %
       (self.filenames[args.pn], ' | '.join(flags)),
+      self.__check(res),
       'return xerrno(r);')
 
-  def pipe(self, args):
+  def pipe(self, args, res):
+    if res['r'] >= 0:
+      # XXX Match up FDs?
+      del res['fds[0]'], res['fds[1]']
     self.emit(
       'int fds[2];',
       'int r = pipe(fds);',
+      self.__check(res),
       'return xerrno(r);')
 
-  def pread(self, args):
+  def pread(self, args, res):
+    if 'data' in res:
+      res['data'] = self.databytes[res['data']]
     self.emit(
-      'char c;',
-      'ssize_t cc = pread(%d, &c, 1, %d);' %
+      'char data;',
+      'ssize_t r = pread(%d, &data, 1, %d);' %
       (self.procs[args.pid].fds[args.fd], args.off),
-      'if (cc <= 0) return xerrno(cc);',
-      'return c;')
+      self.__check(res),
+      'if (r <= 0) return xerrno(r);',
+      'return data;')
 
-  def pwrite(self, args):
+  def pwrite(self, args, res):
     self.emit(
-      'char c = %d;' % self.databytes[args.databyte],
-      'ssize_t cc = pwrite(%d, &c, 1, %d);' % \
+      'char data = %d;' % self.databytes[args.databyte],
+      'ssize_t r = pwrite(%d, &data, 1, %d);' % \
       (self.procs[args.pid].fds[args.fd], args.off),
-      'if (cc < 0) return xerrno(cc);',
-      'return cc;')
+      self.__check(res),
+      'return xerrno(r);')
 
-  def read(self, args):
+  def read(self, args, res):
+    if 'data' in res:
+      res['data'] = self.databytes[res['data']]
     self.emit(
-      'char c;',
-      'ssize_t cc = read(%d, &c, 1);' % self.procs[args.pid].fds[args.fd],
-      'if (cc <= 0) return xerrno(cc);',
-      'return c;')
+      'char data;',
+      'ssize_t r = read(%d, &data, 1);' % self.procs[args.pid].fds[args.fd],
+      self.__check(res),
+      'if (r < 0) return xerrno(r);',
+      'return data;')
 
-  def write(self, args):
+  def write(self, args, res):
     self.emit(
-      'char c = %d;' % self.databytes[args.databyte],
-      'ssize_t cc = write(%d, &c, 1);' % self.procs[args.pid].fds[args.fd],
-      'if (cc < 0) return xerrno(cc);',
-      'return cc;')
+      'char data = %d;' % self.databytes[args.databyte],
+      'ssize_t r = write(%d, &data, 1);' % self.procs[args.pid].fds[args.fd],
+      self.__check(res),
+      'if (r <= 0) return xerrno(r);',
+      'return data;')
 
-  def unlink(self, args):
+  def unlink(self, args, res):
     self.emit(
       'int r = unlink("%s");' % self.filenames[args.pn],
+      self.__check(res),
       'return xerrno(r);')
 
-  def link(self, args):
+  def link(self, args, res):
     self.emit(
       'int r = link("%s", "%s");' % (self.filenames[args.oldpn],
                                      self.filenames[args.newpn]),
+      self.__check(res),
       'return xerrno(r);')
 
-  def rename(self, args):
+  def rename(self, args, res):
     self.emit(
       'int r = rename("%s", "%s");' % (self.filenames[args.src],
                                        self.filenames[args.dst]),
+      self.__check(res),
       'return xerrno(r);')
 
-  def stat(self, args):
+  def __prune_stat_res(self, res):
+    # XXX We could match some of these results up with their
+    # concrete values
+    for field in ['st.st_ino', 'st.st_nlink', 'st.st_atime', 'st.st_mtime',
+                  'st.st_ctime']:
+      if field in res:
+        del res[field]
+
+  def stat(self, args, res):
+    self.__prune_stat_res(res)
     self.emit(
       'struct stat st;',
       'int r = stat("%s", &st);' % self.filenames[args.pn],
+      self.__check(res),
       'if (r < 0) return xerrno(r);',
       '/* Hack, to test for approximate equality */',
       'return st.st_ino ^ st.st_nlink ^ st.st_size;')
 
-  def fstat(self, args):
+  def fstat(self, args, res):
+    self.__prune_stat_res(res)
     self.emit(
       'struct stat st;',
       'int r = fstat(%d, &st);' % self.procs[args.pid].fds[args.fd],
+      self.__check(res),
       'if (r < 0) return xerrno(r);',
       '/* Hack, to test for approximate equality */',
       'return st.st_ino ^ st.st_nlink ^ st.st_size;')
 
-  def close(self, args):
+  def close(self, args, res):
     self.emit(
       'int r = close(%d);' % self.procs[args.pid].fds[args.fd],
+      self.__check(res),
       'return xerrno(r);')
 
-  def mmap(self, args):
+  def mmap(self, args, res):
     prot = 'PROT_READ'
     if args.writable: prot += ' | PROT_WRITE'
 
@@ -294,43 +340,61 @@ class FsState(object):
     else:
       va = 0
 
+    if 'r:va' in res:
+      if args.fixed:
+        res['r'] = self.procs[args.pid].vas[res['r:va']]
+      del res['r:va']
+
     self.emit(
       'int* va = (int*) 0x%lxUL;' % va,
       'int r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' %
       (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
+      self.__check(res),
       'return xerrno(r);')
 
-  def munmap(self, args):
+  def munmap(self, args, res):
     self.emit(
       'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
       'int r = munmap(va, 4096);',
+      self.__check(res),
       'return xerrno(r);')
 
-  def mprotect(self, args):
+  def mprotect(self, args, res):
     prot = 'PROT_READ'
     if args.writable:
       prot += ' | PROT_WRITE'
     self.emit(
       'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
       'int r = mprotect(va, 4096, %s);' % prot,
+      self.__check(res),
       'return xerrno(r);')
 
-  def mem_read(self, args):
+  def mem_read(self, args, res):
+    if 'r:data' in res:
+      res['r'] = self.databytes[res.pop('r:data')]
     self.emit(
       'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
-      'if (sigsetjmp(pf_jmpbuf, 1))',
-      '  return -1;',
+      'int r, signal;',
       'pf_active = 1;',
-      'return *p;')
+      'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
+      '  r = -1;',
+      'else',
+      '  r = *p;',
+      'pf_active = 0;',
+      self.__check(res),
+      'return r;')
 
-  def mem_write(self, args):
+  def mem_write(self, args, res):
     self.emit(
       'int* p = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
-      'if (sigsetjmp(pf_jmpbuf, 1))',
-      '  return -1;',
+      'int signal, r = 0;',
       'pf_active = 1;',
-      '*p = %d;' % self.databytes[args.databyte],
-      'return 0;')
+      'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
+      '  r = -1;',
+      'else',
+      '  *p = %d;' % self.databytes[args.databyte],
+      self.__check(res),
+      'return r;')
 
 class FsTestGenerator(testgen.TestGenerator):
   def __init__(self, test_file_name):
@@ -391,8 +455,9 @@ static int __attribute__((unused)) xerrno(int r) {
       # Generate test code for this call.  As a side-effect, this will
       # fill in structures we need to write the setup code.
       args = self.get_call_args(callidx)
+      res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
       emit('static int test_%s_%d(void) {' % (name, callidx),
-           fs.gen_code(callname, args).indent(),
+           fs.gen_code(callname, args, res).indent(),
            '}')
       if hasattr(args, 'pid'):
         pids.append(args.pid)

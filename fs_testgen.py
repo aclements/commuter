@@ -155,13 +155,16 @@ class FsState(object):
       if vainfo.writable:
         prot += ' | PROT_WRITE'
       if vainfo.anon:
-        emit('r = (intptr_t)mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);',
-             'if (r == -1) setup_error("mmap");',
-             '*va = %d;' % self.databytes[vainfo.anondata])
+        emit('r = (intptr_t)mmap(va, 4096, %s, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);' % prot,
+             'if (r == -1) setup_error("mmap");')
+        if vainfo.writable:
+          emit('*va = %d;' % self.databytes[vainfo.anondata])
+        else:
+          emit('*(volatile int*)va;')
       else:
         emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
              'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % vainfo.off,
+             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % (prot, vainfo.off),
              'if (r == -1) setup_error("mmap");',
              'r = mprotect(va, 4096, %s);' % prot,
              'if (r < 0) setup_error("mprotect");',

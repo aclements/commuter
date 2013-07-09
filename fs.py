@@ -451,7 +451,9 @@ class Fs(simsym.tstruct(
         vma = myproc.va_map.create(va)
         vma.anon = anon
         vma.writable = writable
-        if not anon:
+        if anon:
+            vma.anondata = SDataByte.var()
+        else:
             vma.off = off
             vma.inum = myproc.fd_map[fd].inum
         # This has to be well-typed, so we use a different variable to

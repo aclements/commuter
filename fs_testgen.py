@@ -64,6 +64,9 @@ fd_end = 10
 va_base = 0x12345600000
 va_len = 4
 
+class SkipTest(Exception):
+  pass
+
 class PerProc(object):
   def __init__(self):
     assert(fd_begin > 3)
@@ -451,39 +454,45 @@ static int __attribute__((unused)) xerrno(int r) {
   def on_model(self, model):
     super(FsTestGenerator, self).on_model(model)
 
-    emit = self.emit
     name = "%s_%s_%d" % ("_".join(self.callset_names), self.pathid,
                          self.modelno)
     tidx = len(self.fstests)
 
+    emit = testgen.CodeWriter()
+
     # XXX Include some information so a user can track it back to the model
-    emit("""\
+    try:
+      emit("""\
 
 /*
  * calls: %s
  */""" % " ".join(self.callset_names))
-    fs = FsState(model['Fs'])
-    pids = []
-    for callidx, callname in enumerate(self.callset_names):
-      # Generate test code for this call.  As a side-effect, this will
-      # fill in structures we need to write the setup code.
-      args = self.get_call_args(callidx)
-      res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
-      emit('static int test_%s_%d(void) {' % (name, callidx),
-           fs.gen_code(callname, args, res).indent(),
-           '}')
-      if hasattr(args, 'pid'):
-        pids.append(args.pid)
-      else:
-        # Some calls don't take a pid because their process doesn't matter
-        pids.append(False)
-    # Write setup code
-    setup = fs.build_dir()
-    for phase in ('common', 'proc0', 'proc1', 'final'):
-      emit('static void setup_%s_%s(void) {' % (name, phase),
-           setup[phase].indent(),
-           '}')
+      fs = FsState(model['Fs'])
+      pids = []
+      for callidx, callname in enumerate(self.callset_names):
+        # Generate test code for this call.  As a side-effect, this will
+        # fill in structures we need to write the setup code.
+        args = self.get_call_args(callidx)
+        res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
+        emit('static int test_%s_%d(void) {' % (name, callidx),
+             fs.gen_code(callname, args, res).indent(),
+             '}')
+        if hasattr(args, 'pid'):
+          pids.append(args.pid)
+        else:
+          # Some calls don't take a pid because their process doesn't matter
+          pids.append(False)
+      # Write setup code
+      setup = fs.build_dir()
+      for phase in ('common', 'proc0', 'proc1', 'final'):
+        emit('static void setup_%s_%s(void) {' % (name, phase),
+             setup[phase].indent(),
+             '}')
+    except SkipTest as e:
+      print "Skipping test %s: %s" % (name, e)
+      return
 
+    self.emit(emit)
     self.fstests.append("""\
   { "fs-%(name)s",
     &setup_%(name)s_common,

@@ -365,7 +365,7 @@ class FsState(object):
 
     self.emit(
       'int* va = (int*) 0x%lxUL;' % va,
-      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' %
+      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL * 4096);' %
       (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
       self.__check(res),
       'return xerrno(r);')

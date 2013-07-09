@@ -30,6 +30,7 @@ SFdMap = symtypes.tdict(SFdNum, SFd)
 SVMA = simsym.tstruct(anon = simsym.SBool,
                       writable = simsym.SBool,
                       inum = SInum,
+                      # This offset is in pages, not bytes
                       off = SOffset,
                       anondata = SDataByte)
 SVaMap = symtypes.tdict(SVa, SVMA)
@@ -485,11 +486,10 @@ class Fs(simsym.tstruct(
             return {'r:data': myproc.va_map[va].anondata, 'signal': 0}
         ## TODO: memory-mapped reads don't bump atime?
         internal_time = None
-        res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off, internal_time)
+        res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off * 4096, internal_time)
         if res['r'] == 0:
-            # XXX If we use pages instead of bytes, this will be
-            # SIGBUS.  Currently this will read as a literal NUL.
-            return {'r': 0, 'signal': 0}
+            # This means there was no page here
+            return {'r': -1, 'signal': signal.SIGBUS}
         elif res['r'] == 1:
             return {'r:data': res['data'], 'signal': 0}
         else:
@@ -508,7 +508,7 @@ class Fs(simsym.tstruct(
             return {'r': 0, 'signal': 0}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
         internal_time = None
-        res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off,
+        res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off * 4096,
                           databyte, internal_time)
         if res['r'] == 1:
             return {'r': 0, 'signal': 0}

@@ -506,6 +506,9 @@ class Fs(simsym.tstruct(
         if myproc.va_map[va].anon:
             myproc.va_map[va].anondata = databyte
             return {'r': 0, 'signal': 0}
+        vma = myproc.va_map[va]
+        if vma.off >= self.i_map[vma.inum].data._len:
+            return {'r': -1, 'signal': signal.SIGBUS}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
         internal_time = None
         res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off * 4096,

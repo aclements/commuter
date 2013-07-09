@@ -797,13 +797,17 @@ class Graph(object):
 
     def show(self):
         import subprocess, tempfile
-        with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
-            p = subprocess.Popen(["dot", "-Tpdf"], stdin=subprocess.PIPE,
-                                 stdout=f)
-            self.to_dot(p.stdin)
-            p.stdin.close()
-            p.wait()
-            subprocess.check_call(["evince", f.name])
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+                p = subprocess.Popen(["dot", "-Tpdf"], stdin=subprocess.PIPE,
+                                     stdout=f)
+                self.to_dot(p.stdin)
+                p.stdin.close()
+                p.wait()
+                subprocess.check_call(["evince", f.name])
+        except Exception as e:
+            print >> sys.stderr, "Suppressing exception from Graph.show():"
+            import traceback; traceback.print_exc()
 
     def to_dot(self, fp=sys.stdout):
         print >>fp, "digraph G {"

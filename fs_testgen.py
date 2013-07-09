@@ -98,9 +98,11 @@ class FsState(object):
   def setup_inodes(self):
     emit = self.emit
     emit('int fd __attribute__((unused));',
+         'int r __attribute__((unused));',
          'char c __attribute__((unused));')
     for symino, ifn in self.inodefiles.items():
-      emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn)
+      emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn,
+           'if (fd < 0) setup_error("open");')
 
       inode = self.fs.i_map[symino]
       if inode is not None:
@@ -113,13 +115,15 @@ class FsState(object):
 
         for i in range(0, len):
           emit('c = %d;' % self.databytes[inode.data[i]],
-               'write(fd, &c, 1);')
+               'r = write(fd, &c, 1);',
+               'if (r != 1) setup_error("write => %d", r);')
 
       emit('close(fd);')
 
   def setup_filenames(self, fn_to_ino):
     for fn in fn_to_ino:
-      self.emit('link("%s", "%s");' % (fn_to_ino[fn], fn))
+      self.emit('r = link("%s", "%s");' % (fn_to_ino[fn], fn),
+                'if (r < 0) setup_error("link");')
 
   def setup_inodes_finalize(self):
     for inodefile in self.inodefiles.values():
@@ -127,11 +131,15 @@ class FsState(object):
 
   def setup_proc(self, fdmap, vamap):
     emit = self.emit
-    emit('int fd __attribute__((unused));')
+    emit('int fd __attribute__((unused));',
+         'int r __attribute__((unused));')
     for fd, fdinfo in fdmap.items():
       emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
-           'lseek(fd, %d, SEEK_SET);' % fdinfo.off,
-           'dup2(fd, %d);' % fd,
+           'if (fd < 0) setup_error("open");',
+           'r = lseek(fd, %d, SEEK_SET);' % fdinfo.off,
+           'if (fd >= 0 && r < 0) setup_error("lseek");',
+           'r = dup2(fd, %d);' % fd,
+           'if (fd >= 0 && r < 0) setup_error("dup2");',
            'close(fd);')
 
     emit('int* va __attribute__((unused));')
@@ -141,13 +149,17 @@ class FsState(object):
       if vainfo.writable:
         prot += ' | PROT_WRITE'
       if vainfo.anon:
-        emit('mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);',
+        emit('r = (intptr_t)mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);',
+             'if (r == -1) setup_error("mmap");',
              '*va = %d;' % self.databytes[vainfo.anondata])
       else:
         emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
-             'mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % vainfo.off,
-            'mprotect(va, 4096, %s);' % prot,
-            'close(fd);')
+             'if (fd < 0) setup_error("open");',
+             'r = (intptr_t)mmap(va, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % vainfo.off,
+             'if (r == -1) setup_error("mmap");',
+             'r = mprotect(va, 4096, %s);' % prot,
+             'if (r < 0) setup_error("mprotect");',
+             'close(fd);')
 
   def build_dir(self):
     # Reads filenames; extends inodefiles
@@ -347,7 +359,7 @@ class FsState(object):
 
     self.emit(
       'int* va = (int*) 0x%lxUL;' % va,
-      'int r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' %
+      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL);' %
       (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
       self.__check(res),
       'return xerrno(r);')
@@ -393,6 +405,7 @@ class FsState(object):
       '  r = -1;',
       'else',
       '  *p = %d;' % self.databytes[args.databyte],
+      'pf_active = 0;',
       self.__check(res),
       'return r;')
 

@@ -480,16 +480,16 @@ class Fs(simsym.tstruct(
         if not myproc.va_map.contains(va):
             return {'r': -1, 'signal': signal.SIGSEGV}
         if myproc.va_map[va].anon:
-            return {'r:data': myproc.va_map[va].anondata}
+            return {'r:data': myproc.va_map[va].anondata, 'signal': 0}
         ## TODO: memory-mapped reads don't bump atime?
         internal_time = None
         res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off, internal_time)
         if res['r'] == 0:
             # XXX If we use pages instead of bytes, this will be
             # SIGBUS.  Currently this will read as a literal NUL.
-            return {'r': 0}
+            return {'r': 0, 'signal': 0}
         elif res['r'] == 1:
-            return {'r:data': res['data']}
+            return {'r:data': res['data'], 'signal': 0}
         else:
             raise RuntimeError('Unexpected result from iread: %r' % res)
 
@@ -498,18 +498,18 @@ class Fs(simsym.tstruct(
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not myproc.va_map.contains(va):
-            return {'signal': signal.SIGSEGV}
+            return {'r': -1, 'signal': signal.SIGSEGV}
         if not myproc.va_map[va].writable:
-            return {'signal': signal.SIGSEGV}
+            return {'r': -1, 'signal': signal.SIGSEGV}
         if myproc.va_map[va].anon:
             myproc.va_map[va].anondata = databyte
-            return {'r': 0}
+            return {'r': 0, 'signal': 0}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
         internal_time = None
         res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off,
                           databyte, internal_time)
         if res['r'] == 1:
-            return {'r': 0}
+            return {'r': 0, 'signal': 0}
         else:
             raise RuntimeError('Unexpected result from iwrite: %r' % res)
 

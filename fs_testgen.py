@@ -481,11 +481,9 @@ static int __attribute__((unused)) xerrno(int r) {
 
     name = "%s_%s_%d" % ("_".join(self.callset_names), self.pathid,
                          self.modelno)
-    tidx = len(self.fstests)
 
     emit = testgen.CodeWriter()
 
-    # XXX Include some information so a user can track it back to the model
     try:
       emit("""\
 

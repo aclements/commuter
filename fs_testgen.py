@@ -166,8 +166,6 @@ class FsState(object):
              'if (fd < 0) setup_error("open");',
              'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % (prot, vainfo.off),
              'if (r == -1) setup_error("mmap");',
-             'r = mprotect(va, 4096, %s);' % prot,
-             'if (r < 0) setup_error("mprotect");',
              'close(fd);')
 
   def build_dir(self):

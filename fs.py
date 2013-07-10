@@ -477,7 +477,7 @@ class Fs(simsym.tstruct(
         return {'r': 0}
 
     @model.methodwrap(va=SVa, pid=SPid, internal_time=STime)
-    def mem_read(self, va, pid, internal_time):
+    def memread(self, va, pid, internal_time):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not myproc.va_map.contains(va):
@@ -496,7 +496,7 @@ class Fs(simsym.tstruct(
             raise RuntimeError('Unexpected result from iread: %r' % res)
 
     @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid, internal_time=STime)
-    def mem_write(self, va, databyte, pid, internal_time):
+    def memwrite(self, va, databyte, pid, internal_time):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not myproc.va_map.contains(va):
@@ -535,7 +535,7 @@ model_functions = [
     Fs.mmap,
     Fs.munmap,
     Fs.mprotect,
-    Fs.mem_read,
-    Fs.mem_write,
+    Fs.memread,
+    Fs.memwrite,
 ]
 model_testgen = fs_testgen.FsTestGenerator

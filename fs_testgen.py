@@ -388,7 +388,7 @@ class FsState(object):
       self.__check(res),
       'return xerrno(r);')
 
-  def mem_read(self, args, res):
+  def memread(self, args, res):
     if 'r:data' in res:
       res['r'] = self.databytes[res.pop('r:data')]
     self.emit(
@@ -403,7 +403,7 @@ class FsState(object):
       self.__check(res),
       'return r;')
 
-  def mem_write(self, args, res):
+  def memwrite(self, args, res):
     self.emit(
       'char* p = (char*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
       'int signal, r = 0;',

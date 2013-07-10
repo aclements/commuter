@@ -424,6 +424,8 @@ class FsTestGenerator(testgen.TestGenerator):
     self.emit = testgen.CodeWriter(open(test_file_name, 'w'))
     self.fstests = []
     self.pathid = self.modelno = None
+    self.__bodies = {}
+    self.__pending_bodies = {}
 
     self.emit("""\
 #define _GNU_SOURCE 1
@@ -457,6 +459,21 @@ static int __attribute__((unused)) xerrno(int r) {
     self.pathid = result.pathid
     self.modelno = 0
 
+  def func(self, emit, ret, fname, body):
+    key = (ret, str(body))
+    existing = self.__bodies.get(key)
+    emit('static %s %s(void) {' % (ret, fname))
+    if existing is None:
+      self.__pending_bodies[key] = fname
+      emit(body.indent())
+    else:
+      # Call the equivalent function
+      if ret == 'void':
+        emit('  %s();' % existing)
+      else:
+        emit('  return %s();' % existing)
+    emit('}')
+
   def on_model(self, model):
     super(FsTestGenerator, self).on_model(model)
 
@@ -480,9 +497,8 @@ static int __attribute__((unused)) xerrno(int r) {
         # fill in structures we need to write the setup code.
         args = self.get_call_args(callidx)
         res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
-        emit('static int test_%s_%d(void) {' % (name, callidx),
-             fs.gen_code(callname, args, res).indent(),
-             '}')
+        self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
+                  fs.gen_code(callname, args, res))
         if hasattr(args, 'pid'):
           pids.append(args.pid)
         else:
@@ -491,13 +507,15 @@ static int __attribute__((unused)) xerrno(int r) {
       # Write setup code
       setup = fs.build_dir()
       for phase in ('common', 'proc0', 'proc1', 'final'):
-        emit('static void setup_%s_%s(void) {' % (name, phase),
-             setup[phase].indent(),
-             '}')
+        self.func(emit, 'void',  'setup_%s_%s' % (name, phase),
+                  setup[phase])
     except SkipTest as e:
       print "Skipping test %s: %s" % (name, e)
       return
 
+    # Commit to this code
+    self.__bodies.update(self.__pending_bodies)
+    self.__pending_bodies.clear()
     self.emit(emit)
     self.fstests.append("""\
   { "fs-%(name)s",

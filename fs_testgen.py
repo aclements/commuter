@@ -467,6 +467,8 @@ static int __attribute__((unused)) xerrno(int r) {
       self.__pending_bodies[key] = fname
       emit(body.indent())
     else:
+      # Put the original body in as a comment for readability
+      emit(body.indent('// ').indent())
       # Call the equivalent function
       if ret == 'void':
         emit('  %s();' % existing)

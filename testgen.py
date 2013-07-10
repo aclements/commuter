@@ -124,7 +124,6 @@ class CodeWriter(object):
             return repr(self)
         return '\n'.join(map(str, self.__blocks))
 
-    def indent(self, levels=1):
-        indent_str = "  " * levels
-        indented = indent_str + str(self).replace('\n', '\n' + indent_str)
+    def indent(self, by="  "):
+        indented = by + str(self).replace('\n', '\n' + by)
         return CodeWriter()(indented)

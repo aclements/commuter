@@ -481,6 +481,7 @@ static int __attribute__((unused)) xerrno(int r) {
                          self.modelno)
 
     emit = testgen.CodeWriter()
+    self.__pending_bodies.clear()
 
     try:
       emit("""\
@@ -513,7 +514,6 @@ static int __attribute__((unused)) xerrno(int r) {
 
     # Commit to this code
     self.__bodies.update(self.__pending_bodies)
-    self.__pending_bodies.clear()
     self.emit(emit)
     self.fstests.append("""\
   { "fs-%(name)s",

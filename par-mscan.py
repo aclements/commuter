@@ -3,7 +3,7 @@
 import subprocess, glob, json, os
 
 procs = []
-for mtraceout in glob.glob('mtrace.out.*'):
+for mtraceout in sorted(glob.glob('mtrace.out.*')):
   args = ["../mtrace/mtrace-tools/mscan",
           "--mtrace-log-file=%s" % mtraceout,
           "--check-testcases"]

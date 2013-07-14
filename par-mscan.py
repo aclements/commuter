@@ -4,7 +4,7 @@ import subprocess, glob, json, os
 
 procs = []
 for mtraceout in glob.glob('mtrace.out.*'):
-  args = ["%s/proj/mtrace/mtrace-tools/mscan" % os.environ['HOME'],
+  args = ["../mtrace/mtrace-tools/mscan",
           "--mtrace-log-file=%s" % mtraceout,
           "--check-testcases"]
   p = subprocess.Popen(args, stdout=subprocess.PIPE)

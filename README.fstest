@@ -12,8 +12,8 @@ check cache line sharing on xv6:
 
 or in parallel:
   make HW=mtrace
-  python ~/proj/commuter/par-mtrace-xv6.py 
-  python ~/proj/commuter/par-mscan.py
+  python ../commuter/par-mtrace-xv6.py
+  python ../commuter/par-mscan.py
 
 set up a Linux VM:
   mkdir -p ~/tmp/linux-vm

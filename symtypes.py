@@ -2,6 +2,9 @@ import z3
 from simsym import *
 
 class SListBase(Symbolic):
+    def var(self, *args, **kwargs):
+        return super(SListBase, self).var(*args, _start=0, **kwargs)
+
     def _declare_assumptions(self, assume):
         super(SListBase, self)._declare_assumptions(assume)
         assume(self._len >= 0)
@@ -15,10 +18,10 @@ class SListBase(Symbolic):
         return idx
 
     def __getitem__(self, idx):
-        return self._vals[self.__check_idx(idx)]
+        return self._vals[self.__check_idx(idx) + self._start]
 
     def __setitem__(self, idx, val):
-        self._vals[self.__check_idx(idx)] = val
+        self._vals[self.__check_idx(idx) + self._start] = val
 
     def len(self):
         # Overriding __len__ isn't useful because the len() builtin
@@ -30,6 +33,13 @@ class SListBase(Symbolic):
         self._len += 1
         self[l] = val
 
+    def shift(self, by=1):
+        if by == 0:
+            return
+        self.__check_idx(by - 1)
+        self._len -= by
+        self._start += by
+
 def tlist(valueType, lenType=SInt):
     """Return a new list type whose values are valueType.
 
@@ -39,7 +49,8 @@ def tlist(valueType, lenType=SInt):
     """
 
     name = "SList_" + valueType.__name__
-    base = tstruct(_vals = tmap(lenType, valueType), _len = lenType)
+    base = tstruct(_vals = tmap(lenType, valueType), _len = lenType,
+                   _start = lenType)
     return type(name, (base, SListBase), {})
 
 class SDictBase(Symbolic):

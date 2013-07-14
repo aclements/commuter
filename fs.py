@@ -18,8 +18,7 @@ class SData(symtypes.tlist(SDataByte, lenType=SOffset)):
     def _declare_assumptions(self, assume):
         super(SData, self)._declare_assumptions(assume)
         assume(self._len <= 16)
-SPipe = simsym.tstruct(data = SData,
-                       nread = SOffset)
+SPipe = simsym.tstruct(data = SData)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)
 class SFd(simsym.tstruct(ispipe = simsym.SBool,
                          pipeid = SPipeId,
@@ -233,7 +232,6 @@ class Fs(simsym.tstruct(
                                self.proc1.fd_map._map[xfd].pipeid == internal_pipeid]))])))
 
         empty_pipe = self.pipes[internal_pipeid]
-        empty_pipe.nread = 0
         empty_pipe.data._len = 0
 
         ## lowest FD for read end
@@ -329,7 +327,7 @@ class Fs(simsym.tstruct(
                 return {'r': -1, 'errno': errno.EBADF}
             pipeid = self.getproc(pid).fd_map[fd].pipeid
             pipe = self.pipes[pipeid]
-            if pipe.data.len() == pipe.nread:
+            if pipe.data.len() == 0:
                 otherfd = SFdNum.var('otherfd')
                 if simsym.symor([
                     simsym.exists(otherfd,
@@ -345,10 +343,8 @@ class Fs(simsym.tstruct(
                     return {'r': -1, 'errno': errno.EAGAIN}
                 else:
                     return {'r': 0}
-            simsym.assume(pipe.nread < pipe.data.len())
-            simsym.assume(pipe.nread >= 0)
-            d = pipe.data[pipe.nread]
-            pipe.nread = pipe.nread + 1
+            d = pipe.data[0]
+            pipe.data.shift()
             return {'r': 1, 'data': d}
         off = self.getproc(pid).fd_map[fd].off
         r = self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
@@ -393,8 +389,6 @@ class Fs(simsym.tstruct(
                 return {'r': -1, 'errno': errno.EBADF}
             pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
             ## TODO: return EPIPE if no more readers
-            simsym.assume(pipe.nread < pipe.data.len())
-            simsym.assume(pipe.nread >= 0)
             pipe.data.append(databyte)
             return {'r': 1}
         off = self.getproc(pid).fd_map[fd].off

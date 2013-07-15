@@ -61,6 +61,9 @@ all_filenames = ['__f%d' % x for x in range(0, 6)]
 fd_begin = 5
 fd_end = 10
 
+pipe_begin = 10   ## even is reader, odd is writer
+pipe_end = 20
+
 va_base = 0x12345600000
 va_len = 4
 
@@ -82,6 +85,8 @@ class FsState(object):
     self.inodefiles = DynamicDict(['__i%d' % x for x in range(0, 6)])
     # Map from uninterpreted data bytes to concrete byte values
     self.databytes = DynamicDict(xrange(256))
+    # Map from uninterpreted pipe IDs to reader FDs (writers are +1)
+    self.pipes = DynamicDict(range(pipe_begin, pipe_end, 2))
     self.procs = DynamicDict(iter(PerProc, None))
 
   def build_proc(self, pid):
@@ -101,6 +106,7 @@ class FsState(object):
   def setup_inodes(self):
     emit = self.emit
     emit('int fd __attribute__((unused));',
+         'int fds[2] __attribute__((unused));',
          'int r __attribute__((unused));',
          'char c __attribute__((unused));')
     for symino, ifn in self.inodefiles.items():
@@ -123,6 +129,17 @@ class FsState(object):
 
       emit('close(fd);')
 
+    for reader_fd in self.pipes.values():
+      writer_fd = reader_fd + 1
+      emit('r = pipe2(fds, O_NONBLOCK);',
+           'if (r != 0) setup_error("pipe => %d", r);',
+           'r = dup2(fds[0], %d);' % reader_fd,
+           'if (r != %d) setup_error("dup2");' % reader_fd,
+           'r = dup2(fds[1], %d);' % writer_fd,
+           'if (r != %d) setup_error("dup2");' % writer_fd,
+           'close(fds[0]);',
+           'close(fds[1]);')
+
   def setup_filenames(self, fn_to_ino):
     for fn in fn_to_ino:
       self.emit('r = link("%s", "%s");' % (fn_to_ino[fn], fn),
@@ -131,6 +148,10 @@ class FsState(object):
   def setup_inodes_finalize(self):
     for inodefile in self.inodefiles.values():
       self.emit('unlink("%s");' % inodefile)
+    for reader_fd in self.pipes.values():
+      writer_fd = reader_fd + 1
+      self.emit('close(%d);' % reader_fd,
+                'close(%d);' % writer_fd)
 
   def setup_proc(self, fdmap, vamap):
     emit = self.emit
@@ -138,15 +159,18 @@ class FsState(object):
          'int r __attribute__((unused));')
     for fd, fdinfo in fdmap.items():
       if fdinfo.ispipe:
-        # XXX Support pipes
-        raise SkipTest("Unimplemented: pipe FDs")
-      emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
-           'if (fd < 0) setup_error("open");',
-           'r = lseek(fd, %d, SEEK_SET);' % fdinfo.off,
-           'if (fd >= 0 && r < 0) setup_error("lseek");',
-           'r = dup2(fd, %d);' % fd,
-           'if (fd >= 0 && r < 0) setup_error("dup2");',
-           'close(fd);')
+        pipe_setup_fd = self.pipes[fdinfo.pipeid]
+        if fdinfo.pipewriter: pipe_setup_fd += 1
+        emit('r = dup2(%d, %d);' % (pipe_setup_fd, fd),
+             'if (r < 0) setup_error("dup2");')
+      else:
+        emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
+             'if (fd < 0) setup_error("open");',
+             'r = lseek(fd, %d, SEEK_SET);' % fdinfo.off,
+             'if (fd >= 0 && r < 0) setup_error("lseek");',
+             'r = dup2(fd, %d);' % fd,
+             'if (fd >= 0 && r < 0) setup_error("dup2");',
+             'close(fd);')
 
     emit('int* va __attribute__((unused));')
     for va, vainfo in vamap.items():
@@ -168,6 +192,12 @@ class FsState(object):
              'if (r == -1) setup_error("mmap");',
              'close(fd);')
 
+  def setup_proc_finalize(self):
+    for reader_fd in self.pipes.values():
+      writer_fd = reader_fd + 1
+      self.emit('close(%d);' % reader_fd,
+                'close(%d);' % writer_fd)
+
   def build_dir(self):
     # Reads filenames; extends inodefiles
     fn_to_ino = {}
@@ -184,17 +214,20 @@ class FsState(object):
     setup = {'common': testgen.CodeWriter(),
              'proc0': testgen.CodeWriter(),
              'proc1': testgen.CodeWriter(),
+             'procfinal': testgen.CodeWriter(),
              'final': testgen.CodeWriter()}
 
     try:
-      # setup_proc reads nothing; extends inodefiles, databytes
+      # setup_proc reads nothing; extends inodefiles, databytes, pipes
       self.emit = setup['proc0']; self.setup_proc(fdmap0, vamap0)
       self.emit = setup['proc1']; self.setup_proc(fdmap1, vamap1),
-      # setup_inodes reads inodefiles; extends databytes
+      # setup_inodes reads inodefiles, pipes; extends databytes
       self.emit = setup['common']; self.setup_inodes()
       # setup_filenames reads nothing; extends nothing
       self.emit = setup['common']; self.setup_filenames(fn_to_ino)
-      # setup_inodes_finalize reads inodefiles; extends nothing
+      # setup_proc_finalize reads pipes; extends nothing
+      self.emit = setup['procfinal']; self.setup_proc_finalize()
+      # setup_inodes_finalize reads inodefiles, pipes; extends nothing
       self.emit = setup['final']; self.setup_inodes_finalize()
     finally:
       self.emit = None
@@ -516,7 +549,7 @@ static int __attribute__((unused)) xerrno(int r) {
           pids.append(False)
       # Write setup code
       setup = fs.build_dir()
-      for phase in ('common', 'proc0', 'proc1', 'final'):
+      for phase in ('common', 'proc0', 'proc1', 'final', 'procfinal'):
         self.func(emit, 'void',  'setup_%s_%s' % (name, phase),
                   setup[phase])
     except SkipTest as e:
@@ -530,6 +563,7 @@ static int __attribute__((unused)) xerrno(int r) {
   { "fs-%(name)s",
     &setup_%(name)s_common,
     { { &setup_%(name)s_proc0 }, { &setup_%(name)s_proc1 } },
+    &setup_%(name)s_procfinal,
     &setup_%(name)s_final,
     { { &test_%(name)s_0, %(pid0)d, "%(name0)s" },
       { &test_%(name)s_1, %(pid1)d, "%(name1)s" } },

@@ -326,8 +326,8 @@ class Fs(simsym.tstruct(
                 return {'r': -1, 'errno': errno.EBADF}
             pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
             if pipe.data.len() == pipe.nread:
-                ## TODO: return EOF if no more writers; otherwise block
-                return {'r': 0}
+                ## TODO: return 0 if no more writers
+                return {'r': -1, 'errno': errno.EAGAIN}
             simsym.assume(pipe.nread < pipe.data.len())
             simsym.assume(pipe.nread >= 0)
             d = pipe.data[pipe.nread]

@@ -440,13 +440,16 @@ class Fs(simsym.tstruct(
         if fdm.ispipe:
             return {'r': -1, 'errno': errno.ESPIPE}
         if whence_set:
-            fdm.off = off
+            new_off = off
         elif whence_cur:
-            fdm.off += off
+            new_off = fdm.off + off
         elif whence_end:
-            fdm.off = self.i_map[fdm.inum].data._len + off
+            new_off = self.i_map[fdm.inum].data._len + off
         else:
             return {'r': -1, 'errno': errno.EINVAL}
+        if new_off < 0:
+            return {'r': -1, 'errno': errno.EINVAL}
+        fdm.off = new_off
         return {'r': fdm.off}
 
     @model.methodwrap(anon=simsym.SBool,

@@ -324,10 +324,24 @@ class Fs(simsym.tstruct(
         if self.getproc(pid).fd_map[fd].ispipe:
             if self.getproc(pid).fd_map[fd].pipewriter:
                 return {'r': -1, 'errno': errno.EBADF}
-            pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
+            pipeid = self.getproc(pid).fd_map[fd].pipeid
+            pipe = self.pipes[pipeid]
             if pipe.data.len() == pipe.nread:
-                ## TODO: return 0 if no more writers
-                return {'r': -1, 'errno': errno.EAGAIN}
+                otherfd = SFdNum.var('otherfd')
+                if simsym.symor([
+                    simsym.exists(otherfd,
+                        simsym.symand([self.proc0.fd_map.contains(otherfd),
+                                       self.proc0.fd_map._map[otherfd].ispipe,
+                                       self.proc0.fd_map._map[otherfd].pipewriter,
+                                       self.proc0.fd_map._map[otherfd].pipeid == pipeid])),
+                    simsym.exists(otherfd,
+                        simsym.symand([self.proc1.fd_map.contains(otherfd),
+                                       self.proc1.fd_map._map[otherfd].ispipe,
+                                       self.proc1.fd_map._map[otherfd].pipewriter,
+                                       self.proc1.fd_map._map[otherfd].pipeid == pipeid]))]):
+                    return {'r': -1, 'errno': errno.EAGAIN}
+                else:
+                    return {'r': 0}
             simsym.assume(pipe.nread < pipe.data.len())
             simsym.assume(pipe.nread >= 0)
             d = pipe.data[pipe.nread]

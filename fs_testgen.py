@@ -129,15 +129,21 @@ class FsState(object):
 
       emit('close(fd);')
 
-    for reader_fd in self.pipes.values():
+    for pipeid, reader_fd in self.pipes.items():
       writer_fd = reader_fd + 1
       emit('r = pipe2(fds, O_NONBLOCK);',
            'if (r != 0) setup_error("pipe => %d", r);',
            'r = dup2(fds[0], %d);' % reader_fd,
            'if (r != %d) setup_error("dup2");' % reader_fd,
            'r = dup2(fds[1], %d);' % writer_fd,
-           'if (r != %d) setup_error("dup2");' % writer_fd,
-           'close(fds[0]);',
+           'if (r != %d) setup_error("dup2");' % writer_fd)
+      sympipe = self.fs.pipes[pipeid]
+      len = sympipe.data.len()
+      for i in range(sympipe.nread, len):
+        emit('c = %d;' % self.databytes[sympipe.data[i]],
+             'r = write(fds[1], &c, 1);',
+             'if (r != 1) setup_error("write => %d", r);')
+      emit('close(fds[0]);',
            'close(fds[1]);')
 
   def setup_filenames(self, fn_to_ino):

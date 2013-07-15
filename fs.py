@@ -1,3 +1,4 @@
+import os
 import simsym
 import symtypes
 import errno
@@ -426,6 +427,28 @@ class Fs(simsym.tstruct(
         del self.getproc(pid).fd_map[fd]
         return {'r': 0}
 
+    @model.methodwrap(fd=SFdNum, off=SOffset,
+                      whence_set=simsym.SBool,
+                      whence_cur=simsym.SBool,
+                      whence_end=simsym.SBool,
+                      pid=SPid)
+    def lseek(self, fd, off, whence_set, whence_cur, whence_end, pid):
+        self.add_selfpid(pid)
+        if not self.getproc(pid).fd_map.contains(fd):
+            return {'r': -1, 'errno': errno.EBADF}
+        fdm = self.getproc(pid).fd_map[fd]
+        if fdm.ispipe:
+            return {'r': -1, 'errno': errno.ESPIPE}
+        if whence_set:
+            fdm.off = off
+        elif whence_cur:
+            fdm.off += off
+        elif whence_end:
+            fdm.off = self.i_map[fdm.inum].data._len + off
+        else:
+            return {'r': -1, 'errno': errno.EINVAL}
+        return {'r': fdm.off}
+
     @model.methodwrap(anon=simsym.SBool,
                       writable=simsym.SBool,
                       fixed=simsym.SBool,
@@ -532,6 +555,7 @@ model_functions = [
     Fs.stat,
     Fs.fstat,
     Fs.close,
+    Fs.lseek,
     Fs.mmap,
     Fs.munmap,
     Fs.mprotect,

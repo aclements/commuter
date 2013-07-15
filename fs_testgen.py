@@ -344,6 +344,17 @@ class FsState(object):
       self.__check(res),
       'return xerrno(r);')
 
+  def lseek(self, args, res):
+    self.emit(
+      'int r = lseek(%d, %d, %s);' %
+      (self.procs[args.pid].fds[args.fd],
+       args.off,
+       'SEEK_SET' if args.whence_set else
+       'SEEK_CUR' if args.whence_cur else
+       'SEEK_END' if args.whence_end else '999'),
+      self.__check(res),
+      'return xerrno(r);')
+
   def mmap(self, args, res):
     prot = 'PROT_READ'
     if args.writable: prot += ' | PROT_WRITE'

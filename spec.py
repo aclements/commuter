@@ -347,6 +347,7 @@ class TestWriter(object):
             self.testgen.begin_path(result)
 
         self.npathmodel = 0
+        self.last_assignments = None
         while self.keep_going():
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
@@ -379,6 +380,17 @@ class TestWriter(object):
             if args.verbose_testgen:
                 print 'Assignments:'
                 pprint.pprint(assignments)
+            if args.diff_testgen:
+                new_assignments = {}
+                if self.last_assignments is not None:
+                    for aexpr, val in assignments:
+                        hexpr = z3util.HashableAst(aexpr)
+                        sval = str(val)
+                        last_sval = self.last_assignments.get(hexpr)
+                        if last_sval is not None and last_sval != sval:
+                            print '%s: %s -> %s' % (aexpr, last_sval, sval)
+                        new_assignments[hexpr] = sval
+                self.last_assignments = new_assignments
 
             # Construct the isomorphism condition for the assignments
             # used by testgen.  This tells us exactly what values
@@ -481,6 +493,8 @@ parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='sto
                     help='Maximum # test cases to generate per combination')
 parser.add_argument('--verbose-testgen', default=False, action='store_true',
                     help='Print diagnostics during model enumeration')
+parser.add_argument('--diff-testgen', default=False, action='store_true',
+                    help='Print variables that change during enumeration')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 args = parser.parse_args()

@@ -387,8 +387,23 @@ class Fs(simsym.tstruct(
         if self.getproc(pid).fd_map[fd].ispipe:
             if not self.getproc(pid).fd_map[fd].pipewriter:
                 return {'r': -1, 'errno': errno.EBADF}
-            pipe = self.pipes[self.getproc(pid).fd_map[fd].pipeid]
-            ## TODO: return EPIPE if no more readers
+            pipeid = self.getproc(pid).fd_map[fd].pipeid
+            pipe = self.pipes[pipeid]
+
+            otherfd = SFdNum.var('otherfd')
+            if simsym.symnot(simsym.symor([
+                simsym.exists(otherfd,
+                    simsym.symand([self.proc0.fd_map.contains(otherfd),
+                                   self.proc0.fd_map._map[otherfd].ispipe,
+                                   simsym.symnot(self.proc0.fd_map._map[otherfd].pipewriter),
+                                   self.proc0.fd_map._map[otherfd].pipeid == pipeid])),
+                simsym.exists(otherfd,
+                    simsym.symand([self.proc1.fd_map.contains(otherfd),
+                                   self.proc1.fd_map._map[otherfd].ispipe,
+                                   simsym.symnot(self.proc1.fd_map._map[otherfd].pipewriter),
+                                   self.proc1.fd_map._map[otherfd].pipeid == pipeid]))])):
+                return {'r': -1, 'errno': errno.EPIPE}
+
             pipe.data.append(databyte)
             return {'r': 1}
         off = self.getproc(pid).fd_map[fd].off

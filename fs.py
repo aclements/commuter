@@ -21,11 +21,14 @@ class SData(symtypes.tlist(SDataByte, lenType=SOffset)):
 SPipe = simsym.tstruct(data = SData,
                        nread = SOffset)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)
-SFd = simsym.tstruct(ispipe = simsym.SBool,
-                     pipeid = SPipeId,
-                     pipewriter = simsym.SBool,
-                     inum = SInum,
-                     off = SOffset)
+class SFd(simsym.tstruct(ispipe = simsym.SBool,
+                         pipeid = SPipeId,
+                         pipewriter = simsym.SBool,
+                         inum = SInum,
+                         off = SOffset)):
+    def _declare_assumptions(self, assume):
+        super(SFd, self)._declare_assumptions(assume)
+        assume(self.off >= 0)
 SFdNum = simsym.tsynonym("SFdNum", simsym.SInt)
 SFdMap = symtypes.tdict(SFdNum, SFd)
 SVMA = simsym.tstruct(anon = simsym.SBool,

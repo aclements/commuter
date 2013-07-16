@@ -104,6 +104,17 @@ class FsState(object):
     return (fdmap, vamap)
 
   def setup_inodes(self):
+    def writen(fdexpr, data):
+      alen = data.len()
+      assert 0 <= alen <= 16
+      if alen == 0:
+        return
+      contents = ''
+      for i in range(alen):
+        contents += '\\x%02d' % self.databytes[data[i]]
+      emit('r = write(%s, "%s", %d);' % (fdexpr, contents, alen),
+           'if (r != %d) setup_error("write => %%d", r);' % alen)
+
     emit = self.emit
     emit('int fd __attribute__((unused));',
          'int fds[2] __attribute__((unused));',
@@ -115,17 +126,11 @@ class FsState(object):
 
       inode = self.fs.i_map[symino]
       if inode is not None:
-        len = inode.data.len()
-        assert 0 <= len <= 16
         ## XXX
         ## We may want to implement each Databyte as a separate 4KB page,
         ## to check for scalability of writes to different pages (as opposed
         ## to writes to different bytes, which is less interesting).
-
-        for i in range(0, len):
-          emit('c = %d;' % self.databytes[inode.data[i]],
-               'r = write(fd, &c, 1);',
-               'if (r != 1) setup_error("write => %d", r);')
+        writen('fd', inode.data)
 
       emit('close(fd);')
 
@@ -138,11 +143,7 @@ class FsState(object):
            'r = dup2(fds[1], %d);' % writer_fd,
            'if (r != %d) setup_error("dup2");' % writer_fd)
       sympipe = self.fs.pipes[pipeid]
-      len = sympipe.data.len()
-      for i in range(sympipe.nread, len):
-        emit('c = %d;' % self.databytes[sympipe.data[i]],
-             'r = write(fds[1], &c, 1);',
-             'if (r != 1) setup_error("write => %d", r);')
+      writen('fds[1]', sympipe.data)
       emit('close(fds[0]);',
            'close(fds[1]);')
 

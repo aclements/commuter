@@ -455,7 +455,8 @@ class Fs(simsym.tstruct(
             return {'r': -1, 'errno': errno.EBADF}
         fdm = self.getproc(pid).fd_map[fd]
         if fdm.ispipe:
-            return {'r': -1, 'errno': errno.ESPIPE}
+            return {'r': -1, 'errno': errno.EINVAL}
+            ## POSIX says ESPIPE, but Linux returns EINVAL
         if whence_set:
             new_off = off
         elif whence_cur:

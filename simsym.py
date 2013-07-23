@@ -374,10 +374,10 @@ class SBool(SExpr, SymbolicConst):
             # Extend the schedule
             if canTrue == z3.sat and canFalse == z3.unsat:
                 cursched.append(
-                    SchedNode("branch_det", True, cursched[-1].gnode))
+                    SchedNode("branch_det", self, True, cursched[-1].gnode))
             elif canTrue == z3.unsat and canFalse == z3.sat:
                 cursched.append(
-                    SchedNode("branch_det", False, cursched[-1].gnode))
+                    SchedNode("branch_det", self, False, cursched[-1].gnode))
             else:
                 # Both are possible; take both paths
                 gnode = cursched[-1].gnode
@@ -388,17 +388,17 @@ class SBool(SExpr, SymbolicConst):
 
                 newsched = list(cursched)
                 if canTrue == z3.sat:
-                    cursched.append(SchedNode("branch_nondet", True, tnode))
+                    cursched.append(SchedNode("branch_nondet", self, True, tnode))
                 else:
                     cursched.append(
-                        SchedNode("exception",
+                        SchedNode("exception", None,
                                   UncheckableConstraintError(
                                       self._v, canTrueReason), tnode))
                 if canFalse == z3.sat:
-                    newsched.append(SchedNode("branch_nondet", False, fnode))
+                    newsched.append(SchedNode("branch_nondet", self, False, fnode))
                 else:
                     newsched.append(
-                        SchedNode("exception",
+                        SchedNode("exception", None,
                                   UncheckableConstraintError(
                                       z3.Not(self._v), canFalseReason), fnode))
                 scheduler.queue_schedule(newsched)
@@ -407,10 +407,7 @@ class SBool(SExpr, SymbolicConst):
         node = cursched[path_state.schedidx]
         path_state.schedidx += 1
         if node.is_branch():
-            if node.val == True:
-                solver.add(self._v)
-            else:
-                solver.add(z3.Not(self._v))
+            solver.add(unwrap(node.path_expr()))
             return node.val
         elif node.typ == "exception":
             raise node.val
@@ -942,22 +939,35 @@ class SchedNode(object):
     - "exception" for an exception.  val must be the exception to
       raise at this point in the schedule.
 
-    - "assumption" for an assumption.  val must be None.
+    - "assumption" for an assumption.  val must be True.
+
+    In all cases except "exception", expr is the Symbolic expression
+    that must be equal to val to follow this schedule step.
     """
 
-    def __init__(self, typ, val, gnode):
+    def __init__(self, typ, expr, val, gnode):
         if typ not in ("branch_nondet", "branch_det", "exception",
                        "assumption"):
             raise ValueError("Bad SchedNode type %r" % typ)
         self.typ = typ
+        self.expr = expr
         self.val = val
         self.gnode = gnode
 
     def __repr__(self):
-        return "SchedNode(%r, %r, %r)" % (self.typ, self.val, self.gnode)
+        return "SchedNode(%r, %r, %r, %r)" % \
+            (self.typ, self.expr, self.val, self.gnode)
 
     def is_branch(self):
         return self.typ == "branch_nondet" or self.typ == "branch_det"
+
+    def path_expr(self):
+        """Return the path condition expression for this node."""
+        if self.val == True:
+            return self.expr
+        elif self.val == False:
+            return symnot(self.expr)
+        raise ValueError("No path expression for %r" % self)
 
 class Scheduler(object):
     """Tracks the schedule for the current symbolic apply."""
@@ -971,7 +981,7 @@ class Scheduler(object):
         # execution, but it means we can always use graph node
         # sched[-1].gnode.
         self.queue_schedule(
-            [SchedNode("assumption", None, self.graph.new_node())])
+            [SchedNode("assumption", None, None, self.graph.new_node())])
 
     def queue_schedule(self, s):
         self.schedq.append(s)
@@ -1053,7 +1063,7 @@ def assume(e):
         nextnode = curgraph.new_node()
         curgraph.new_edge(gnode, nextnode, "")
 
-        cursched.append(SchedNode("assumption", None, nextnode))
+        cursched.append(SchedNode("assumption", e, True, nextnode))
 
     assert cursched[path_state.schedidx].typ == "assumption"
     path_state.schedidx += 1

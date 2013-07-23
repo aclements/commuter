@@ -282,20 +282,20 @@ class IsomorphicMatch(object):
         return simsym.wrap(z3.Not(self.__same_cond()))
 
 class TestWriter(object):
-    def __init__(self, model_file=None, test_file=None):
-        if isinstance(model_file, basestring):
-            model_file = open(model_file, 'w')
-        self.model_file, self.test_file = model_file, test_file
+    def __init__(self, trace_file=None, test_file=None):
+        if isinstance(trace_file, basestring):
+            trace_file = open(trace_file, 'w')
+        self.trace_file, self.test_file = trace_file, test_file
         if test_file and testgen:
             self.testgen = testgen(test_file)
         else:
             self.testgen = None
 
     def begin_call_set(self, callset):
-        if self.model_file:
-            print >> self.model_file, "==== Call set %s ====" % \
+        if self.trace_file:
+            print >> self.trace_file, "==== Call set %s ====" % \
                 " ".join(c.__name__ for c in callset)
-            print >> self.model_file
+            print >> self.trace_file
 
         self.callset = callset
         self.npath = self.ncompath = self.nmodel = 0
@@ -316,13 +316,13 @@ class TestWriter(object):
 
         self.ncompath += 1
 
-        if not self.model_file and not self.testgen:
+        if not self.trace_file and not self.testgen:
             self.__progress(False)
             return
 
-        if self.model_file:
-            print >> self.model_file, "=== Path %s ===" % result.pathid
-            print >> self.model_file
+        if self.trace_file:
+            print >> self.trace_file, "=== Path %s ===" % result.pathid
+            print >> self.trace_file
 
         e = result.path_condition
 
@@ -427,12 +427,12 @@ class TestWriter(object):
         self.nmodel += 1
         res = None
 
-        if self.model_file:
-            print >> self.model_file, "== Path %s model %d ==" % \
+        if self.trace_file:
+            print >> self.trace_file, "== Path %s model %d ==" % \
                 (result.pathid, self.npathmodel)
-            print >> self.model_file, model.sexpr()
-            print >> self.model_file
-            self.model_file.flush()
+            print >> self.trace_file, model.sexpr()
+            print >> self.trace_file
+            self.trace_file.flush()
 
         if self.testgen:
             smodel = result.get_model(model)
@@ -481,6 +481,8 @@ parser.add_argument('-p', '--print-conds', action='store_true',
                     help='Print commutativity conditions')
 parser.add_argument('-m', '--model-file',
                     help='Z3 model output file')
+parser.add_argument('--trace-file',
+                    help='User-readable Z3 model trace output file')
 parser.add_argument('-t', '--test-file',
                     help='Test generator output file')
 parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
@@ -542,8 +544,10 @@ base = m.model_class
 testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
 if testgen is None and args.test_file:
     parser.error("No test case generator for this module")
+if args.model_file:
+    parser.error('Model file not yet supported')
 
-test_writer = TestWriter(args.model_file, args.test_file)
+test_writer = TestWriter(args.trace_file, args.test_file)
 
 isomorphism_types = getattr(m, 'isomorphism_types', {})
 

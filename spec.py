@@ -8,6 +8,7 @@ import argparse
 import os
 import z3util
 import pprint
+import json
 
 TestResult = collections.namedtuple('TestResult', 'diverge results')
 
@@ -282,20 +283,34 @@ class IsomorphicMatch(object):
         return simsym.wrap(z3.Not(self.__same_cond()))
 
 class TestWriter(object):
-    def __init__(self, trace_file=None, test_file=None):
+    def __init__(self, trace_file=None, model_file=None, test_file=None):
         if isinstance(trace_file, basestring):
             trace_file = open(trace_file, 'w')
-        self.trace_file, self.test_file = trace_file, test_file
+        self.trace_file, self.model_file, self.test_file \
+            = trace_file, model_file, test_file
         if test_file and testgen:
             self.testgen = testgen(test_file)
         else:
             self.testgen = None
+
+        # model_data schema:
+        #   root     -> {'tests': {callsetname: {pathid: pathinfo}}}
+        #   callsetname -> '_'-joined call names
+        #   pathinfo -> {'id': pathname, 'tests': [testinfo]}
+        #   pathname -> callsetname '_' pathid
+        #   testinfo -> {'id': testname, 'assignments': {expr: val}}
+        #   testname -> pathname '_' testnum
+        self.model_data = {'tests':{}}
 
     def begin_call_set(self, callset):
         if self.trace_file:
             print >> self.trace_file, "==== Call set %s ====" % \
                 " ".join(c.__name__ for c in callset)
             print >> self.trace_file
+
+        self.model_data_callset = collections.OrderedDict()
+        self.model_data['tests']['_'.join(c.__name__ for c in callset)] \
+            = self.model_data_callset
 
         self.callset = callset
         self.npath = self.ncompath = self.nmodel = 0
@@ -308,6 +323,12 @@ class TestWriter(object):
 
     def on_result(self, result):
         self.npath += 1
+
+        self.model_data_callset[result.pathid] = collections.OrderedDict(
+            id=('_'.join(c.__name__ for c in self.callset) +
+                '_' + result.pathid),
+            diverge=' '.join(result.value.diverge),
+        )
 
         # Filter out non-commutative results
         if result.value.diverge != ():
@@ -346,6 +367,10 @@ class TestWriter(object):
         if self.testgen:
             self.testgen.begin_path(result)
 
+        self.model_data_testinfo_list = []
+        self.model_data_callset[result.pathid]['tests'] \
+            = self.model_data_testinfo_list
+
         self.npathmodel = 0
         self.last_assignments = None
         while self.keep_going():
@@ -374,6 +399,12 @@ class TestWriter(object):
                 print "Model:"
                 print model
 
+            testinfo = collections.OrderedDict(
+                id=('_'.join(c.__name__ for c in self.callset) +
+                    '_' + result.pathid + '_' + str(self.npathmodel)),
+            )
+            self.model_data_testinfo_list.append(testinfo)
+
             assignments = self.__on_model(result, model)
             if assignments is None:
                 break
@@ -391,6 +422,10 @@ class TestWriter(object):
                             print '%s: %s -> %s' % (aexpr, last_sval, sval)
                         new_assignments[hexpr] = sval
                 self.last_assignments = new_assignments
+
+            testinfo['assignments'] = {}
+            for aexpr, val in assignments:
+                testinfo['assignments'][str(aexpr)] = str(val)
 
             # Construct the isomorphism condition for the assignments
             # used by testgen.  This tells us exactly what values
@@ -473,6 +508,8 @@ class TestWriter(object):
     def finish(self):
         if self.testgen:
             self.testgen.finish()
+        if self.model_file is not None:
+            json.dump(self.model_data, file(self.model_file, 'w'), indent=2)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--check-conds', action='store_true',
@@ -544,10 +581,8 @@ base = m.model_class
 testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
 if testgen is None and args.test_file:
     parser.error("No test case generator for this module")
-if args.model_file:
-    parser.error('Model file not yet supported')
 
-test_writer = TestWriter(args.trace_file, args.test_file)
+test_writer = TestWriter(args.trace_file, args.model_file, args.test_file)
 
 isomorphism_types = getattr(m, 'isomorphism_types', {})
 

@@ -373,7 +373,7 @@ class TestWriter(object):
 
         self.npathmodel = 0
         self.last_assignments = None
-        while self.keep_going():
+        while self.keep_going() and self.npathmodel < args.max_tests_per_path:
             # XXX Would it be faster to reuse the solver?
             check, model = simsym.check(e)
             if check == z3.unsat: break
@@ -454,6 +454,9 @@ class TestWriter(object):
 
             self.__progress(False)
 
+        if self.npathmodel == args.max_tests_per_path:
+            print '  Max tests reached for path %s' % result.pathid
+
         if self.testgen:
             self.testgen.end_path()
         self.__progress(False)
@@ -529,7 +532,9 @@ parser.add_argument('-f', '--functions', action='store',
 parser.add_argument('--simplify-more', default=False, action='store_true',
                     help='Use ctx-solver-simplify')
 parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='store',
-                    help='Maximum # test cases to generate per combination')
+                    help='Maximum # test cases to generate per call set')
+parser.add_argument('--max-tests-per-path', type=int, default=sys.maxint,
+                    help='Maximum # test cases to generate per path')
 parser.add_argument('--verbose-testgen', default=False, action='store_true',
                     help='Print diagnostics during model enumeration')
 parser.add_argument('--diff-testgen', default=False, action='store_true',

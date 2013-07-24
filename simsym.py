@@ -1070,16 +1070,36 @@ class SymbolicApplyResult(object):
 
     def __init__(self, value, env):
         self.__value = value
-        self.__path_condition_list \
-            = wraplist(env.path_state.solver.assertions())
         self.__var_constructors = env.var_constructors
         self.__const_types = env.const_types
         self.__schedule = env.path_state.sched
+
+        # XXX Should this include deterministic branches?  We have in
+        # the past, but there's probably no reason to
+        self.__path_condition_list \
+            = self.get_path_condition_list(with_assume=True, with_det=True)
 
     @property
     def value(self):
         """The value returned by the application (which may be Symbolic)."""
         return self.__value
+
+    def get_path_condition_list(self, with_assume, with_det):
+        res = []
+        for node in self.__schedule:
+            if node.typ == "assumption":
+                if with_assume:
+                    res.append(node.path_expr())
+            elif node.typ == "branch_det":
+                if with_det:
+                    res.append(node.path_expr())
+            elif node.typ == "branch_nondet":
+                res.append(node.path_expr())
+            elif node.typ == "exception":
+                pass
+            else:
+                raise ValueError("Unexpected SchedNode type %r" % node)
+        return res
 
     @property
     def path_condition_list(self):

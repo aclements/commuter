@@ -357,12 +357,19 @@ class TestWriter(object):
             print "Simplified path condition:"
             print e
 
-        # Find the uninterpreted constants in e.  We use the
-        # simplified expression because the final state comparison in
-        # original expression contains a lot of trivial expressions
-        # like x==x for all state variables x, and we don't care about
-        # these uninterpreted constants.
-        e_vars = expr_vars(e)
+        # Find the uninterpreted constants in the path condition.  We
+        # omit assumptions because uninterpreted constants that appear
+        # only in assumptions generally don't represent that the model
+        # actually "touched".  We use the simplified expression
+        # because the final state comparison in original expression
+        # contains a lot of trivial expressions like x==x for all
+        # state variables x, and we don't care about these
+        # uninterpreted constants.
+        e_vars = expr_vars(
+            simsym.simplify(
+                simsym.symand(
+                    result.get_path_condition_list(
+                        with_assume=False, with_det=True))))
 
         if self.testgen:
             self.testgen.begin_path(result)

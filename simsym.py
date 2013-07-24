@@ -339,7 +339,6 @@ class SBool(SExpr, SymbolicConst):
 
     def __nonzero__(self):
         scheduler, path_state = Env.scheduler(), Env.path_state()
-        curgraph = scheduler.graph
         solver = path_state.solver
         cursched = path_state.sched
 
@@ -374,34 +373,26 @@ class SBool(SExpr, SymbolicConst):
 
             # Extend the schedule
             if canTrue == z3.sat and canFalse == z3.unsat:
-                cursched.append(
-                    SchedNode("branch_det", self, True, cursched[-1].gnode))
+                cursched.append(SchedNode("branch_det", self, True))
             elif canTrue == z3.unsat and canFalse == z3.sat:
-                cursched.append(
-                    SchedNode("branch_det", self, False, cursched[-1].gnode))
+                cursched.append(SchedNode("branch_det", self, False))
             else:
                 # Both are possible; take both paths
-                gnode = cursched[-1].gnode
-                gnode.set_label(self, get_caller())
-                tnode, fnode = curgraph.new_node(), curgraph.new_node()
-                curgraph.new_edge(gnode, tnode, "T")
-                curgraph.new_edge(gnode, fnode, "F")
-
                 newsched = list(cursched)
                 if canTrue == z3.sat:
-                    cursched.append(SchedNode("branch_nondet", self, True, tnode))
+                    cursched.append(SchedNode("branch_nondet", self, True))
                 else:
                     cursched.append(
                         SchedNode("exception", None,
                                   UncheckableConstraintError(
-                                      self._v, canTrueReason), tnode))
+                                      self._v, canTrueReason)))
                 if canFalse == z3.sat:
-                    newsched.append(SchedNode("branch_nondet", self, False, fnode))
+                    newsched.append(SchedNode("branch_nondet", self, False))
                 else:
                     newsched.append(
                         SchedNode("exception", None,
                                   UncheckableConstraintError(
-                                      z3.Not(self._v), canFalseReason), fnode))
+                                      z3.Not(self._v), canFalseReason)))
                 scheduler.queue_schedule(newsched)
 
         # Follow the schedule (which we may have just extended)
@@ -802,15 +793,15 @@ def ast_cleanup(a):
 
 class Graph(object):
     def __init__(self):
-        self.__nodes = []
-        self.__edges = []
+        self.__edges = set()
 
-    def new_node(self):
-        self.__nodes.append(GraphNode())
-        return self.__nodes[-1]
-
-    def new_edge(self, n1, n2, label):
-        self.__edges.append((n1, n2, label))
+    def add_sched(self, sched, result, result_color="black"):
+        prev_gnode = None
+        for node in sched:
+            if node.typ in ("branch_nondet", "assumption"):
+                self.__edges.add((prev_gnode, node))
+                prev_gnode = node
+        self.__edges.add((prev_gnode, (result, result_color, object())))
 
     def show(self):
         import subprocess, tempfile
@@ -829,42 +820,42 @@ class Graph(object):
     def to_dot(self, fp=sys.stdout):
         print >>fp, "digraph G {"
         #print >>fp, "rankdir=LR;"
-        for n in self.__nodes:
+        srcs = {src for src, target in self.__edges}
+        for src, target in self.__edges:
+            elabel, label, color = self.__format_node(target)
             print >>fp, "n%s [label=%s,color=%s,shape=box];" % \
-                (id(n), self.__dot_quote(n.str_label()),
-                 self.__dot_quote(n._color))
-        for n1, n2, label in self.__edges:
-            print >>fp, "n%s -> n%s [label=%s];" % \
-                (id(n1), id(n2), self.__dot_quote(str(label)))
+                (id(src), self.__dot_quote(label), self.__dot_quote(color))
+            if target in srcs:
+                print >>fp, "n%s -> n%s [label=%s];" % \
+                    (id(src), id(target), self.__dot_quote(elabel))
         print >>fp, "}"
+
+    def __format_node(self, node):
+        elabel, color = "", "black"
+        if isinstance(node, SchedNode):
+            parts = []
+            if node.expr is not None:
+                parts.append(str(z3.simplify(unwrap(node.expr))))
+            parts.append("%s:%s" % (os.path.basename(node.frames[0].filename),
+                                    node.frames[0].lineno))
+            label = "\n".join(parts)
+            if node.is_branch():
+                elabel = str(node.val)[0]
+        else:
+            label, color, _ = node
+
+        # Trim label
+        if len(label.splitlines()) > 10:
+            lines = label.splitlines()
+            lines = lines[:5] + [".. %d more lines .." % (len(lines) - 9)] + lines[-4:]
+            label = "\n".join(lines)
+
+        return elabel, label, color
 
     def __dot_quote(self, s):
         return '"' + (s.replace("\\", "\\\\")
                       .replace("\n", "\\l")
                       .replace("\"", "\\\"")) + '"'
-
-class GraphNode(object):
-    def __init__(self):
-        self._label = ["?"]
-        self._color = "black"
-
-    def set_label(self, *parts):
-        self._label = parts
-
-    def set_color(self, color):
-        self._color = color
-
-    def str_label(self):
-        res = []
-        for part in self._label:
-            if isinstance(part, Symbolic):
-                res.append(str(z3.simplify(unwrap(part))))
-            else:
-                res.append(str(part))
-        res = "\n".join(res).splitlines()
-        if len(res) > 10:
-            res = res[:5] + [".. %d more lines .." % (len(res) - 9)] + res[-4:]
-        return "\n".join(res)
 
 #
 # Symbolic executor
@@ -946,14 +937,13 @@ class SchedNode(object):
     that must be equal to val to follow this schedule step.
     """
 
-    def __init__(self, typ, expr, val, gnode):
+    def __init__(self, typ, expr, val):
         if typ not in ("branch_nondet", "branch_det", "exception",
                        "assumption"):
             raise ValueError("Bad SchedNode type %r" % typ)
         self.typ = typ
         self.expr = expr
         self.val = val
-        self.gnode = gnode
 
         frames = [inspect.getframeinfo(frrec[0], 3)
                   for frrec in inspect.stack()]
@@ -963,8 +953,7 @@ class SchedNode(object):
         self.frames = frames[i:]
 
     def __repr__(self):
-        return "SchedNode(%r, %r, %r, %r)" % \
-            (self.typ, self.expr, self.val, self.gnode)
+        return "SchedNode(%r, %r, %r)" % (self.typ, self.expr, self.val)
 
     def is_branch(self):
         return self.typ == "branch_nondet" or self.typ == "branch_det"
@@ -983,13 +972,9 @@ class Scheduler(object):
     def __init__(self):
         # Stack of schedules; each schedule is a list of SchedNodes
         self.schedq = []
-        self.graph = Graph()
 
-        # Prime the schedule with a root node.  We skip this during
-        # execution, but it means we can always use graph node
-        # sched[-1].gnode.
-        self.queue_schedule(
-            [SchedNode("assumption", None, None, self.graph.new_node())])
+        # Prime the schedule
+        self.queue_schedule([])
 
     def queue_schedule(self, s):
         self.schedq.append(s)
@@ -1003,7 +988,7 @@ class PathState(object):
 
     def __init__(self, sched):
         self.sched = sched
-        self.schedidx = 1
+        self.schedidx = 0
         self.solver = z3.Solver()
 
     def str_path(self):
@@ -1062,16 +1047,7 @@ def assume(e):
     # duplicate nodes in the execution graph.)
     cursched = path_state.sched
     if len(cursched) == path_state.schedidx:
-        curgraph = scheduler.graph
-        if len(cursched):
-            gnode = cursched[-1].gnode
-        else:
-            gnode = curgraph.new_node()
-        gnode.set_label(e, get_caller())
-        nextnode = curgraph.new_node()
-        curgraph.new_edge(gnode, nextnode, "")
-
-        cursched.append(SchedNode("assumption", e, True, nextnode))
+        cursched.append(SchedNode("assumption", e, True))
 
     assert cursched[path_state.schedidx].typ == "assumption"
     path_state.schedidx += 1
@@ -1208,6 +1184,7 @@ def symbolic_apply(fn, *args):
         raise Exception("Recursive symbolic_apply")
 
     scheduler = Scheduler()
+    graph = Graph()
 
     for cursched in scheduler.schedule_generator():
         old_env = Env.current()
@@ -1216,30 +1193,29 @@ def symbolic_apply(fn, *args):
         sar = None
         try:
             rv = fn(*args)
-            cursched[-1].gnode.set_label(rv)
             sar = SymbolicApplyResult(rv, Env.current())
+            graph.add_sched(path_state.sched, str(rv))
         except UnsatisfiablePath:
-            cursched[-1].gnode.set_label("Unsatisfiable path")
-            cursched[-1].gnode.set_color("blue")
+            graph.add_sched(path_state.sched, "Unsatisfiable path", "blue")
         except UncheckableConstraintError as e:
-            cursched[-1].gnode.set_label("Exception: " + str(e))
-            cursched[-1].gnode.set_color("red")
+            graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
             print str(e)
         except Exception as e:
-            cursched[-1].gnode.set_label("Exception: " + str(e))
-            cursched[-1].gnode.set_color("red")
+            graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
             if len(e.args) == 1:
                 e.args = ('%s in symbolic state:\n%s' %
                           (e.args[0], path_state.str_path()),)
             else:
                 e.args = e.args + (path_state.str_path(),)
-            scheduler.graph.show()
+            graph.show()
             raise
         finally:
             old_env.activate()
 
         if sar is not None:
             yield sar
+
+#    graph.show()
 
 def check(e):
     solver = z3.Solver()
@@ -1352,9 +1328,3 @@ def strtype(x):
         return x.__class__.__name__
     else:
         return type(x).__name__
-
-def get_caller():
-    import inspect
-    cur = inspect.currentframe()
-    caller = inspect.getouterframes(cur, 3)
-    return "%s:%s" % (os.path.basename(caller[2][1]), caller[2][2])

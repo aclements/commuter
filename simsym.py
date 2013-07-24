@@ -5,6 +5,7 @@ import os
 import z3
 import types
 import collections
+import inspect
 
 # Monkey-patch __nonzero__ on Z3 types to make sure we don't
 # accidentally call it instead of our wrappers.
@@ -953,6 +954,13 @@ class SchedNode(object):
         self.expr = expr
         self.val = val
         self.gnode = gnode
+
+        frames = [inspect.getframeinfo(frrec[0], 3)
+                  for frrec in inspect.stack()]
+        for i, frame in enumerate(frames):
+            if frames[0].filename != frame.filename:
+                break
+        self.frames = frames[i:]
 
     def __repr__(self):
         return "SchedNode(%r, %r, %r, %r)" % \

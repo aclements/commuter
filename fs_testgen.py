@@ -181,7 +181,7 @@ class FsState(object):
 
     emit('int* va __attribute__((unused));')
     for va, vainfo in vamap.items():
-      emit('va = (void*) 0x%lxUL;' % va)
+      emit('va = (void*) %#xUL;' % va)
       prot = 'PROT_READ'
       if vainfo.writable:
         prot += ' | PROT_WRITE'
@@ -416,15 +416,15 @@ class FsState(object):
       del res['r:va']
 
     self.emit(
-      'int* va = (int*) 0x%lxUL;' % va,
-      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, 0x%lxUL * 4096);' %
+      'int* va = (int*) %#xUL;' % va,
+      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL * 4096);' %
       (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
       self.__check(res),
       'return xerrno(r);')
 
   def munmap(self, args, res):
     self.emit(
-      'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'int* va = (int*) %#xUL;' % self.procs[args.pid].vas[args.va],
       'int r = munmap(va, 4096);',
       self.__check(res),
       'return xerrno(r);')
@@ -434,7 +434,7 @@ class FsState(object):
     if args.writable:
       prot += ' | PROT_WRITE'
     self.emit(
-      'int* va = (int*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'int* va = (int*) %#xUL;' % self.procs[args.pid].vas[args.va],
       'int r = mprotect(va, 4096, %s);' % prot,
       self.__check(res),
       'return xerrno(r);')
@@ -443,7 +443,7 @@ class FsState(object):
     if 'r:data' in res:
       res['r'] = self.databytes[res.pop('r:data')]
     self.emit(
-      'char* p = (char*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) %#xUL;' % self.procs[args.pid].vas[args.va],
       'int r, signal;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
@@ -456,7 +456,7 @@ class FsState(object):
 
   def memwrite(self, args, res):
     self.emit(
-      'char* p = (char*) 0x%lxUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) %#xUL;' % self.procs[args.pid].vas[args.va],
       'int signal, r = 0;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',

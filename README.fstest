@@ -9,11 +9,12 @@ generating test cases:
   cp testgen.c ~/proj/xv6/libutil/testgen.c
 
 check cache line sharing on xv6:
-  make HW=mtrace mtrace.out
-  % fstest -t; halt
+  cd ../xv6
+  make HW=mtrace RUN='fstest -t; halt' mtrace.out
   ../mtrace/mtrace-tools/mscan --check-testcases
 
 or in parallel:
+  cd ../xv6
   make HW=mtrace
   python ../commuter/par-mtrace-xv6.py
   python ../commuter/par-mscan.py

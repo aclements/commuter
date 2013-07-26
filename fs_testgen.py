@@ -58,11 +58,11 @@ class DynamicDict(object):
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
-fd_begin = 5
-fd_end = 10
+fd_begin = 10
+fd_end = 20
 
-pipe_begin = 10   ## even is reader, odd is writer
-pipe_end = 20
+pipe_begin = 20   ## even is reader, odd is writer
+pipe_end = 30
 
 va_base = 0x12345600000
 va_len = 4

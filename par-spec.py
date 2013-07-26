@@ -2,6 +2,8 @@ import spec
 import multiprocessing
 import re
 import copy
+import json
+import collections
 
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(
@@ -32,8 +34,19 @@ subargs = [async.get() for async in asyncs]
 
 print "Model execution complete"
 
+def merge_model_files(ins, out):
+    data = {"tests": collections.OrderedDict()}
+    for inpath in ins:
+        d = json.load(file(inpath), object_pairs_hook=collections.OrderedDict)
+        data["tests"].update(d["tests"])
+    json.dump(data, file(out, "w"), indent=2)
+
+def merge_trace_files(ins, out):
+    outf = file(out, "w")
+    for inpath in ins:
+        outf.write(file(inpath).read())
+
 def merge_test_files(ins, out):
-    # Parse and merge input files
     merged = None
     for inpath in ins:
         data = file(inpath).read()
@@ -62,8 +75,14 @@ def merge_test_files(ins, out):
 
     file(out, "w").write("".join(m[1] for m in merged))
 
+if args.model_file:
+    print "Merging model files..."
+    merge_model_files([subarg.model_file for subarg in subargs], args.model_file)
+
+if args.trace_file:
+    print "Merging trace files..."
+    merge_trace_files([subarg.trace_file for subarg in subargs], args.trace_file)
+
 if args.test_file:
     print "Merging test files..."
     merge_test_files([subarg.test_file for subarg in subargs], args.test_file)
-
-# XXX Merge trace and test files

@@ -250,7 +250,8 @@ class IsomorphicMatch(object):
         return simsym.wrap(z3.Not(self.__same_cond()))
 
 class TestWriter(object):
-    def __init__(self, trace_file=None, model_file=None, test_file=None):
+    def __init__(self, trace_file, model_file, test_file, testgen,
+                 isomorphism_types):
         if isinstance(trace_file, basestring):
             trace_file = open(trace_file, 'w')
         self.trace_file, self.model_file, self.test_file \
@@ -259,6 +260,7 @@ class TestWriter(object):
             self.testgen = testgen(test_file)
         else:
             self.testgen = None
+        self.isomorphism_types = isomorphism_types
 
         # model_data schema:
         #   root     -> {'tests': {callsetname: {pathid: pathinfo}}}
@@ -413,7 +415,7 @@ class TestWriter(object):
             # testgen and appeared in the path condition expression.
             # XXX We should revisit this and see how much difference
             # this makes.
-            same = IsomorphicMatch(isomorphism_types)
+            same = IsomorphicMatch(self.isomorphism_types)
             for aexpr, val in assignments:
                 aexpr_vars = expr_vars(aexpr)
                 if not aexpr_vars.isdisjoint(e_vars):
@@ -515,7 +517,6 @@ parser.add_argument('--diff-testgen', default=False, action='store_true',
                     help='Print variables that change during enumeration')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
-args = parser.parse_args()
 
 def print_cond(msg, cond):
     if args.check_conds and simsym.check(cond)[0] == z3.unsat:
@@ -554,30 +555,43 @@ def print_cond(msg, cond):
                 s = 'maybe'
     print '  %s: %s' % (msg, s)
 
-z3printer._PP.max_lines = float('inf')
-m = __import__(args.module)
-base = m.model_class
-testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
-if testgen is None and args.test_file:
-    parser.error("No test case generator for this module")
+def parse_functions(functions, ncomb, module):
+    """Parse a functions string, returning a list of callsets."""
 
-test_writer = TestWriter(args.trace_file, args.model_file, args.test_file)
+    base = module.model_class
+    callsets = []
+    if functions is not None:
+        calls = []
+        for part in functions.split(','):
+            if '/' in part:
+                callsets.append([getattr(base, fname) for fname in part.split('/')])
+            else:
+                calls.append(getattr(base, part))
+    else:
+        calls = module.model_functions
+    callsets.extend(itertools.combinations_with_replacement(calls, ncomb))
+    return callsets
 
-isomorphism_types = getattr(m, 'isomorphism_types', {})
+def main(spec_args):
+    global args                 # XXX Get rid of this global
+    args = spec_args
 
-callsets = []
-if args.functions is not None:
-    calls = []
-    for part in args.functions.split(','):
-        if '/' in part:
-            callsets.append([getattr(base, fname) for fname in part.split('/')])
-        else:
-            calls.append(getattr(base, part))
-else:
-    calls = m.model_functions
-callsets.extend(itertools.combinations_with_replacement(calls, args.ncomb))
+    z3printer._PP.max_lines = float('inf')
+    m = __import__(args.module)
+    testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
+    if testgen is None and args.test_file:
+        parser.error("No test case generator for this module")
+    isomorphism_types = getattr(m, 'isomorphism_types', {})
 
-for callset in callsets:
+    test_writer = TestWriter(args.trace_file, args.model_file, args.test_file,
+                             testgen, isomorphism_types)
+
+    for callset in parse_functions(args.functions, args.ncomb, m):
+        do_callset(m.model_class, callset, test_writer)
+
+    test_writer.finish()
+
+def do_callset(base, callset, test_writer):
     print ' '.join([c.__name__ for c in callset])
     test_writer.begin_call_set(callset)
 
@@ -597,7 +611,7 @@ for callset in callsets:
 
     if terminated:
         print '  enumeration incomplete; skipping conditions'
-        continue
+        return
 
     conds = collections.defaultdict(lambda: [simsym.wrap(z3.BoolVal(False))])
     for result, condlist in condlists.items():
@@ -619,4 +633,5 @@ for callset in callsets:
         print_cond('cannot commute; %s can diverge' % ', '.join(diverged),
                    simsym.symand([diverge, cannot_commute]))
 
-test_writer.finish()
+if __name__ == "__main__":
+    main(parser.parse_args())

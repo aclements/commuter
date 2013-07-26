@@ -8,8 +8,9 @@ import collections
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(
     args.functions, args.ncomb, __import__(args.module))
-
-def do_callset(i, farg):
+pool = multiprocessing.Pool()
+subargs = []
+for i, callset in enumerate(callsets):
     csargs = copy.copy(args)
     suffix = ".%03d" % i
     if csargs.model_file:
@@ -18,19 +19,11 @@ def do_callset(i, farg):
         csargs.trace_file += suffix
     if csargs.test_file:
         csargs.test_file += suffix
-    csargs.functions = farg
-
-    spec.main(csargs)
-
-    return csargs
-
-pool = multiprocessing.Pool()
-asyncs = []
-for i, callset in enumerate(callsets):
-    farg = "/".join(c.__name__ for c in callset)
-    asyncs.append(pool.apply_async(do_callset, [i, farg]))
+    csargs.functions = "/".join(c.__name__ for c in callset)
+    pool.apply_async(spec.main, [csargs])
+    subargs.append(csargs)
 pool.close()
-subargs = [async.get() for async in asyncs]
+pool.join()
 
 print "Model execution complete"
 

@@ -2,6 +2,9 @@ generating test cases:
   # construct test cases:
   python spec.py fs -t testgen.c
 
+  # or in parallel:
+  python par-spec.py fs -t testgen.c
+
   # copy testgen.c to xv6:
   cp testgen.c ~/proj/xv6/libutil/testgen.c
 

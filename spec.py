@@ -598,12 +598,19 @@ test_writer = TestWriter(args.trace_file, args.model_file, args.test_file)
 
 isomorphism_types = getattr(m, 'isomorphism_types', {})
 
+callsets = []
 if args.functions is not None:
-    calls = [getattr(base, fname) for fname in args.functions.split(',')]
+    calls = []
+    for part in args.functions.split(','):
+        if '/' in part:
+            callsets.append([getattr(base, fname) for fname in part.split('/')])
+        else:
+            calls.append(getattr(base, part))
 else:
     calls = m.model_functions
+callsets.extend(itertools.combinations_with_replacement(calls, args.ncomb))
 
-for callset in itertools.combinations_with_replacement(calls, args.ncomb):
+for callset in callsets:
     print ' '.join([c.__name__ for c in callset])
     test_writer.begin_call_set(callset)
 

@@ -1,24 +1,26 @@
 import spec
 import multiprocessing
 import re
+import copy
 
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(
     args.functions, args.ncomb, __import__(args.module))
 
 def do_callset(i, farg):
+    csargs = copy.copy(args)
     suffix = ".%03d" % i
-    if args.model_file:
-        args.model_file += suffix
-    if args.trace_file:
-        args.trace_file += suffix
-    if args.test_file:
-        args.test_file += suffix
-    args.functions = farg
+    if csargs.model_file:
+        csargs.model_file += suffix
+    if csargs.trace_file:
+        csargs.trace_file += suffix
+    if csargs.test_file:
+        csargs.test_file += suffix
+    csargs.functions = farg
 
-    spec.main(args)
+    spec.main(csargs)
 
-    return args
+    return csargs
 
 pool = multiprocessing.Pool()
 asyncs = []

@@ -33,39 +33,6 @@ def test(base, *calls):
 
     return TestResult(diverge, all_r)
 
-def contains_var(expr):
-    if z3.is_var(expr):
-        return True
-    return any([contains_var(child) for child in expr.children()])
-
-def fnmap(x, fnlist):
-    for f in fnlist:
-        match = False
-        fl = f.as_list()
-        for fk, fv in fl[:-1]:
-            if fk.eq(x):
-                x = fv
-                match = True
-        if not match:
-            x = fl[-1]
-    return x
-
-def var_unwrap(e, fnlist, modelctx):
-    if not contains_var(e):
-        return None
-    if z3.is_var(e) and z3.get_var_index(e) == 0:
-        fn0 = fnlist[0].as_list()
-        retlist = []
-        for fkey, fval in fn0[:-1]:
-            retlist.append([fkey, fnmap(fval, fnlist[1:])])
-        retlist.append(fnmap(fn0[-1], fnlist[1:]))
-        return retlist
-    if e.num_args() != 1:
-        raise Exception('cannot var_unwrap: %s' % str(e))
-    arg = e.arg(0)
-    f = e.decl()
-    return var_unwrap(arg, [modelctx[f]] + fnlist, modelctx)
-
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.
 

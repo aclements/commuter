@@ -477,6 +477,7 @@ class FsTestGenerator(testgen.TestGenerator):
     self.__pending_bodies = {}
 
     self.emit("""\
+//+++ common
 #define _GNU_SOURCE 1
 #include <errno.h>
 #include <fcntl.h>
@@ -501,7 +502,9 @@ static int __attribute__((unused)) xerrno(int r) {
   else
     return r;
 #endif
-}""")
+}
+
+//+++ tests""")
 
   def begin_path(self, result):
     super(FsTestGenerator, self).begin_path(result)
@@ -591,13 +594,17 @@ static int __attribute__((unused)) xerrno(int r) {
     emit = self.emit
 
     # Generate cleanup code
-    emit('', 'static void cleanup(void) {')
+    emit('',
+         '//+++ common',
+         'static void cleanup(void) {')
     for fn in all_filenames:
       emit('  unlink("%s");' % fn)
     emit('}')
 
     # Generate test array
     emit('', 'struct fstest fstests[] = {',
+         '//+++ tests',
          '\n'.join('%s,' % x for x in self.fstests),
+         '//+++ common',
          '  {}',
          '};')

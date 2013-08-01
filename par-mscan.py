@@ -18,4 +18,4 @@ for i, (proc, args, mscanout) in enumerate(procs):
   d = json.load(file(mscanout))
   merged_json['testcases'].extend(d['testcases'])
 
-print json.dumps(merged_json, indent=2)
+json.dump(merged_json, sys.stdout, indent=2)

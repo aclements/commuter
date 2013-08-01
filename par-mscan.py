@@ -11,9 +11,12 @@ for mtraceout in sorted(glob.glob('mtrace.out.*')):
   procs.append(p)
 
 merged_json = { 'testcases': [] }
-for p in procs:
+for i, p in enumerate(procs):
   s = p.stdout.read()
-  d = json.loads(s)
+  try:
+    d = json.loads(s)
+  except ValueError, e:
+    raise ValueError(str(e) + " from mtrace shard %03d" % i)
   merged_json['testcases'].extend(d['testcases'])
   p.wait()
 

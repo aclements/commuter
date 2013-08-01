@@ -19,20 +19,16 @@ or in parallel:
   python ../commuter/par-mtrace-xv6.py
   python ../commuter/par-mscan.py
 
-set up a Linux VM:
-  mkdir -p ~/tmp/linux-vm
-  cd ~/tmp/linux-vm
-  cp ~/proj/commuter/linux-fstest/*.sh .
-  sudo ./make-image.sh
-
 building an mtrace-friendly Linux kernel:
   git clone -b mtrace-v3.8 git://pdos.csail.mit.edu/mosbench/pk.git
   make defconfig
+  # Enable DWARF info for mscan
   echo CONFIG_DEBUG_INFO=y >> .config
+  # Reduce number of CPUs
   echo CONFIG_NR_CPUS=16 >> .config
-  make olddefconfig
-
-  [ shrinking the kernel: ]
+  # Avoid live-lock with timer interrupts
+  echo CONFIG_HZ_100=y >> .config
+  # Shrink the kernel
   echo CONFIG_PARTITION_ADVANCED=n >> .config
   echo CONFIG_SUSPEND=n >> .config
   echo CONFIG_HIBERNATION=n >> .config
@@ -56,23 +52,17 @@ building an mtrace-friendly Linux kernel:
   make -j4
 
 check cache line sharing on Linux:
-  cd ~/proj/xv6
+  cd ../xv6
+  # Build the Linux initramfs
   make HW=linuxmtrace
-  mkdir -p /tmp/nfs-export
-  cp o.linuxmtrace/bin/fstest /tmp/nfs-export
-
-  cd ~/tmp/linux-vm
-
-  script -c ./mtrace.sh typescript.mtrace
-  # cd /mnt/tmpfs
-  # /n/fstest -t ; halt -pf
-
-  ln -s pk/vmlinux mscan.kern
-  nm -C -S mscan.kern > mscan.syms
-  ~/proj/mtrace/mtrace-tools/mscan --check-testcases
+  # Run Linux kernel with tracing
+  make HW=linuxmtrace KERN=../pk/arch/x86_64/boot/bzImage RUN='fstest -t;halt' mtrace.out
+  # Check sharing
+  ../mtrace/mtrace-tools/mscan --kernel ../pk/vmlinux --check-testcases > mscan.out
 
 or in parallel:
-  cd ~/tmp/linux-vm
-  python ~/proj/commuter/par-mtrace-linux.py 
-  python ~/proj/commuter/par-mscan.py
+  cd ../xv6
+  make HW=linuxmtrace
+  python ../commuter/par-mtrace-linux.py
+  python ../commuter/par-mscan.py --kernel ../pk/vmlinux > mscan.out
 

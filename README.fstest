@@ -37,6 +37,7 @@ building an mtrace-friendly Linux kernel:
   echo CONFIG_IPV6=n >> .config
   echo CONFIG_NETFILTER=n >> .config
   echo CONFIG_NET_SCHED=n >> .config
+  echo CONFIG_ETHERNET=n >> .config
   echo CONFIG_HAMRADIO=n >> .config
   echo CONFIG_CFG80211=n >> .config
   echo CONFIG_AGP=n >> .config

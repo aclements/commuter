@@ -1,12 +1,12 @@
 #!/usr/bin/python
 
-import subprocess, glob, json, os
+import subprocess, glob, json, os, sys
 
 procs = []
 for mtraceout in sorted(glob.glob('mtrace.out.*')):
   args = ["../mtrace/mtrace-tools/mscan",
           "--mtrace-log-file=%s" % mtraceout,
-          "--check-testcases"]
+          "--check-testcases"] + sys.argv[1:]
   p = subprocess.Popen(args, stdout=subprocess.PIPE)
   procs.append(p)
 

@@ -4,7 +4,7 @@ import os, multiprocessing, subprocess
 
 ncpu = multiprocessing.cpu_count()
 
-os.system("make HW=mtrace mscan.kern")
+os.system("make HW=mtrace")
 
 null = open('/dev/null', 'rw')
 procs = []

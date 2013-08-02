@@ -28,3 +28,9 @@ optimizations don't seem to be subsets of one another (or at least,
 not with the current ADT-based representation; see comment in commit
 495e9b0f5cc346e7935c22e4e35761cb31550867).
 
+---
+
+close*close test cases: two close's of a pipe writer end don't scale on
+xv6, but we don't generate this test case because our path condition
+does not involve Fd.ispipe, and Z3's model gives testgen a "false"
+via default interpretation.

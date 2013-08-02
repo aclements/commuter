@@ -1,1 +1,5 @@
 /*.pyc
+testgen.c
+testgen.c.*
+model.out
+model.out.*

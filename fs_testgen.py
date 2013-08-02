@@ -64,6 +64,7 @@ fd_end = 20
 pipe_begin = 20   ## even is reader, odd is writer
 pipe_end = 30
 
+# This must be kept in sync with fstest.cc
 va_base = 0x12345600000
 va_len = 4
 

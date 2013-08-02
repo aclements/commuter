@@ -16,7 +16,7 @@ check cache line sharing on xv6:
 or in parallel:
   cd ../xv6
   make HW=mtrace
-  python ../commuter/par-mtrace-xv6.py
+  python ../commuter/par-mtrace.py -m xv6
   python ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan.out
 
 building an mtrace-friendly Linux kernel:
@@ -64,6 +64,6 @@ check cache line sharing on Linux:
 or in parallel:
   cd ../xv6
   make HW=linuxmtrace
-  python ../commuter/par-mtrace-linux.py
+  python ../commuter/par-mtrace.py -m linux
   python ../commuter/par-mscan.py --kernel ../pk/vmlinux > mscan.out
 

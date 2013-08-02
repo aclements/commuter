@@ -1,9 +1,9 @@
 generating test cases:
   # construct test cases:
-  python spec.py fs -t testgen.c
+  python spec.py fs -t testgen.c -m model.out
 
   # or in parallel:
-  python par-spec.py fs -t testgen.c
+  python par-spec.py fs -t testgen.c -m model.out
 
   # copy testgen.c to xv6:
   cp testgen.c ~/proj/xv6/libutil/testgen.c
@@ -11,13 +11,13 @@ generating test cases:
 check cache line sharing on xv6:
   cd ../xv6
   make HW=mtrace RUN='fstest -t; halt' mtrace.out
-  ../mtrace/mtrace-tools/mscan --check-testcases
+  ../mtrace/mtrace-tools/mscan --check-testcases --kernel o.mtrace/kernel.elf > mscan.out
 
 or in parallel:
   cd ../xv6
   make HW=mtrace
   python ../commuter/par-mtrace-xv6.py
-  python ../commuter/par-mscan.py
+  python ../commuter/par-mscan.py > mscan.out
 
 building an mtrace-friendly Linux kernel:
   git clone -b mtrace-v3.8 git://pdos.csail.mit.edu/mosbench/pk.git

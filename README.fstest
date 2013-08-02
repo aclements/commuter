@@ -17,7 +17,7 @@ or in parallel:
   cd ../xv6
   make HW=mtrace
   python ../commuter/par-mtrace-xv6.py
-  python ../commuter/par-mscan.py > mscan.out
+  python ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan.out
 
 building an mtrace-friendly Linux kernel:
   git clone -b mtrace-v3.8 git://pdos.csail.mit.edu/mosbench/pk.git

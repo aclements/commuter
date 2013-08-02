@@ -15,7 +15,7 @@ for n in range(0, ncpu):
                   "QEMUNOREDIR=x",
                   "QEMUOUTPUT=qemu.out.%03d" % n,
                   "mtrace.out.%03d-scripted" % n]
-  p = subprocess.Popen(args, stdout=null, stdin=null, stderr=null)
+  p = subprocess.Popen(args, stdout=null, stdin=null)
   procs.append(p)
 
 for p in procs:

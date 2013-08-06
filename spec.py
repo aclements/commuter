@@ -9,6 +9,7 @@ import os
 import z3util
 import pprint
 import json
+import progress
 
 TestResult = collections.namedtuple('TestResult', 'diverge results')
 
@@ -301,13 +302,11 @@ class TestWriter(object):
 
         # Filter out non-commutative results
         if result.value.diverge != ():
-            self.__progress(False)
             return
 
         self.ncompath += 1
 
         if not self.trace_file and not self.testgen:
-            self.__progress(False)
             return
 
         if self.trace_file:
@@ -428,14 +427,11 @@ class TestWriter(object):
                 print 'Negation', self.nmodel, ':', notsame
             e = simsym.symand([e, notsame])
 
-            self.__progress(False)
-
         if self.npathmodel == args.max_tests_per_path:
             print '  Max tests reached for path %s' % result.pathid
 
         if self.testgen:
             self.testgen.end_path()
-        self.__progress(False)
 
     def __on_model(self, result, model):
         self.nmodel += 1
@@ -457,32 +453,9 @@ class TestWriter(object):
         self.npathmodel += 1
         return res
 
-    def __progress(self, end):
-        if os.isatty(sys.stdout.fileno()):
-            sys.stdout.write('\r')
-        elif not end:
-            return
-        sys.stdout.write('  %d paths (%d commutative), %d testcases' % \
-                         (self.npath, self.ncompath, self.nmodel))
-        if os.isatty(sys.stdout.fileno()):
-            # Clear to end of line
-            sys.stdout.write('\033[K')
-            if end:
-                sys.stdout.write('\n')
-            else:
-                # Put cursor in wrap-around column.  If we print
-                # anything more after this, it will immediately wrap
-                # and print on the next line.  But we can still \r to
-                # overwrite this line with another progress update.
-                sys.stdout.write('\033[K\033[999C ')
-        else:
-            sys.stdout.write('\n')
-        sys.stdout.flush()
-
     def end_call_set(self):
         if self.testgen:
             self.testgen.end_call_set()
-        self.__progress(True)
 
     def finish(self):
         if self.testgen:
@@ -595,6 +568,10 @@ def do_callset(base, callset, test_writer):
     print ' '.join([c.__name__ for c in callset])
     test_writer.begin_call_set(callset)
 
+    reporter = progress.ProgressReporter(
+        '  {0.npath} paths ({0.ncompath} commutative), {0.nmodel} testcases',
+        test_writer)
+
     condlists = collections.defaultdict(list)
     terminated = False
     diverged = set()
@@ -608,6 +585,7 @@ def do_callset(base, callset, test_writer):
             break
 
     test_writer.end_call_set()
+    reporter.end()
 
     if terminated:
         print '  enumeration incomplete; skipping conditions'

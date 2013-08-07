@@ -284,7 +284,7 @@ def is_idempotent(result):
 
             res[snum] = res[snum] and idem
 
-            if True:
+            if False:
                 # Also check if it's non-idempotent.  Note that it's often
                 # easy to pick internal variables (time, especially) that
                 # will cause an operation to be non-idempotent, so we
@@ -294,7 +294,8 @@ def is_idempotent(result):
                                   simsym.symand([result.path_condition,
                                                  s1 != s2])))
                 notidem = (notidem_z3 == z3.sat)
-                # XXX Both can be unsat.  What does this mean?
+                # XXX This doesn't seem to hold either way (sat/unsat
+                # or unsat/sat), though they're very rarely sat/sat.
                 assert not (idem and notidem)
 
             # Short-circuit

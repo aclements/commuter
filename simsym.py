@@ -565,9 +565,15 @@ class SMapBase(Symbolic):
     def __setitem__(self, idx, val):
         """Change the value at index 'idx'."""
         z3idx = unwrap(idx)
-        self._setter(compound_map(
-            lambda z3map, z3val: z3.Store(z3map, z3idx, z3val),
-            self._getter(), unwrap(val)))
+        def set1(z3map, z3val):
+            # If we have an array of structs, assigning to a single
+            # struct field will cause an identity update of all of the
+            # other fields.  Avoid building up huge, pointless Store
+            # expressions.
+            if z3.is_ast(z3val) and z3map[z3idx].eq(z3val):
+                return z3map
+            return z3.Store(z3map, z3idx, z3val)
+        self._setter(compound_map(set1, self._getter(), unwrap(val)))
 
 def tmap(indexType, valueType):
     """Return a subclass of SMapBase that maps from 'indexType' to

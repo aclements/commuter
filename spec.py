@@ -294,11 +294,11 @@ class TestWriter(object):
     def on_result(self, result):
         self.npath += 1
 
-        self.model_data_callset[result.pathid] = collections.OrderedDict(
-            id=('_'.join(c.__name__ for c in self.callset) +
-                '_' + result.pathid),
-            diverge=' '.join(result.value.diverge),
-        )
+        self.model_data_callset[result.pathid] = collections.OrderedDict([
+            ('id', ('_'.join(c.__name__ for c in self.callset) +
+                    '_' + result.pathid)),
+            ('diverge', ' '.join(result.value.diverge)),
+        ])
 
         # Filter out non-commutative results
         if result.value.diverge != ():

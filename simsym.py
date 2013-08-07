@@ -670,16 +670,28 @@ def tstruct(**fields):
 #
 
 def symand(exprlist):
-    if any([isinstance(x, Symbolic) for x in exprlist]):
-        return wrap(z3.And([unwrap(x) for x in exprlist]))
-    else:
-        return all(exprlist)
+    # Remove concrete True values, short-circuit concrete False values
+    nexprlist = []
+    for x in exprlist:
+        if isinstance(x, Symbolic):
+            nexprlist.append(x)
+        elif not x:
+            return False
+    if len(nexprlist):
+        return wrap(z3.And([unwrap(x) for x in nexprlist]))
+    return True
 
 def symor(exprlist):
-    if any([isinstance(x, Symbolic) for x in exprlist]):
-        return wrap(z3.Or([unwrap(x) for x in exprlist]))
-    else:
-        return any(exprlist)
+    # Remove concrete False values, short-circuit concrete True values
+    nexprlist = []
+    for x in exprlist:
+        if isinstance(x, Symbolic):
+            nexprlist.append(x)
+        elif x:
+            return True
+    if len(nexprlist):
+        return wrap(z3.Or([unwrap(x) for x in nexprlist]))
+    return False
 
 def symnot(e):
     if isinstance(e, Symbolic):

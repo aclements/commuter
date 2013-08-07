@@ -11,18 +11,21 @@ import pprint
 import json
 import progress
 
-TestResult = collections.namedtuple('TestResult', 'diverge results')
+TestResult = collections.namedtuple('TestResult', 'diverge results post_states')
 
 def test(base, *calls):
     all_s = []
     all_r = []
+    post_states = []
 
     for callseq in itertools.permutations(range(0, len(calls))):
         s = base.var(base.__name__)
+        post_states.append([s.copy()])
         r = [None] * len(callseq)
         seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:
             r[idx] = calls[idx](s, chr(idx + ord('a')), seqname)
+            post_states[-1].append(s.copy())
         all_s.append(s)
         all_r.append(r)
 
@@ -32,7 +35,7 @@ def test(base, *calls):
     if simsym.symor([all_s[0] != s for s in all_s[1:]]):
         diverge += ('state',)
 
-    return TestResult(diverge, all_r)
+    return TestResult(diverge, all_r, post_states)
 
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.
@@ -250,6 +253,55 @@ class IsomorphicMatch(object):
     def notsame_cond(self):
         return simsym.wrap(z3.Not(self.__same_cond()))
 
+def is_idempotent(result):
+    """Return whether the calls in test_result can be idempotent.
+
+    This returns a sequence of booleans, where the nth boolean
+    indicates if the nth call in every permutation of the callset can
+    have no effect on the state.  The "can" is important: if the state
+    isn't sufficiently constrained, then it's possible for it to be
+    both idempotent and non-idempotent given different assignments of
+    unconstrained values.
+
+    If the returned sequence is all 'True', then the call set is
+    additionally nullipotent.
+    """
+
+    res = [True] * (len(result.value.post_states[0]) - 1)
+    for perm_states in result.value.post_states:
+        for snum, (s1, s2) in enumerate(zip(perm_states, perm_states[1:])):
+            # Is there any satisfying assignment that lets these two
+            # states be equivalent?  Note that this may carefully pick
+            # internal variables (e.g., time) to make idempotence
+            # possible, while other equally valid assignments would
+            # not be idempotent.
+            idem_z3, m = simsym.check(
+                simsym.symand([result.path_condition, s1 == s2]))
+            if idem_z3 == z3.unknown:
+                print '  Idempotence unknown:', m
+                return None
+            idem = (idem_z3 == z3.sat)
+
+            res[snum] = res[snum] and idem
+
+            if True:
+                # Also check if it's non-idempotent.  Note that it's often
+                # easy to pick internal variables (time, especially) that
+                # will cause an operation to be non-idempotent, so we
+                # quantify over all internal variables.
+                notidem_z3, m2 = simsym.check(
+                    simsym.forall(simsym.internals(),
+                                  simsym.symand([result.path_condition,
+                                                 s1 != s2])))
+                notidem = (notidem_z3 == z3.sat)
+                # XXX Both can be unsat.  What does this mean?
+                assert not (idem and notidem)
+
+            # Short-circuit
+            if not any(res):
+                return res
+    return res
+
 class TestWriter(object):
     def __init__(self, trace_file, model_file, test_file, testgen,
                  isomorphism_types):
@@ -266,7 +318,10 @@ class TestWriter(object):
         # model_data schema:
         #   root     -> {'tests': {callsetname: {pathid: pathinfo}}}
         #   callsetname -> '_'-joined call names
-        #   pathinfo -> {'id': pathname, 'tests': [testinfo]}
+        #   pathinfo -> {'id': pathname,
+        #                'diverge': '' | 'state' | 'results' | 'results state',
+        #                'idempotent': [bool],
+        #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname, 'assignments': {expr: val}}
         #   testname -> pathname '_' testnum
@@ -298,6 +353,7 @@ class TestWriter(object):
             ('id', ('_'.join(c.__name__ for c in self.callset) +
                     '_' + result.pathid)),
             ('diverge', ' '.join(result.value.diverge)),
+            ('idempotent', is_idempotent(result)),
         ])
 
         # Filter out non-commutative results

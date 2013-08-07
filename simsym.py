@@ -505,6 +505,18 @@ def tsynonym(name, baseType):
 # Compound objects
 #
 
+def compound_eq(c1, c2):
+    def cmp1(a, b):
+        if z3.is_ast(a) and z3.is_ast(b) and a.eq(b):
+            return True
+        if z3.is_ast(a) or z3.is_ast(b):
+            return wrap(a == b)
+        assert not isinstance(a, Symbolic)
+        assert not isinstance(b, Symbolic)
+        return a == b
+    parts = flatten_compound(compound_map(cmp1, c1, c2))
+    return symand(parts)
+
 class SMapBase(Symbolic):
     """The base type of symbolic mutable mapping types.  Objects of
     this type map from symbolic values to symbolic values.  Maps
@@ -539,8 +551,7 @@ class SMapBase(Symbolic):
     def __eq__(self, o):
         if not isinstance(o, type(self)):
             return NotImplemented
-        return wrap(z3.And(flatten_compound(
-            compound_map(lambda a, b: a==b, self._getter(), o._getter()))))
+        return compound_eq(self._getter(), o._getter())
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
@@ -637,8 +648,7 @@ class SStructBase(Symbolic):
         # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?
         if not isinstance(o, type(self)):
             return NotImplemented
-        return wrap(z3.And(flatten_compound(
-            compound_map(lambda a, b: a==b, self._getter(), o._getter()))))
+        return compound_eq(self._getter(), o._getter())
 
     def __getattr__(self, name):
         if name not in self._fields:

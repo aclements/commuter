@@ -10,6 +10,7 @@ callsets = spec.parse_functions(
     args.functions, args.ncomb, __import__(args.module))
 pool = multiprocessing.Pool()
 subargs = []
+asyncs = []
 for i, callset in enumerate(callsets):
     csargs = copy.copy(args)
     suffix = ".%03d" % i
@@ -20,9 +21,12 @@ for i, callset in enumerate(callsets):
     if csargs.test_file:
         csargs.test_file += suffix
     csargs.functions = "/".join(c.__name__ for c in callset)
-    pool.apply_async(spec.main, [csargs])
+    asyncs.append(pool.apply_async(spec.main, [csargs]))
     subargs.append(csargs)
 pool.close()
+for async in asyncs:
+    # This is the only way to propagate exceptions up
+    async.get()
 pool.join()
 
 print "Model execution complete"

@@ -1329,6 +1329,12 @@ class Model(object):
         self.__asignments = []
 
     def __getitem__(self, name):
+        # XXX This is good for things where the initial variable name
+        # is known, but it's no good for evaluating symbolic values
+        # returned from symbolic execution (it's also a bit confusing
+        # for mutable variables, since it evaluates their initial
+        # value, not their final value).  _eval is only suited to leaf
+        # values.  Maybe 'bind'?
         return self.__var_constructors[name](name, self)
 
     def track_assignments(self, enable=True):
@@ -1388,6 +1394,7 @@ def add_internal(v):
     for sub in flatten_compound(v._z3_value()):
         internal_vars[str(sub)] = sub
 
+# XXX Should be in SymbolicApplyResult
 def internals():
     return [v for _, v in internal_vars.iteritems()]
 

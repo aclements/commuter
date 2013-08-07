@@ -216,6 +216,12 @@ def compound_mapN(func, compounds):
     return func(*compounds)
 
 def flatten_compound(compound):
+    """Return a list of compound's leafs.
+
+    Note that the returned leafs are in no particular order and the
+    order may even differ between flattenings of structurally
+    equivalent compounds.
+    """
     res = []
     def rec(compound):
         if isinstance(compound, dict):
@@ -533,8 +539,8 @@ class SMapBase(Symbolic):
     def __eq__(self, o):
         if not isinstance(o, type(self)):
             return NotImplemented
-        av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
-        return symand([wrap(af == bf) for af, bf in zip(av, bv)])
+        return wrap(z3.And(flatten_compound(
+            compound_map(lambda a, b: a==b, self._getter(), o._getter()))))
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
@@ -631,8 +637,8 @@ class SStructBase(Symbolic):
         # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?
         if not isinstance(o, type(self)):
             return NotImplemented
-        av, bv = flatten_compound(self._getter()), flatten_compound(o._getter())
-        return symand([wrap(af == bf) for af, bf in zip(av, bv)])
+        return wrap(z3.And(flatten_compound(
+            compound_map(lambda a, b: a==b, self._getter(), o._getter()))))
 
     def __getattr__(self, name):
         if name not in self._fields:

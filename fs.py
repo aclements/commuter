@@ -169,9 +169,9 @@ class Fs(simsym.tstruct(
             if not pndirmap.contains(pnlast):
                 simsym.assume(simsym.symnot(self.iused(internal_alloc_inum)))
 
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].atime)
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].mtime)
-                simsym.assume(internal_time > self.i_map[internal_alloc_inum].ctime)
+                simsym.assume(internal_time >= self.i_map[internal_alloc_inum].atime)
+                simsym.assume(internal_time >= self.i_map[internal_alloc_inum].mtime)
+                simsym.assume(internal_time >= self.i_map[internal_alloc_inum].ctime)
 
                 inode = self.i_map[internal_alloc_inum]
                 inode.data._len = 0
@@ -188,8 +188,8 @@ class Fs(simsym.tstruct(
         inum = pndirmap[pnlast]
         if trunc:
             if not created:
-                simsym.assume(internal_time > self.i_map[inum].mtime)
-                simsym.assume(internal_time > self.i_map[inum].ctime)
+                simsym.assume(internal_time >= self.i_map[inum].mtime)
+                simsym.assume(internal_time >= self.i_map[inum].ctime)
                 self.i_map[inum].mtime = internal_time
                 self.i_map[inum].ctime = internal_time
             self.i_map[inum].data._len = 0
@@ -277,7 +277,7 @@ class Fs(simsym.tstruct(
         del srcdirmap[srclast]
         if dstinum is not None:
             self.i_map[dstinum].nlink = self.i_map[dstinum].nlink - 1
-            simsym.assume(internal_time > self.i_map[dstinum].ctime)
+            simsym.assume(internal_time >= self.i_map[dstinum].ctime)
             self.i_map[dstinum].ctime = internal_time
         return {'r': 0}
 
@@ -289,7 +289,7 @@ class Fs(simsym.tstruct(
         inum = dirmap[pnlast]
         del dirmap[pnlast]
         self.i_map[inum].nlink = self.i_map[inum].nlink - 1
-        simsym.assume(internal_time > self.i_map[inum].ctime)
+        simsym.assume(internal_time >= self.i_map[inum].ctime)
         self.i_map[inum].ctime = internal_time
         return {'r': 0}
 
@@ -304,7 +304,7 @@ class Fs(simsym.tstruct(
         inum = olddirmap[oldlast]
         newdirmap[newlast] = inum
         self.i_map[inum].nlink = self.i_map[inum].nlink + 1
-        simsym.assume(internal_time > self.i_map[inum].ctime)
+        simsym.assume(internal_time >= self.i_map[inum].ctime)
         self.i_map[inum].ctime = internal_time
         return {'r': 0}
 
@@ -313,7 +313,7 @@ class Fs(simsym.tstruct(
         if off >= self.i_map[inum].data._len:
             return {'r': 0}
         if time is not None:
-            simsym.assume(time > self.i_map[inum].atime)
+            simsym.assume(time >= self.i_map[inum].atime)
             self.i_map[inum].atime = time
         return {'r': 1, 'data': self.i_map[inum].data[off]}
 
@@ -373,8 +373,8 @@ class Fs(simsym.tstruct(
         else:
             self.i_map[inum].data[off] = databyte
         if time is not None:
-            simsym.assume(time > self.i_map[inum].mtime)
-            simsym.assume(time > self.i_map[inum].ctime)
+            simsym.assume(time >= self.i_map[inum].mtime)
+            simsym.assume(time >= self.i_map[inum].ctime)
             self.i_map[inum].mtime = time
             self.i_map[inum].ctime = time
         return {'r': 1}

@@ -58,7 +58,7 @@ class Symbolic(object):
         raise NotImplementedError("_z3_value is abstract")
 
     @classmethod
-    def _new_lvalue(cls, init, model):
+    def _new_lvalue(cls, init, model, do_assume=True):
         """Return a new instance of Symbolic with the given initial value,
         which must be a compound Z3 value.  The returned instance's
         state will not be shared with any existing instances.  model,
@@ -69,7 +69,7 @@ class Symbolic(object):
         def setter(nval):
             val[0] = nval
         obj = cls._wrap_lvalue(lambda: val[0], setter, model)
-        if model is None:
+        if model is None and do_assume:
             obj._declare_assumptions(assume)
         return obj
 
@@ -169,6 +169,17 @@ class Symbolic(object):
     def __hash__(self):
         return hash(compound_map(lambda val: val.hash(), self._z3_value()))
 
+    def copy(self):
+        """Return a deep copy of this object.
+
+        For immutable values, this should be overridden to return
+        self.
+        """
+        # Assumptions have already been declared on the underlying Z3
+        # value, so don't assume them again
+        return self._new_lvalue(compound_map(lambda x:x, self._z3_value()),
+                                None, do_assume=False)
+
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
     deeply immutable values such as primitive types."""
@@ -190,6 +201,13 @@ class SymbolicConst(Symbolic):
         # Fetch the value immediately, rather than acting like an
         # lvalue.
         return cls._wrap(getter(), model)
+
+    def copy(self):
+        """Return a deep copy of this object.
+
+        Since this is an immutable value, this returns self.
+        """
+        return self
 
 #
 # Compounds

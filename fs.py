@@ -501,7 +501,9 @@ class Fs(simsym.tstruct(
             if not myproc.fd_map.contains(fd):
                 return {'r': -1, 'errno': errno.EBADF}
             if myproc.fd_map[fd].ispipe:
-                return {'r': -1, 'errno': errno.EACCES}
+                # The Linux manpage is misleading, but POSIX is clear
+                # about ENODEV and this is what Linux does.
+                return {'r': -1, 'errno': errno.ENODEV}
         vma = myproc.va_map.create(va)
         vma.anon = anon
         vma.writable = writable

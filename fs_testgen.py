@@ -419,8 +419,8 @@ class FsTestGenerator(testgen.TestGenerator):
     self.emit = testgen.CodeWriter(open(test_file_name, 'w'))
     self.fstests = []
     self.pathid = self.modelno = None
-    self.__bodies = {}
-    self.__pending_bodies = {}
+    self.__funcs = {}
+    self.__pending_funcs = {}
 
     self.emit("""\
 //+++ common
@@ -444,20 +444,17 @@ class FsTestGenerator(testgen.TestGenerator):
 
   def func(self, emit, ret, fname, body):
     key = (ret, str(body))
-    existing = self.__bodies.get(key)
-    emit('static %s %s(void) {' % (ret, fname))
+    existing = self.__funcs.get(key)
+    code = 'static %s %s(void) {\n%s\n}' % (ret, fname, body.indent())
     if existing is None:
-      self.__pending_bodies[key] = fname
-      emit(body.indent())
+      self.__pending_funcs[key] = fname
+      emit(code)
+      return fname
     else:
       # Put the original body in as a comment for readability
-      emit(body.indent('// ').indent())
-      # Call the equivalent function
-      if ret == 'void':
-        emit('  %s();' % existing)
-      else:
-        emit('  return %s();' % existing)
-    emit('}')
+      emit(testgen.CodeWriter()(code).indent('// '))
+      emit('// ^ See %s' % existing)
+      return existing
 
   def on_model(self, model):
     super(FsTestGenerator, self).on_model(model)
@@ -466,7 +463,7 @@ class FsTestGenerator(testgen.TestGenerator):
                          self.modelno)
 
     emit = testgen.CodeWriter()
-    self.__pending_bodies.clear()
+    self.__pending_funcs.clear()
 
     try:
       emit("""\
@@ -476,13 +473,15 @@ class FsTestGenerator(testgen.TestGenerator):
  */""" % " ".join(self.callset_names))
       fs = FsState(model['Fs'])
       pids = []
+      fns = {}
       for callidx, callname in enumerate(self.callset_names):
         # Generate test code for this call.  As a side-effect, this will
         # fill in structures we need to write the setup code.
         args = self.get_call_args(callidx)
         res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
-        self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
-                  fs.gen_code(callname, args, res))
+        fns['test_%d' % callidx] \
+          = self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
+                      fs.gen_code(callname, args, res))
         if hasattr(args, 'pid'):
           pids.append(args.pid)
         else:
@@ -491,27 +490,31 @@ class FsTestGenerator(testgen.TestGenerator):
       # Write setup code
       setup = fs.build_dir()
       for phase in ('common', 'proc0', 'proc1', 'final', 'procfinal'):
-        self.func(emit, 'void',  'setup_%s_%s' % (name, phase),
-                  setup[phase])
+        fns['setup_' + phase] \
+          = self.func(emit, 'void', 'setup_%s_%s' % (name, phase),
+                      setup[phase])
     except SkipTest as e:
       print "Skipping test %s: %s" % (name, e)
       return
 
     # Commit to this code
-    self.__bodies.update(self.__pending_bodies)
+    self.__funcs.update(self.__pending_funcs)
     self.emit(emit)
+
+    strargs = {'name' : name,
+               'pid0' : pids[0], 'pid1' : pids[1],
+               'name0' : self.callset_names[0],
+               'name1' : self.callset_names[1]}
+    strargs.update(fns)
     self.fstests.append("""\
   { "fs-%(name)s",
-    &setup_%(name)s_common,
-    { { &setup_%(name)s_proc0 }, { &setup_%(name)s_proc1 } },
-    &setup_%(name)s_procfinal,
-    &setup_%(name)s_final,
-    { { &test_%(name)s_0, %(pid0)d, "%(name0)s" },
-      { &test_%(name)s_1, %(pid1)d, "%(name1)s" } },
-    &cleanup }""" % {'name' : name,
-                     'pid0' : pids[0], 'pid1' : pids[1],
-                     'name0' : self.callset_names[0],
-                     'name1' : self.callset_names[1]})
+    &%(setup_common)s,
+    { { &%(setup_proc0)s }, { &%(setup_proc1)s } },
+    &%(setup_procfinal)s,
+    &%(setup_final)s,
+    { { &%(test_0)s, %(pid0)d, "%(name0)s" },
+      { &%(test_1)s, %(pid1)d, "%(name1)s" } },
+    &cleanup }""" % strargs)
 
     self.modelno += 1
 

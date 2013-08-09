@@ -6,18 +6,18 @@ generating test cases:
   python par-spec.py fs -t testgen.c -m model.out --max-tests-per-path 500
 
   # copy testgen.c to xv6:
-  cp testgen.c ~/proj/xv6/libutil/testgen.c
+  cp testgen.c ../xv6/libutil/testgen.c
 
 check cache line sharing on xv6:
   cd ../xv6
   make HW=mtrace RUN='fstest -t; halt' mtrace.out
-  ../mtrace/mtrace-tools/mscan --check-testcases --kernel o.mtrace/kernel.elf > mscan.out
+  ../mtrace/mtrace-tools/mscan --check-testcases --kernel o.mtrace/kernel.elf > mscan-xv6.out
 
 or in parallel:
   cd ../xv6
   make HW=mtrace
   python ../commuter/par-mtrace.py -m xv6
-  python ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan.out
+  python ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan-xv6.out
 
 building an mtrace-friendly Linux kernel:
   git clone -b mtrace-v3.8 git://pdos.csail.mit.edu/mosbench/pk.git
@@ -59,11 +59,11 @@ check cache line sharing on Linux:
   # Run Linux kernel with tracing
   make HW=linuxmtrace KERN=../pk/arch/x86_64/boot/bzImage RUN='fstest -t;halt' mtrace.out
   # Check sharing
-  ../mtrace/mtrace-tools/mscan --kernel ../pk/vmlinux --check-testcases > mscan.out
+  ../mtrace/mtrace-tools/mscan --kernel ../pk/vmlinux --check-testcases > mscan-linux.out
 
 or in parallel:
   cd ../xv6
   make HW=linuxmtrace
   python ../commuter/par-mtrace.py -m linux
-  python ../commuter/par-mscan.py --kernel ../pk/vmlinux > mscan.out
+  python ../commuter/par-mscan.py --kernel ../pk/vmlinux > mscan-linux.out
 

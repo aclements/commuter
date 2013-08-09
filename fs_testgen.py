@@ -1,60 +1,5 @@
 import testgen
-import z3
-import z3util
 import simsym
-
-class DynamicDict(object):
-  """A dynamically-filled dictionary.
-
-  Values for dictionary mappings are drawn from an iterable as they
-  are needed.  This has special support for Z3 constants, making it
-  useful for assigning concrete values to uninterpreted constants.
-
-  A DynamicDict can be iterated over just like a regular dict, but
-  doing so freezes its contents to prevent further additions.
-  """
-
-  def __init__(self, iterable):
-    self.__gen = iter(iterable)
-    self.__map = {}
-
-  def __getitem__(self, key):
-    """Return the value associated with key.
-
-    If the dictionary does not currently contain a value for key, one
-    will be drawn from self's iterable.  key may be a Z3 constant.
-    """
-
-    hkey = z3util.HashableAst(key)
-
-    if hkey not in self.__map:
-      if isinstance(key, simsym.Symbolic) and \
-         not z3.is_const(simsym.unwrap(key)):
-        # There's nothing wrong with supporting arbitrary ASTs, but in
-        # every place we use DynamicDict, this indicates an
-        # easy-to-miss bug.
-        raise ValueError("Key is not a constant: %r" % key)
-
-      if self.__gen is None:
-        raise ValueError("DynamicDict has been read; cannot be extended")
-      try:
-        self.__map[hkey] = self.__gen.next()
-      except StopIteration:
-        raise ValueError("Ran out of values for %r" % key)
-    return self.__map[hkey]
-
-  def keys(self):
-    self.__gen = None
-    return (hkey.ast for hkey in self.__map.iterkeys())
-  __iter__ = keys
-
-  def values(self):
-    self.__gen = None
-    return self.__map.itervalues()
-
-  def items(self):
-    self.__gen = None
-    return ((hkey.ast, val) for hkey, val in self.__map.iteritems())
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
@@ -74,21 +19,21 @@ class SkipTest(Exception):
 class PerProc(object):
   def __init__(self):
     assert(fd_begin > 3)
-    self.fds = DynamicDict(range(fd_begin, fd_end))
-    self.vas = DynamicDict((va_base + i * 4096) for i in range(va_len))
+    self.fds = testgen.DynamicDict(range(fd_begin, fd_end))
+    self.vas = testgen.DynamicDict((va_base + i * 4096) for i in range(va_len))
 
 class FsState(object):
   def __init__(self, fs):
     self.fs = fs
     # Map from uninterpreted path names to concrete file names
-    self.filenames = DynamicDict(all_filenames)
+    self.filenames = testgen.DynamicDict(all_filenames)
     # Map from uninterpreted inodes to inode file names
-    self.inodefiles = DynamicDict(['__i%d' % x for x in range(0, 6)])
+    self.inodefiles = testgen.DynamicDict(['__i%d' % x for x in range(0, 6)])
     # Map from uninterpreted data bytes to concrete byte values
-    self.databytes = DynamicDict(xrange(256))
+    self.databytes = testgen.DynamicDict(xrange(256))
     # Map from uninterpreted pipe IDs to reader FDs (writers are +1)
-    self.pipes = DynamicDict(range(pipe_begin, pipe_end, 2))
-    self.procs = DynamicDict(iter(PerProc, None))
+    self.pipes = testgen.DynamicDict(range(pipe_begin, pipe_end, 2))
+    self.procs = testgen.DynamicDict(iter(PerProc, None))
 
   def build_proc(self, pid):
     fdmap = {}

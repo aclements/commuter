@@ -490,21 +490,6 @@ class FsTestGenerator(testgen.TestGenerator):
 #include <sys/mman.h>
 #include "fstest.h"
 
-#ifndef XV6_USER
-#define O_ANYFD 0
-#endif
-
-static int __attribute__((unused)) xerrno(int r) {
-#ifdef XV6_USER
-  return r;
-#else
-  if (r < 0)
-    return -errno;
-  else
-    return r;
-#endif
-}
-
 //+++ tests""")
 
   def begin_path(self, result):

@@ -161,6 +161,7 @@ class Fs(simsym.tstruct(
                      )
     def open(self, pn, creat, excl, trunc, anyfd, pid,
              internal_alloc_inum, internal_ret_fd, internal_time):
+        # XXX O_RDONLY, O_WRONLY, O_RDWR
         self.add_selfpid(pid)
         created = False
         anyfd = False

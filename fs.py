@@ -342,6 +342,10 @@ class Fs(simsym.tstruct(
                                        self.proc1.fd_map._map[otherfd].pipeid == pipeid]))]):
                     return {'r': -1, 'errno': errno.EAGAIN}
                 else:
+                    # XXX The above condition can always be satisfied
+                    # by making up some other FD, but testgen may
+                    # never see that FD, so the real test may not
+                    # reflect its presence.
                     return {'r': 0}
             d = pipe.data[0]
             pipe.data.shift()
@@ -402,6 +406,8 @@ class Fs(simsym.tstruct(
                                    self.proc1.fd_map._map[otherfd].ispipe,
                                    simsym.symnot(self.proc1.fd_map._map[otherfd].pipewriter),
                                    self.proc1.fd_map._map[otherfd].pipeid == pipeid]))])):
+                # XXX This condition has the same problem as the one
+                # in read.
                 return {'r': -1, 'errno': errno.EPIPE}
 
             pipe.data.append(databyte)

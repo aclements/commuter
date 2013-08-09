@@ -8,6 +8,9 @@ generating test cases:
   # copy testgen.c to xv6:
   cp testgen.c ../xv6/libutil/testgen.c
 
+  # or split it for parallel build:
+  python split-testgen.py -d ../xv6/libutil < testgen.c
+
 check cache line sharing on xv6:
   cd ../xv6
   make HW=mtrace RUN='fstest -t; halt' mtrace.out

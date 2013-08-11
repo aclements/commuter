@@ -11,25 +11,6 @@ about blocking and non-blocking pipe reads.
 
 ---
 
-Testcase generation is currently split between spec.py and fs-test.py.
-One opportunity to generate fewer duplicate test cases is to check what
-variables fs-test.py actually accesses, and then change IsomorphicMatch
-to negate assignments only to those variables.  This would preclude a
-few useless kinds of enumeration:
-
- - Enumerating procN.va_map._map[va] when procN.va_map._valid[va] is False.
- - Enumerating proc0.va_map[va] (validity and actual mapped value) when no
-   syscall in proc0 accesses va (e.g., because it is only accessed in proc1).
-
-Similarly, machinery to track which parts of a symbolic data structure are
-accessed during commutativity analysis could help us avoid enumerating
-parts of a structure that are irrelevant.  Unfortunately, these two
-optimizations don't seem to be subsets of one another (or at least,
-not with the current ADT-based representation; see comment in commit
-495e9b0f5cc346e7935c22e4e35761cb31550867).
-
----
-
 close*close test cases: two close's of a pipe writer end don't scale on
 xv6, but we don't generate this test case because our path condition
 does not involve Fd.ispipe, and Z3's model gives testgen a "false"

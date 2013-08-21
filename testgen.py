@@ -131,54 +131,55 @@ class CodeWriter(object):
         return CodeWriter()(indented)
 
 class DynamicDict(object):
-  """A dynamically-filled dictionary.
+    """A dynamically-filled dictionary.
 
-  Values for dictionary mappings are drawn from an iterable as they
-  are needed.  This has special support for Z3 constants, making it
-  useful for assigning concrete values to uninterpreted constants.
+    Values for dictionary mappings are drawn from an iterable as they
+    are needed.  This has special support for Z3 constants, making it
+    useful for assigning concrete values to uninterpreted constants.
 
-  A DynamicDict can be iterated over just like a regular dict, but
-  doing so freezes its contents to prevent further additions.
-  """
-
-  def __init__(self, iterable):
-    self.__gen = iter(iterable)
-    self.__map = {}
-
-  def __getitem__(self, key):
-    """Return the value associated with key.
-
-    If the dictionary does not currently contain a value for key, one
-    will be drawn from self's iterable.  key may be a Z3 constant.
+    A DynamicDict can be iterated over just like a regular dict, but
+    doing so freezes its contents to prevent further additions.
     """
 
-    hkey = z3util.HashableAst(key)
+    def __init__(self, iterable):
+        self.__gen = iter(iterable)
+        self.__map = {}
 
-    if hkey not in self.__map:
-      if isinstance(key, simsym.Symbolic) and \
-         not z3.is_const(simsym.unwrap(key)):
-        # There's nothing wrong with supporting arbitrary ASTs, but in
-        # every place we use DynamicDict, this indicates an
-        # easy-to-miss bug.
-        raise ValueError("Key is not a constant: %r" % key)
+    def __getitem__(self, key):
+       """Return the value associated with key.
 
-      if self.__gen is None:
-        raise ValueError("DynamicDict has been read; cannot be extended")
-      try:
-        self.__map[hkey] = self.__gen.next()
-      except StopIteration:
-        raise ValueError("Ran out of values for %r" % key)
-    return self.__map[hkey]
+       If the dictionary does not currently contain a value for key,
+       one will be drawn from self's iterable.  key may be a Z3
+       constant.
+       """
 
-  def keys(self):
-    self.__gen = None
-    return (hkey.ast for hkey in self.__map.iterkeys())
-  __iter__ = keys
+       hkey = z3util.HashableAst(key)
 
-  def values(self):
-    self.__gen = None
-    return self.__map.itervalues()
+       if hkey not in self.__map:
+           if isinstance(key, simsym.Symbolic) and \
+              not z3.is_const(simsym.unwrap(key)):
+               # There's nothing wrong with supporting arbitrary ASTs,
+               # but in every place we use DynamicDict, this indicates
+               # an easy-to-miss bug.
+               raise ValueError("Key is not a constant: %r" % key)
 
-  def items(self):
-    self.__gen = None
-    return ((hkey.ast, val) for hkey, val in self.__map.iteritems())
+           if self.__gen is None:
+               raise ValueError("DynamicDict has been read; cannot be extended")
+           try:
+               self.__map[hkey] = self.__gen.next()
+           except StopIteration:
+               raise ValueError("Ran out of values for %r" % key)
+       return self.__map[hkey]
+
+    def keys(self):
+        self.__gen = None
+        return (hkey.ast for hkey in self.__map.iterkeys())
+    __iter__ = keys
+
+    def values(self):
+        self.__gen = None
+        return self.__map.itervalues()
+
+    def items(self):
+        self.__gen = None
+        return ((hkey.ast, val) for hkey, val in self.__map.iteritems())

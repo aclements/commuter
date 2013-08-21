@@ -21,11 +21,23 @@ def z3_sort_hash(self):
 z3.SortRef.__hash__ = z3_sort_hash
 del z3_sort_hash
 
+anon_info = ""
 anon_idx = 0
-def anon_name(base = "anon"):
+def gen_name(template=None):
+    """Generate a variable name from a template.
+
+    If the template is None or ends with *, this generates a fresh
+    anonymous name containing the template before the *, the value of
+    anon_info, and a nonce.
+    """
+
     global anon_idx
-    anon_idx += 1
-    return "%s%d" % (base, anon_idx)
+    if template is None:
+        template = "*"
+    if template.endswith("*"):
+        anon_idx += 1
+        return "%s%s_anon%d" % (template[:-1], anon_info, anon_idx)
+    return template
 
 MODEL_FETCH = object()
 
@@ -116,8 +128,7 @@ class Symbolic(object):
         bound in any model.
         """
 
-        if name is None:
-            name = anon_name()
+        name = gen_name(name)
         if model is None:
             Env.current().var_constructors[name] = cls.var
         def mkValue(path, sort):
@@ -196,8 +207,7 @@ class SymbolicConst(Symbolic):
         # Const returns the most specific z3.*Ref type it can based on
         # the sort.  This is equivalent to Symbolic.var, but jumps
         # through fewer hoops.
-        if name is None:
-            name = anon_name()
+        name = gen_name(name)
         if model is None:
             Env.current().var_constructors[name] = cls.var
         Env.current().const_types[name] = (cls, ())
@@ -629,8 +639,7 @@ class SStructBase(Symbolic):
         field values are provided, this is equivalent to Symbolic.var.
         """
 
-        if __name is None:
-            __name = anon_name()
+        __name = gen_name(__name)
         if __model is None:
             # Field values may be mutable Symbolic values, but we want
             # to save their current value, so snapshot them by

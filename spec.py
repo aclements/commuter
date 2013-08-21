@@ -290,7 +290,7 @@ def is_idempotent(result):
                 # will cause an operation to be non-idempotent, so we
                 # quantify over all internal variables.
                 notidem_z3, m2 = simsym.check(
-                    simsym.forall(simsym.internals(),
+                    simsym.forall(result.internals,
                                   simsym.symand([result.path_condition,
                                                  s1 != s2])))
                 notidem = (notidem_z3 == z3.sat)
@@ -632,10 +632,12 @@ def do_callset(base, callset, test_writer):
     condlists = collections.defaultdict(list)
     terminated = False
     diverged = set()
+    all_internals = []
     for sar in simsym.symbolic_apply(test, base, *callset):
         is_commutative = (sar.value.diverge == ())
         diverged.update(sar.value.diverge)
         condlists[is_commutative].append(sar.path_condition)
+        all_internals.extend(sar.internals)
         test_writer.on_result(sar)
         if not test_writer.keep_going():
             terminated = True
@@ -658,7 +660,7 @@ def do_callset(base, callset, test_writer):
         # same assignment of initial state + external inputs, two
         # operations both can commute and can diverge (depending on
         # internal choice, like the inode number for file creation).
-        cannot_commute = simsym.symnot(simsym.exists(simsym.internals(), commute))
+        cannot_commute = simsym.symnot(simsym.exists(all_internals, commute))
         print_cond('can commute', commute)
     else:
         cannot_commute = True

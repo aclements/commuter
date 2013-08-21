@@ -50,7 +50,7 @@ def methodwrap(**arg_types):
             # named after both the permutation and the call within the
             # permutation.
             internal_args = internal_struct.var(whichseq + "." + name)
-            simsym.add_internal(internal_args)
+            simsym.add_internal(whichseq + "." + name)
 
             # Build Python arguments dictionary
             args = {}

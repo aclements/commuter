@@ -26,7 +26,9 @@ def anon_name(base = "anon"):
     global anon_idx
     anon_idx += 1
     return "%s%d" % (base, anon_idx)
-            
+
+MODEL_FETCH = object()
+
 class Symbolic(object):
     """Base class of symbolic types.  Symbolic types come in two
     groups: constant and mutable.  Symbolic constants are deeply
@@ -58,18 +60,19 @@ class Symbolic(object):
         raise NotImplementedError("_z3_value is abstract")
 
     @classmethod
-    def _new_lvalue(cls, init, model, do_assume=True):
+    def _new_lvalue(cls, init, model):
         """Return a new instance of Symbolic with the given initial value,
         which must be a compound Z3 value.  The returned instance's
         state will not be shared with any existing instances.  model,
         if not None, provides the simsym.Model in which to evaluate
-        concrete values.
+        concrete values or MODEL_FETCH to retrieve an existing
+        variable without binding it to a model.
         """
         val = [init]
         def setter(nval):
             val[0] = nval
         obj = cls._wrap_lvalue(lambda: val[0], setter, model)
-        if model is None and do_assume:
+        if model is None:
             obj._declare_assumptions(assume)
         return obj
 
@@ -85,10 +88,11 @@ class Symbolic(object):
         calling setter with its updated compound Z3 value.
 
         model, if not None, provides the simsym.Model in which to
-        evaluate concrete values.  Immutable, non-compound objects
-        should use this to evaluate their concrete Python value and
-        return this concrete value.  Mutable, compound objects should
-        pass this model down to their components.
+        evaluate concrete values or is MODEL_FETCH.  Immutable,
+        non-compound objects should use this to evaluate their
+        concrete Python value and return this concrete value.
+        Mutable, compound objects should pass this model down to their
+        components.
         """
         raise NotImplementedError("_wrap_lvalue is abstract")
 
@@ -104,9 +108,12 @@ class Symbolic(object):
         symbolic value (though the instances themselves will be
         distinct).
 
-        If model is provided, it must be a simsym.Model.  This
-        symbolic variable will be interpreted in this model to get a
-        concrete Python value.
+        If model is provided, it must be a simsym.Model or
+        MODEL_FETCH.  If it is a Model, this symbolic variable will be
+        interpreted in this model to get a concrete Python value.  If
+        it is MODEL_FETCH, a variable equivalent to the initial value
+        of the variable of the given name will be returned, but not
+        bound in any model.
         """
 
         if name is None:
@@ -178,7 +185,7 @@ class Symbolic(object):
         # Assumptions have already been declared on the underlying Z3
         # value, so don't assume them again
         return self._new_lvalue(compound_map(lambda x:x, self._z3_value()),
-                                None, do_assume=False)
+                                MODEL_FETCH)
 
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are
@@ -310,7 +317,7 @@ class MetaZ3Wrapper(type):
                              strtype(z3ref)))
         obj = cls.__new__(cls)
         obj._v = z3ref
-        if model:
+        if model and model is not MODEL_FETCH:
             # Interpret this symbolic value into a concrete value
             # using the model
             return model._eval(obj)
@@ -954,6 +961,9 @@ class Env(object):
         # path)
         self.const_types = parent.const_types.copy() if parent else {}
 
+        # Set of Symbolic variable names for internal values.
+        self.internal_names = parent.internal_names.copy() if parent else set()
+
     __current = None
 
     @classmethod
@@ -1143,6 +1153,8 @@ class SymbolicApplyResult(object):
         self.__var_constructors = env.var_constructors
         self.__const_types = env.const_types
         self.__schedule = env.path_state.sched
+        self.__internal_names = env.internal_names
+        self.__internal_vals = None
 
         # XXX Should this include deterministic branches?  We have in
         # the past, but there's probably no reason to
@@ -1205,6 +1217,16 @@ class SymbolicApplyResult(object):
         bitstring <<= 3 - ((length + 3) % 4)
         # Convert to hex
         return "p%0*.x" % ((length + 3) / 4, bitstring)
+
+    @property
+    def internals(self):
+        """The list of internal Symbolic values created by this path."""
+        if self.__internal_vals is None:
+            # Map internal variable names to values
+            self.__internal_vals \
+                = [self.__var_constructors[name](name, MODEL_FETCH)
+                   for name in self.__internal_names]
+        return self.__internal_vals
 
     def get_model(self, z3_model=None):
         """Return a Model interpreting the variables declared by this code path.
@@ -1406,15 +1428,8 @@ class Model(object):
 # Helpers for tracking "internal" variables
 #
 
-internal_vars = {}
-
-def add_internal(v):
-    for sub in flatten_compound(v._z3_value()):
-        internal_vars[str(sub)] = sub
-
-# XXX Should be in SymbolicApplyResult
-def internals():
-    return [v for _, v in internal_vars.iteritems()]
+def add_internal(name):
+    Env.current().internal_names.add(name)
 
 #
 # Utilities

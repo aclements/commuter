@@ -118,7 +118,7 @@ class Symbolic(object):
 
         if name is None:
             name = anon_name()
-        elif model is None:
+        if model is None:
             Env.current().var_constructors[name] = cls.var
         def mkValue(path, sort):
             if isinstance(sort, dict):
@@ -198,7 +198,7 @@ class SymbolicConst(Symbolic):
         # through fewer hoops.
         if name is None:
             name = anon_name()
-        elif model is None:
+        if model is None:
             Env.current().var_constructors[name] = cls.var
         Env.current().const_types[name] = (cls, ())
         return cls._wrap(z3.Const(name, cls._z3_sort()), model)
@@ -631,7 +631,7 @@ class SStructBase(Symbolic):
 
         if __name is None:
             __name = anon_name()
-        elif __model is None:
+        if __model is None:
             # Field values may be mutable Symbolic values, but we want
             # to save their current value, so snapshot them by
             # unwrapping their values.

@@ -24,7 +24,11 @@ def test(base, *calls):
         r = [None] * len(callseq)
         seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:
-            r[idx] = calls[idx](s, chr(idx + ord('a')), seqname)
+            callname = chr(idx + ord('a'))
+            # Include the sequence and call name in all anonymous
+            # variable names
+            simsym.anon_info = '_seq' + seqname + '_call' + callname
+            r[idx] = calls[idx](s, callname, seqname)
             post_states[-1].append(s.copy())
         all_s.append(s)
         all_r.append(r)

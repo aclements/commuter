@@ -625,14 +625,13 @@ class SStructBase(Symbolic):
     def var(cls, __name=None, __model=None, **fields):
         """Return a struct instance with specified field values.
 
-        Any fields omitted from 'fields' will be unspecified.  If any
-        fields are omitted, the first positional argument must be
-        supplied to name the symbolic constants for the omitted
-        fields.  If no field values are provided, this is equivalent
-        to Symbolic.var.
+        Any fields omitted from 'fields' will be unspecified.  If no
+        field values are provided, this is equivalent to Symbolic.var.
         """
 
-        if __name is not None and __model is None:
+        if __name is None:
+            __name = anon_name()
+        elif __model is None:
             # Field values may be mutable Symbolic values, but we want
             # to save their current value, so snapshot them by
             # unwrapping their values.
@@ -646,9 +645,6 @@ class SStructBase(Symbolic):
             if isinstance(sort, dict):
                 return {k: mkValue(path + (k,), v)
                         for k, v in sort.iteritems()}
-            if __name is None:
-                raise ValueError(
-                    "Name required for partially symbolic struct")
             strname = ".".join((__name,) + path)
             # Record the simsym type of this constant
             Env.current().const_types[strname] = (cls, path)

@@ -961,9 +961,6 @@ class Env(object):
         # path)
         self.const_types = parent.const_types.copy() if parent else {}
 
-        # Set of Symbolic variable names for internal values.
-        self.internal_names = parent.internal_names.copy() if parent else set()
-
     __current = None
 
     @classmethod
@@ -1153,7 +1150,6 @@ class SymbolicApplyResult(object):
         self.__var_constructors = env.var_constructors
         self.__const_types = env.const_types
         self.__schedule = env.path_state.sched
-        self.__internal_names = env.internal_names
         self.__internal_vals = None
 
         # XXX Should this include deterministic branches?  We have in
@@ -1220,12 +1216,16 @@ class SymbolicApplyResult(object):
 
     @property
     def internals(self):
-        """The list of internal Symbolic values created by this path."""
+        """The list of internal Symbolic values created by this path.
+
+        These are any values whose names begin with "internal_".
+        """
         if self.__internal_vals is None:
             # Map internal variable names to values
-            self.__internal_vals \
-                = [self.__var_constructors[name](name, MODEL_FETCH)
-                   for name in self.__internal_names]
+            self.__internal_vals = []
+            for name, ctor in self.__var_constructors.iteritems():
+                if name.startswith('internal_'):
+                    self.__internal_vals.append(ctor(name, MODEL_FETCH))
         return self.__internal_vals
 
     def get_model(self, z3_model=None):
@@ -1423,13 +1423,6 @@ class Model(object):
                 self.__asignments.append((expr, val))
 
         return res
-
-#
-# Helpers for tracking "internal" variables
-#
-
-def add_internal(name):
-    Env.current().internal_names.add(name)
 
 #
 # Utilities

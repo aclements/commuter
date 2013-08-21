@@ -748,16 +748,30 @@ def exists(vars, e, patterns=[]):
         vars = [vars]
     if not isinstance(e, (Symbolic, z3.ExprRef)):
         return e
-    return wrap(z3.Exists([unwrap(v) for v in vars], unwrap(e),
-                          patterns=map(unwrap, patterns)))
+    z3vars = []
+    for v in vars:
+        if isinstance(v, Symbolic):
+            z3vars.extend(flatten_compound(v._z3_value()))
+        elif isinstance(v, z3.ExprRef):
+            z3vars.append(v)
+        else:
+            raise TypeError("exists variable must be symbolic")
+    return wrap(z3.Exists(z3vars, unwrap(e), patterns=map(unwrap, patterns)))
 
 def forall(vars, e, patterns=[]):
     if not isinstance(vars, (list, tuple)):
         vars = [vars]
     if not isinstance(e, (Symbolic, z3.ExprRef)):
         return e
-    return wrap(z3.ForAll([unwrap(v) for v in vars], unwrap(e),
-                          patterns=map(unwrap, patterns)))
+    z3vars = []
+    for v in vars:
+        if isinstance(v, Symbolic):
+            z3vars.extend(flatten_compound(v._z3_value()))
+        elif isinstance(v, z3.ExprRef):
+            z3vars.append(v)
+        else:
+            raise TypeError("forall variable must be symbolic")
+    return wrap(z3.ForAll(z3vars, unwrap(e), patterns=map(unwrap, patterns)))
 
 #
 # Conversions to Z3 types and wrapper types

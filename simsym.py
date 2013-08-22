@@ -1321,13 +1321,17 @@ def symbolic_apply(fn, *args):
     if Env.current() != Env.global_env:
         raise Exception("Recursive symbolic_apply")
 
+    # Since this is an iterator, the caller might change things in the
+    # global environment between code paths.  We want to start each
+    # code path from the same environment, so snapshot it now.
+    root_env = Env(Env.current())
     scheduler = Scheduler()
     graph = Graph()
 
     for cursched in scheduler.schedule_generator():
         old_env = Env.current()
         path_state = PathState(cursched)
-        Env(Env.global_env, scheduler, path_state).activate()
+        Env(root_env, scheduler, path_state).activate()
         sar = None
         try:
             rv = fn(*args)

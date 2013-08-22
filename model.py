@@ -7,11 +7,10 @@ def methodwrap(**arg_types):
     testable.  The keys of arg_types must correspond to the wrapped
     method's arguments (except 'self'), and its values must give the
     symbolic types of those arguments.  The decorated method will take
-    two strings: one identifying the call in the call set being
-    testing (which must stay the same regardless of permutation), and
-    one identifying the current permutation.  This method invokes the
-    wrapped method with the appropriate symbolic values for its
-    arguments.
+    a string identifying the call in the call set being tested (which
+    must stay the same regardless of permutation).  This method
+    invokes the wrapped method with the appropriate symbolic values
+    for its arguments.
 
     This supports two types of arguments: regular and "internal"
     arguments.  For regular arguments, each call in a call set gets a
@@ -38,7 +37,7 @@ def methodwrap(**arg_types):
     internal_struct = simsym.tstruct(**internal)
 
     def decorator(m):
-        def wrapped(self, whichcall, whichseq):
+        def wrapped(self, whichcall):
             # Create the regular arguments for this call.  Note that
             # this will construct the same name for the n'th call in
             # the call set, regardless of its current position in the

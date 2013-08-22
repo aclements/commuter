@@ -28,7 +28,7 @@ def test(base, *calls):
             # Include the sequence and call name in all anonymous
             # variable names
             simsym.anon_info = '_seq' + seqname + '_call' + callname
-            r[idx] = calls[idx](s, callname, seqname)
+            r[idx] = calls[idx](s, callname)
             post_states[-1].append(s.copy())
         all_s.append(s)
         all_r.append(r)

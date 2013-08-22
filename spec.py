@@ -11,6 +11,35 @@ import pprint
 import json
 import progress
 
+# A test module must have the following three attributes:
+#
+# * model_class must be the state class whose methods are the
+#   operations to test.  The test operations must be decorated with
+#   @model.methodwrap.
+#
+# * model_testgen (optional) must be the test generator class for this
+#   model.  It should subclass and implement testgen.TestGenerator.
+#   If this attribute is not present, tests cannot be generated.
+#
+# * isomorphism_types (optional) is a dictionary overriding the
+#   default isomorphism types used by IsomorphicMatch during test
+#   enumeration.  By default, uninterpreted types are constrained only
+#   by equality and all other types are concrete-valued.  In
+#   particular, it's often necessary to treat integer types like
+#   uninterpreted types or to ignore them entirely to avoid infinite
+#   enumeration during test generation.  isomorphism_types maps from
+#   Symbolic types to one of:
+#
+#   - "ignore", if values of this type should be ignored altogether
+#     when enumerating models.
+#
+#   - "equal", if values of this type should be constrained only by
+#     their pattern of equality (like an uninterpreted sort).
+#
+#   At present, the Symbolic type can only be a primitive type or a
+#   synonym for a primitive type, since isomorphism will destructure
+#   any compound types before checking this.
+
 TestResult = collections.namedtuple('TestResult', 'diverge results post_states')
 
 def test(base, *calls):

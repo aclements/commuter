@@ -57,22 +57,6 @@ SIMap = symtypes.tmap(SInum, SInode)
 ## XXX Non-directories impl:
 SPathname = SFn
 
-## For some types, we override the default handling in
-## IsomorphicMatch.  In particular, by default integers are treated as
-## concrete-valued, but we often want to treat them as uninterpreted
-## or ignore them completely.  isomorphism_types maps from Symbolic
-## types to:
-##
-## - "ignore", if the type should be ignored altogether when
-##   enumerating models.
-##
-## - "equal", if the type should be constrained only on equality (just
-##   like an uninterpreted sort).
-##
-## At present, the Symbolic type can only be a primitive type or a
-## synonym for a primitive type, since isomorphism will destructure
-## any compound types before checking this.
-
 isomorphism_types = {
     SOffset: "equal",
     SFdNum: "equal",

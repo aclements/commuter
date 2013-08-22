@@ -22,7 +22,6 @@ z3.SortRef.__hash__ = z3_sort_hash
 del z3_sort_hash
 
 anon_info = ""
-anon_idx = 0
 def gen_name(template=None):
     """Generate a variable name from a template.
 
@@ -31,12 +30,12 @@ def gen_name(template=None):
     anon_info, and a nonce.
     """
 
-    global anon_idx
     if template is None:
         template = "*"
     if template.endswith("*"):
-        anon_idx += 1
-        return "%s%s_anon%d" % (template[:-1], anon_info, anon_idx)
+        name = "%s%s_anon%d" % (template[:-1], anon_info, Env.current().anon_idx)
+        Env.current().anon_idx += 1
+        return name
     return template
 
 MODEL_FETCH = object()
@@ -975,6 +974,13 @@ class Env(object):
         # Map from Z3 constant names to (outer Symbolic type, compound
         # path)
         self.const_types = parent.const_types.copy() if parent else {}
+
+        # Anonymous variable index.  It's important that each code
+        # path start with the same anonymous index to make replay
+        # deterministic.  Otherwise, the replayed part of a schedule
+        # may use one name for a variable, while the post-replay part
+        # uses another.
+        self.anon_idx = parent.anon_idx if parent else 0
 
     __current = None
 

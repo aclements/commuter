@@ -42,7 +42,7 @@ outarray.write(''.join(testparts[nontest:]))
 del testparts[nontest:]
 
 # Divide tests among outshards
-shard_size = len(testparts) / len(outshards)
+shard_size = (len(testparts) + len(outshards) - 1) / len(outshards)
 for i, outshard in enumerate(outshards):
     shard = testparts[i * shard_size:(i+1) * shard_size]
     for part in shard:

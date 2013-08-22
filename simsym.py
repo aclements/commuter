@@ -756,6 +756,8 @@ def exists(vars, e, patterns=[]):
             z3vars.append(v)
         else:
             raise TypeError("exists variable must be symbolic")
+    if len(z3vars) == 0:
+        return e
     return wrap(z3.Exists(z3vars, unwrap(e), patterns=map(unwrap, patterns)))
 
 def forall(vars, e, patterns=[]):
@@ -771,6 +773,8 @@ def forall(vars, e, patterns=[]):
             z3vars.append(v)
         else:
             raise TypeError("forall variable must be symbolic")
+    if len(z3vars) == 0:
+        return e
     return wrap(z3.ForAll(z3vars, unwrap(e), patterns=map(unwrap, patterns)))
 
 #
@@ -1402,7 +1406,7 @@ class Model(object):
 # Helpers for tracking "internal" variables
 #
 
-internal_vars = {None: SInt.var('__dummy')}
+internal_vars = {}
 
 def add_internal(v):
     for sub in flatten_compound(v._z3_value()):

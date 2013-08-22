@@ -26,7 +26,7 @@ elif args.mode == 'linux':
 
 os.system("make HW=%s" % hw)
 
-null = open('/dev/null', 'rw')
+null = open('/dev/null', 'r+')
 procs = []
 for n in range(0, args.jobs):
   cmd = ["make",

@@ -373,6 +373,11 @@ class UncheckableConstraintError(RuntimeError):
 class UnsatisfiablePath(RuntimeError):
     pass
 
+class ReplayDivergedError(RuntimeError):
+    def __init__(self, old, new):
+        RuntimeError.__init__(
+            self, 'Replay diverged\nOld: %s\nNew: %s' % (old, new))
+
 class SBool(SExpr, SymbolicConst):
     __ref_type__ = z3.BoolRef
     __pass_type__ = bool
@@ -435,6 +440,11 @@ class SBool(SExpr, SymbolicConst):
                                   UncheckableConstraintError(
                                       z3.Not(self._v), canFalseReason)))
                 scheduler.queue_schedule(newsched)
+        else:
+            # We're replaying; check that replay hasn't diverged
+            node = cursched[path_state.schedidx]
+            if node.is_branch() and not node.expr.eq(self):
+                raise ReplayDivergedError(node.expr, self)
 
         # Follow the schedule (which we may have just extended)
         node = cursched[path_state.schedidx]
@@ -445,7 +455,7 @@ class SBool(SExpr, SymbolicConst):
         elif node.typ == "exception":
             raise node.val
         else:
-            raise RuntimeError("Bad schedule entry %r" % node)
+            raise ReplayDivergedError(node, "branch")
 
 class SUninterpretedBase(SExpr):
     pass
@@ -1130,8 +1140,13 @@ def assume(e):
     cursched = path_state.sched
     if len(cursched) == path_state.schedidx:
         cursched.append(SchedNode("assumption", e, True))
-
-    assert cursched[path_state.schedidx].typ == "assumption"
+    else:
+        # Check for replay divergence
+        node = cursched[path_state.schedidx]
+        if node.typ != "assumption":
+            raise ReplayDivergedError(node, "assumption")
+        if not node.expr.eq(e):
+            raise ReplayDivergedError(node.expr, e)
     path_state.schedidx += 1
 
     solver.add(unwrap(e))

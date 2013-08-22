@@ -47,9 +47,9 @@ def methodwrap(**arg_types):
             name = "%s.%s" % (whichcall, m.__name__)
             regular_args = regular_struct.var(name)
             # Create the internal arguments for this call.  This is
-            # named after both the permutation and the call within the
-            # permutation.
-            internal_args = internal_struct.var('internal_' + whichseq + "." + name)
+            # given an anonymous name so it can have a different value
+            # for each call and every code path.
+            internal_args = internal_struct.var('internal_*')
 
             # Build Python arguments dictionary
             args = {}

@@ -12,50 +12,27 @@ def methodwrap(**arg_types):
     invokes the wrapped method with the appropriate symbolic values
     for its arguments.
 
-    This supports two types of arguments: regular and "internal"
-    arguments.  For regular arguments, each call in a call set gets a
-    distinct symbolic variable, but that same variable is reused
-    regardless of the order the call set is invoked in (hence, the
-    value of the argument is fixed across permutations).  Internal
-    arguments are allowed to differ between the same call in different
-    permutations; they represent non-deterministic or "internal"
-    choices the method can make.  The name of an internal argument
-    must begin with "internal_".
+    For each argument, each call in a call set gets a distinct
+    symbolic variable, but that same variable is reused regardless of
+    the order the call set is invoked in (hence, the value of the
+    argument is fixed across permutations).
     """
 
-    # Separate regular and "internal" arguments.
-    regular, internal = {}, {}
-    for name, typ in arg_types.items():
-        if name.startswith("internal_"):
-            internal[name] = typ
-        else:
-            regular[name] = typ
-
-    # Create symbolic struct types for the regular arguments and for
-    # the internal arguments
-    regular_struct = simsym.tstruct(**regular)
-    internal_struct = simsym.tstruct(**internal)
+    # Create symbolic struct type for the arguments
+    arg_struct_type = simsym.tstruct(**arg_types)
 
     def decorator(m):
         def wrapped(self, whichcall):
-            # Create the regular arguments for this call.  Note that
-            # this will construct the same name for the n'th call in
-            # the call set, regardless of its current position in the
+            # Create the arguments for this call.  Note that this will
+            # construct the same name for the n'th call in the call
+            # set, regardless of its current position in the
             # permutation, so we'll get the same initial symbolic
             # value.
             name = "%s.%s" % (whichcall, m.__name__)
-            regular_args = regular_struct.var(name)
-            # Create the internal arguments for this call.  This is
-            # given an anonymous name so it can have a different value
-            # for each call and every code path.
-            internal_args = internal_struct.var('internal_*')
+            arg_struct = arg_struct_type.var(name)
 
             # Build Python arguments dictionary
-            args = {}
-            for arg in regular:
-                args[arg] = getattr(regular_args, arg)
-            for arg in internal:
-                args[arg] = getattr(internal_args, arg)
+            args = {arg: getattr(arg_struct, arg) for arg in arg_types}
 
             return m(self, **args)
         wrapped.__name__ = m.__name__

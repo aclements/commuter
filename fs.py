@@ -155,19 +155,17 @@ class Fs(simsym.tstruct(
                       trunc=simsym.SBool,
                       anyfd=simsym.SBool,
                       pid=SPid,
-                      internal_alloc_inum=SInum,
-                      internal_ret_fd=SFdNum,
-                      internal_time=STime,
                      )
-    def open(self, pn, creat, excl, trunc, anyfd, pid,
-             internal_alloc_inum, internal_ret_fd, internal_time):
+    def open(self, pn, creat, excl, trunc, anyfd, pid):
         # XXX O_RDONLY, O_WRONLY, O_RDWR
         self.add_selfpid(pid)
+        internal_time = STime.var('internal_time*')
         created = False
         anyfd = False
         _, pndirmap, pnlast = self.nameiparent(pn)
         if creat:
             if not pndirmap.contains(pnlast):
+                internal_alloc_inum = SInum.var('internal_alloc_inum*')
                 simsym.assume(simsym.symnot(self.iused(internal_alloc_inum)))
 
                 simsym.assume(internal_time >= self.i_map[internal_alloc_inum].atime)
@@ -195,6 +193,7 @@ class Fs(simsym.tstruct(
                 self.i_map[inum].ctime = internal_time
             self.i_map[inum].data._len = 0
 
+        internal_ret_fd = SFdNum.var('internal_ret_fd*')
         simsym.assume(internal_ret_fd >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_ret_fd)))
 
@@ -213,13 +212,10 @@ class Fs(simsym.tstruct(
 
         return {'r': internal_ret_fd}
 
-    @model.methodwrap(pid=SPid,
-                      internal_pipeid=SPipeId,
-                      internal_fd_r=SFdNum,
-                      internal_fd_w=SFdNum,
-                      )
-    def pipe(self, pid, internal_pipeid, internal_fd_r, internal_fd_w):
+    @model.methodwrap(pid=SPid)
+    def pipe(self, pid):
         self.add_selfpid(pid)
+        internal_pipeid = SPipeId.var('internal_pipeid*')
 
         xfd = SFdNum.var('xfd')
         simsym.assume(simsym.symnot(simsym.symor([
@@ -236,6 +232,7 @@ class Fs(simsym.tstruct(
         empty_pipe.data._len = 0
 
         ## lowest FD for read end
+        internal_fd_r = SFdNum.var('internal_fd_r*')
         simsym.assume(internal_fd_r >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_r)))
         simsym.assume(simsym.symnot(simsym.exists(xfd,
@@ -248,6 +245,7 @@ class Fs(simsym.tstruct(
         fd_r_data.pipewriter = False
 
         ## lowest FD for write end
+        internal_fd_w = SFdNum.var('internal_fd_w*')
         simsym.assume(internal_fd_w >= 0)
         simsym.assume(simsym.symnot(self.getproc(pid).fd_map.contains(internal_fd_w)))
         simsym.assume(simsym.symnot(simsym.exists(xfd,
@@ -261,9 +259,9 @@ class Fs(simsym.tstruct(
 
         return {'r': 0, 'fds[0]': internal_fd_r, 'fds[1]': internal_fd_w}
 
-    @model.methodwrap(src=SPathname, dst=SPathname,
-                      internal_time=STime)
-    def rename(self, src, dst, internal_time):
+    @model.methodwrap(src=SPathname, dst=SPathname)
+    def rename(self, src, dst):
+        internal_time = STime.var('internal_time*')
         srcdiri, srcdirmap, srclast = self.nameiparent(src)
         dstdiri, dstdirmap, dstlast = self.nameiparent(dst)
         if not srcdirmap.contains(srclast):
@@ -282,8 +280,9 @@ class Fs(simsym.tstruct(
             self.i_map[dstinum].ctime = internal_time
         return {'r': 0}
 
-    @model.methodwrap(pn=SPathname, internal_time=STime)
-    def unlink(self, pn, internal_time):
+    @model.methodwrap(pn=SPathname)
+    def unlink(self, pn):
+        internal_time = STime.var('internal_time*')
         _, dirmap, pnlast = self.nameiparent(pn)
         if not dirmap.contains(pnlast):
             return {'r': -1, 'errno': errno.ENOENT}
@@ -294,8 +293,9 @@ class Fs(simsym.tstruct(
         self.i_map[inum].ctime = internal_time
         return {'r': 0}
 
-    @model.methodwrap(oldpn=SPathname, newpn=SPathname, internal_time=STime)
-    def link(self, oldpn, newpn, internal_time):
+    @model.methodwrap(oldpn=SPathname, newpn=SPathname)
+    def link(self, oldpn, newpn):
+        internal_time = STime.var('internal_time*')
         olddiri, olddirmap, oldlast = self.nameiparent(oldpn)
         newdiri, newdirmap, newlast = self.nameiparent(newpn)
         if not olddirmap.contains(oldlast):
@@ -309,17 +309,19 @@ class Fs(simsym.tstruct(
         self.i_map[inum].ctime = internal_time
         return {'r': 0}
 
-    def iread(self, inum, off, time):
+    def iread(self, inum, off, time=None):
         simsym.assume(off >= 0)
         if off >= self.i_map[inum].data._len:
             return {'r': 0}
-        if time is not None:
+        if time is None:
+            time = STime.var('internal_time*')
+        if time is not False:
             simsym.assume(time >= self.i_map[inum].atime)
             self.i_map[inum].atime = time
         return {'r': 1, 'data': self.i_map[inum].data[off]}
 
-    @model.methodwrap(fd=SFdNum, pid=SPid, internal_time=STime)
-    def read(self, fd, pid, internal_time):
+    @model.methodwrap(fd=SFdNum, pid=SPid)
+    def read(self, fd, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
             return {'r': -1, 'errno': errno.EBADF}
@@ -352,21 +354,21 @@ class Fs(simsym.tstruct(
             pipe.data.shift()
             return {'r': 1, 'data': d}
         off = self.getproc(pid).fd_map[fd].off
-        r = self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
+        r = self.iread(self.getproc(pid).fd_map[fd].inum, off)
         if 'data' in r:
             self.getproc(pid).fd_map[fd].off = off + 1
         return r
 
-    @model.methodwrap(fd=SFdNum, off=SOffset, pid=SPid, internal_time=STime)
-    def pread(self, fd, off, pid, internal_time):
+    @model.methodwrap(fd=SFdNum, off=SOffset, pid=SPid)
+    def pread(self, fd, off, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
             return {'r': -1, 'errno': errno.EBADF}
         if self.getproc(pid).fd_map[fd].ispipe:
             return {'r': -1, 'errno': errno.ESPIPE}
-        return self.iread(self.getproc(pid).fd_map[fd].inum, off, internal_time)
+        return self.iread(self.getproc(pid).fd_map[fd].inum, off)
 
-    def iwrite(self, inum, off, databyte, time):
+    def iwrite(self, inum, off, databyte, time=None):
         simsym.assume(off >= 0)
         ## Avoid overly-long files.  fs-test.py caps file size at 16 units.
         simsym.assume(off < 10)
@@ -377,15 +379,17 @@ class Fs(simsym.tstruct(
             self.i_map[inum].data.append(databyte)
         else:
             self.i_map[inum].data[off] = databyte
-        if time is not None:
+        if time is None:
+            time = STime.var('internal_time*')
+        if time is not False:
             simsym.assume(time >= self.i_map[inum].mtime)
             simsym.assume(time >= self.i_map[inum].ctime)
             self.i_map[inum].mtime = time
             self.i_map[inum].ctime = time
         return {'r': 1}
 
-    @model.methodwrap(fd=SFdNum, databyte=SDataByte, pid=SPid, internal_time=STime)
-    def write(self, fd, databyte, pid, internal_time):
+    @model.methodwrap(fd=SFdNum, databyte=SDataByte, pid=SPid)
+    def write(self, fd, databyte, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
             return {'r': -1, 'errno': errno.EBADF}
@@ -415,16 +419,16 @@ class Fs(simsym.tstruct(
             return {'r': 1}
         off = self.getproc(pid).fd_map[fd].off
         self.getproc(pid).fd_map[fd].off = off + 1
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
 
-    @model.methodwrap(fd=SFdNum, off=SOffset, databyte=SDataByte, pid=SPid, internal_time=STime)
-    def pwrite(self, fd, off, databyte, pid, internal_time):
+    @model.methodwrap(fd=SFdNum, off=SOffset, databyte=SDataByte, pid=SPid)
+    def pwrite(self, fd, off, databyte, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
             return {'r': -1, 'errno': errno.EBADF}
         if self.getproc(pid).fd_map[fd].ispipe:
             return {'r': -1, 'errno': errno.ESPIPE}
-        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte, internal_time)
+        return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
 
     def istat(self, inum):
         len = self.i_map[inum].data._len
@@ -492,9 +496,8 @@ class Fs(simsym.tstruct(
                       va=SVa,
                       fd=SFdNum,
                       off=SOffset,
-                      pid=SPid,
-                      internal_freeva=SVa)
-    def mmap(self, anon, writable, fixed, va, fd, off, pid, internal_freeva):
+                      pid=SPid)
+    def mmap(self, anon, writable, fixed, va, fd, off, pid):
         ## TODO: MAP_SHARED/MAP_PRIVATE for files
         ##       -> how to model delayed file read?
         ## TODO: MAP_SHARED/MAP_PRIVATE for anon (with fork)
@@ -502,7 +505,7 @@ class Fs(simsym.tstruct(
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not fixed:
-            va = internal_freeva
+            va = SVa.var('internal_freeva*')
             simsym.assume(simsym.symnot(myproc.va_map.contains(va)))
         if not anon:
             if not myproc.fd_map.contains(fd):
@@ -539,8 +542,8 @@ class Fs(simsym.tstruct(
         myproc.va_map[va].writable = writable
         return {'r': 0}
 
-    @model.methodwrap(va=SVa, pid=SPid, internal_time=STime)
-    def memread(self, va, pid, internal_time):
+    @model.methodwrap(va=SVa, pid=SPid)
+    def memread(self, va, pid):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not myproc.va_map.contains(va):
@@ -548,8 +551,7 @@ class Fs(simsym.tstruct(
         if myproc.va_map[va].anon:
             return {'r:data': myproc.va_map[va].anondata, 'signal': 0}
         ## TODO: memory-mapped reads don't bump atime?
-        internal_time = None
-        res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off * 4096, internal_time)
+        res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off * 4096, False)
         if res['r'] == 0:
             # This means there was no page here
             return {'r': -1, 'signal': signal.SIGBUS}
@@ -558,8 +560,8 @@ class Fs(simsym.tstruct(
         else:
             raise RuntimeError('Unexpected result from iread: %r' % res)
 
-    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid, internal_time=STime)
-    def memwrite(self, va, databyte, pid, internal_time):
+    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid)
+    def memwrite(self, va, databyte, pid):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)
         if not myproc.va_map.contains(va):
@@ -573,9 +575,8 @@ class Fs(simsym.tstruct(
         if vma.off >= self.i_map[vma.inum].data._len:
             return {'r': -1, 'signal': signal.SIGBUS}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
-        internal_time = None
         res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off * 4096,
-                          databyte, internal_time)
+                          databyte, False)
         if res['r'] == 1:
             return {'r': 0, 'signal': 0}
         else:

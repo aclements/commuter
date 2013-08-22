@@ -40,16 +40,25 @@ import progress
 #   synonym for a primitive type, since isomorphism will destructure
 #   any compound types before checking this.
 
-TestResult = collections.namedtuple('TestResult', 'diverge results post_states')
+TestResult = collections.namedtuple(
+    'TestResult', 'diverge results post_states op_states')
 
 def test(base, *calls):
+    init = base.var(base.__name__)
+
     all_s = []
     all_r = []
+    # post_states[perm_index][step_index + 1] is the state after step
+    # step_index in permutation perm_index.
     post_states = []
+    # op_states[op_index][perm_index] is a pair of the states before
+    # and after operation op_index in permutation perm_index.
+    op_states = [[] for _ in calls]
 
     for callseq in itertools.permutations(range(0, len(calls))):
-        s = base.var(base.__name__)
-        post_states.append([s.copy()])
+        prestate = init
+        post_states.append([prestate])
+        s = init.copy()
         r = [None] * len(callseq)
         seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
         for idx in callseq:
@@ -58,7 +67,10 @@ def test(base, *calls):
             # variable names
             simsym.anon_info = '_seq' + seqname + '_call' + callname
             r[idx] = calls[idx](s, callname)
-            post_states[-1].append(s.copy())
+            snapshot = s.copy()
+            post_states[-1].append(snapshot)
+            op_states[idx].append((prestate, snapshot))
+            prestate = snapshot
         all_s.append(s)
         all_r.append(r)
 
@@ -68,7 +80,7 @@ def test(base, *calls):
     if simsym.symor([all_s[0] != s for s in all_s[1:]]):
         diverge += ('state',)
 
-    return TestResult(diverge, all_r, post_states)
+    return TestResult(diverge, all_r, post_states, op_states)
 
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.
@@ -336,6 +348,90 @@ def is_idempotent(result):
                 return res
     return res
 
+def idempotent_projs(result):
+    """Returns the projections for which each call in result is idempotent.
+
+    This returns a list of idempotence sets, where the entries in the
+    list correspond to the calls in result's call set (in the order
+    before permutation).  Each idempotence set is a list of
+    projections for which that call is idempotent.  This list will be
+    empty if the call is not idempotent for any projection.
+
+    A call is considered idempotent for a projection P if there is
+    some permutation in which P(state) is equal before and after the
+    call and some permutation in which P(state) is distinct before and
+    after the operation.  Note that this excludes nullipotent
+    projections.
+
+    For projections, this considers all nodes of the state structure,
+    recursively.
+    """
+
+    # It seems Z3 often can't solve our idempotence checks.  Oh well.
+
+    root = __import__(args.module).model_class
+    pc = result.path_condition
+    def check(cond):
+        res, m = simsym.check(simsym.symand([pc, cond]))
+        if res == z3.unknown:
+            print '  Idempotence unknown:', m
+            print '    ' + str(cond)
+        return res, m
+
+    res = []
+    # For each call
+    for states in result.value.op_states:
+        # Walk all projections
+        def walk(typ, proj, label):
+            """Walk Symbolic type typ.  proj(state) must retrieve a projected
+            value of type typ from state.  label must be a tuple that
+            can be joined to describe the current projection.
+            """
+
+            # Build idempotence test for this projection
+            did_change, did_not_change = [], []
+            for (pre, post) in states:
+                # Is there a permutation in which this projection did
+                # change across this call?
+                did_change.append(proj(pre) != proj(post))
+                # And is there a permutation in which this projection
+                # did not change across this call?
+                did_not_change.append(proj(pre) == proj(post))
+            idem_expr = simsym.symand([simsym.symor(did_change),
+                                       simsym.symor(did_not_change)])
+
+            sat_z3, m = check(idem_expr)
+            if sat_z3 == z3.sat:
+                # This projection is idempotent
+                # XXX We might still want to descend.  More detailed
+                # leaf information can be useful.
+                return [''.join(label)]
+
+            # Try breaking down the projection further
+            if issubclass(typ, simsym.SStructBase):
+                # Are any fields idempotent?
+                idem_projs = []
+                for fname, ftyp in typ._fields.items():
+                    idem_projs.extend(walk(ftyp,
+                                           lambda state, fname=fname:
+                                           getattr(proj(state), fname),
+                                           label + ('.' + fname,)))
+                return idem_projs
+            elif issubclass(typ, simsym.SMapBase):
+                # Is there some map value that is idempotent?  Because
+                # of how we construct the final query, this requires
+                # it to have the same index in all permutations.
+                idx = typ._indexType.var()
+                return walk(typ._valueType,
+                            lambda state: proj(state)[idx],
+                            label + ('[?]',))
+            else:
+                return []
+
+        idem_projs = walk(root, lambda x:x, ('state',))
+        res.append(idem_projs)
+    return res
+
 class TestWriter(object):
     def __init__(self, trace_file, model_file, test_file, testgen,
                  isomorphism_types):
@@ -355,6 +451,7 @@ class TestWriter(object):
         #   pathinfo -> {'id': pathname,
         #                'diverge': '' | 'state' | 'results' | 'results state',
         #                'idempotent': [bool],
+        #                'idempotent_projs': [[string]],
         #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname, 'assignments': {expr: val}}
@@ -389,6 +486,10 @@ class TestWriter(object):
             ('diverge', ' '.join(result.value.diverge)),
             ('idempotent', is_idempotent(result)),
         ])
+
+        if args.idempotent_projs:
+            self.model_data_callset[result.pathid]['idempotent_projs'] \
+                = idempotent_projs(result)
 
         # Filter out non-commutative results
         if result.value.diverge != ():
@@ -578,6 +679,8 @@ parser.add_argument('--verbose-testgen', default=False, action='store_true',
                     help='Print diagnostics during model enumeration')
 parser.add_argument('--diff-testgen', default=False, action='store_true',
                     help='Print variables that change during enumeration')
+parser.add_argument('--idempotent-projs', default=False, action='store_true',
+                    help='Record idempotent projections in model file (slow)')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 

@@ -1,5 +1,7 @@
 import simsym
 
+priority = 0
+
 def methodwrap(**arg_types):
     """Transform a method into a testable model method.
 
@@ -36,5 +38,8 @@ def methodwrap(**arg_types):
 
             return m(self, **args)
         wrapped.__name__ = m.__name__
+        global priority
+        wrapped.model_function_pri = priority
+        priority += 1
         return wrapped
     return decorator

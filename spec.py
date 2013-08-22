@@ -602,7 +602,9 @@ def parse_functions(functions, ncomb, module):
             else:
                 calls.append(getattr(base, part))
     else:
-        calls = module.model_functions
+        calls = [getattr(base, a) for a in dir(base)
+                 if hasattr(getattr(base, a), 'model_function_pri')]
+        calls.sort(key=lambda x: x.model_function_pri)
     callsets.extend(itertools.combinations_with_replacement(calls, ncomb))
     return callsets
 

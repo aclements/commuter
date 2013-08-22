@@ -583,24 +583,4 @@ class Fs(simsym.tstruct(
             raise RuntimeError('Unexpected result from iwrite: %r' % res)
 
 model_class = Fs
-model_functions = [
-    Fs.open,
-    Fs.pipe,
-    Fs.pread,
-    Fs.pwrite,
-    Fs.read,
-    Fs.write,
-    Fs.unlink,
-    Fs.link,
-    Fs.rename,
-    Fs.stat,
-    Fs.fstat,
-    Fs.close,
-    Fs.lseek,
-    Fs.mmap,
-    Fs.munmap,
-    Fs.mprotect,
-    Fs.memread,
-    Fs.memwrite,
-]
 model_testgen = fs_testgen.FsTestGenerator

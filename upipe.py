@@ -24,7 +24,3 @@ class UPipe(simsym.tstruct(elems=SItembag, nitem=simsym.SInt)):
             return e
 
 model_class = UPipe
-model_functions = [
-    UPipe.u_write,
-    UPipe.u_read,
-]

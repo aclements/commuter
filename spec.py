@@ -44,6 +44,10 @@ TestResult = collections.namedtuple(
     'TestResult', 'diverge results post_states op_states')
 
 def test(base, *calls):
+    # XXX This codifies "regular" commutativity, not strong
+    # commutativity.  They're equivalent for pairs, which is all we
+    # use in the paper, but we should fix this.
+
     init = base.var(base.__name__)
 
     all_s = []

@@ -50,6 +50,16 @@ def test(base, *calls):
 
     init = base.var(base.__name__)
 
+    callnames = [chr(idx + ord('a')) for idx in range(len(calls))]
+
+    # Create arguments for each call.  We reuse these arguments in
+    # each permutation, so each call receives the same arguments each
+    # time we test it.
+    args = []
+    for callname, call in zip(callnames, calls):
+        arg_name = '%s.%s' % (callname, call.__name__)
+        args.append(call.arg_struct_type.var(arg_name))
+
     all_s = []
     all_r = []
     # post_states[perm_index][step_index + 1] is the state after step
@@ -64,13 +74,18 @@ def test(base, *calls):
         post_states.append([prestate])
         s = init.copy()
         r = [None] * len(callseq)
-        seqname = ''.join(map(lambda i: chr(i + ord('a')), callseq))
+        seqname = ''.join(map(lambda i: callnames[i], callseq))
         for idx in callseq:
-            callname = chr(idx + ord('a'))
             # Include the sequence and call name in all anonymous
             # variable names
-            simsym.anon_info = '_seq' + seqname + '_call' + callname
-            r[idx] = calls[idx](s, callname)
+            simsym.anon_info = '_seq' + seqname + '_call' + callnames[idx]
+            # Build the Python arguments dictionary and copy each
+            # argument, just in case the call mutates it
+            arg_struct = args[idx]
+            cargs = {arg: getattr(arg_struct, arg).copy()
+                     for arg in arg_struct._fields}
+            # Invoke the call
+            r[idx] = calls[idx](s, **cargs)
             snapshot = s.copy()
             post_states[-1].append(snapshot)
             op_states[idx].append((prestate, snapshot))

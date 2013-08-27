@@ -134,7 +134,7 @@ class DynamicDict(object):
     """A dynamically-filled dictionary.
 
     Values for dictionary mappings are drawn from an iterable as they
-    are needed.  This has special support for Z3 constants, making it
+    are needed.  This has special support for Z3 literals, making it
     useful for assigning concrete values to uninterpreted constants.
 
     A DynamicDict can be iterated over just like a regular dict, but
@@ -145,23 +145,33 @@ class DynamicDict(object):
         self.__gen = iter(iterable)
         self.__map = {}
 
+    @staticmethod
+    def __is_literal(z3ast):
+        if z3.is_int(z3ast):
+            return z3.is_int_value(z3ast)
+        if z3.is_bool(z3ast):
+            return z3.is_true(z3ast) or z3.is_false(z3ast)
+        if z3ast.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
+            return '!' in str(z3ast)
+        raise NotImplementedError('Don\'t know how to literal-check %s' % z3ast)
+
     def __getitem__(self, key):
        """Return the value associated with key.
 
        If the dictionary does not currently contain a value for key,
        one will be drawn from self's iterable.  key may be a Z3
-       constant.
+       literal.
        """
 
        hkey = z3util.HashableAst(key)
 
        if hkey not in self.__map:
            if isinstance(key, simsym.Symbolic) and \
-              not z3.is_const(simsym.unwrap(key)):
+              not self.__is_literal(simsym.unwrap(key)):
                # There's nothing wrong with supporting arbitrary ASTs,
                # but in every place we use DynamicDict, this indicates
                # an easy-to-miss bug.
-               raise ValueError("Key is not a constant: %r" % key)
+               raise ValueError("Key is not a literal: %r" % key)
 
            if self.__gen is None:
                raise ValueError("DynamicDict has been read; cannot be extended")

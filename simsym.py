@@ -1408,6 +1408,14 @@ class Model(object):
         # for mutable variables, since it evaluates their initial
         # value, not their final value).  _eval is only suited to leaf
         # values.  Maybe 'bind'?
+        #
+        # The other problem with this is that sometimes I *want* the
+        # symbolic expression (e.g., in fs_testgen's "other pipe FDs"
+        # test), but this is a one-way street.  Maybe I should bind
+        # symbolic values to a model, but ultimately forcing them to a
+        # concrete value should be done not when I happen to reach a
+        # leaf in the type, but should require some extra step, like
+        # accessing a "val" property.
         return self.__var_constructors[name](name, self)
 
     def track_assignments(self, enable=True):

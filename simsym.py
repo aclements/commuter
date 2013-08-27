@@ -1438,22 +1438,7 @@ class Model(object):
         # model_completion asks Z3 to make up concrete values if they
         # are not interpreted in the model.
         z3val = self.__z3_model.evaluate(unwrap(expr), model_completion=True)
-        if z3.is_int_value(z3val):
-            res = z3val.as_long()
-        elif z3.is_true(z3val):
-            res = True
-        elif z3.is_false(z3val):
-            res = False
-        elif z3val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
-            res = type(expr)._wrap(z3val, None)
-        else:
-            # Either expr is not a concrete value, or we don't know
-            # how to extract its concrete value (it could be, e.g., an
-            # enum value)
-            # XXX Use sexpr because regular formatting has been
-            # freezing on me.
-            raise Exception("Expression %s => %s is not a concrete value" %
-                            (expr, z3val.sexpr()))
+        res = to_concrete(z3val, type(expr))
 
         if self.__track and track:
             for aexpr, _ in self.__asignments:
@@ -1474,3 +1459,27 @@ def strtype(x):
         return x.__class__.__name__
     else:
         return type(x).__name__
+
+def to_concrete(expr, expr_type=None):
+    if z3.is_ast(expr):
+        if expr_type is None:
+            raise TypeError("to_concrete cannot be applied to a Z3 value")
+    elif not isinstance(expr, Symbolic):
+        return expr
+    z3val = unwrap(expr)
+    if z3.is_int_value(z3val):
+        return z3val.as_long()
+    if z3.is_true(z3val):
+        return True
+    if z3.is_false(z3val):
+        return False
+    if z3val.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
+        if expr_type is None:
+            expr_type = type(expr)
+        return expr_type._wrap(z3val, None)
+    # Either expr is not a concrete value, or we don't know how to
+    # extract its concrete value (it could be, e.g., an enum value)
+    # XXX Use sexpr because regular formatting has been freezing on
+    # me.
+    raise Exception("Expression %s => %s is not a concrete value" %
+                    (expr, z3val.sexpr()))

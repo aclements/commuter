@@ -19,7 +19,9 @@ class SkipTest(Exception):
 class PerProc(object):
   def __init__(self):
     assert(fd_begin > 3)
+    # Map from SFdNum to concrete FD number
     self.fds = testgen.DynamicDict(range(fd_begin, fd_end))
+    # Map from SVa to concrete virtual address
     self.vas = testgen.DynamicDict((va_base + i * 4096) for i in range(va_len))
 
 class FsState(object):

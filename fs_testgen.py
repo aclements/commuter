@@ -1,5 +1,7 @@
 import testgen
 import simsym
+import collections
+import fs as fs_module
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
@@ -12,6 +14,12 @@ pipe_end = 30
 # This must be kept in sync with fstest.cc
 va_base = 0x12345600000
 va_len = 4
+
+# const char * expressions for referring to datavals.  Each DataVal is
+# DATAVAL_BYTES, where the first byte is unique and the rest are
+# zeros.
+DataVal = collections.namedtuple('DataVal', 'expr first_byte')
+all_datavals = [DataVal('dataval%d' % i, i) for i in range(8)]
 
 class SkipTest(Exception):
   pass
@@ -31,8 +39,8 @@ class FsState(object):
     self.filenames = testgen.DynamicDict(all_filenames)
     # Map from uninterpreted inodes to inode file names
     self.inodefiles = testgen.DynamicDict(['__i%d' % x for x in range(0, 6)])
-    # Map from uninterpreted data bytes to concrete byte values
-    self.databytes = testgen.DynamicDict(xrange(256))
+    # Map from SDataVal to DataVal
+    self.datavals = testgen.DynamicDict(all_datavals)
     # Map from uninterpreted pipe IDs to reader FDs (writers are +1)
     self.pipes = testgen.DynamicDict(range(pipe_begin, pipe_end, 2))
     self.procs = testgen.DynamicDict(iter(PerProc, None))
@@ -57,11 +65,10 @@ class FsState(object):
       assert 0 <= alen <= 16
       if alen == 0:
         return
-      contents = ''
       for i in range(alen):
-        contents += '\\x%02d' % self.databytes[data[i]]
-      emit('r = write(%s, "%s", %d);' % (fdexpr, contents, alen),
-           'if (r != %d) setup_error("write => %%d", r);' % alen)
+        emit('r = write(%s, %s, %d);' % (fdexpr, self.datavals[data[i]].expr,
+                                         DATAVAL_BYTES),
+             'if (r != %d) setup_error("write => %%d", r);' % DATAVAL_BYTES)
 
     emit = self.emit
     emit('int fd __attribute__((unused));',
@@ -121,13 +128,13 @@ class FsState(object):
       else:
         emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
              'if (fd < 0) setup_error("open");',
-             'r = lseek(fd, %d, SEEK_SET);' % fdinfo.off,
+             'r = lseek(fd, %d, SEEK_SET);' % (fdinfo.off * DATAVAL_BYTES),
              'if (fd >= 0 && r < 0) setup_error("lseek");',
              'r = dup2(fd, %d);' % fd,
              'if (fd >= 0 && r < 0) setup_error("dup2");',
              'close(fd);')
 
-    emit('int* va __attribute__((unused));')
+    emit('char* va __attribute__((unused));')
     for va, vainfo in vamap.items():
       emit('va = (void*) %#xUL;' % va)
       prot = 'PROT_READ'
@@ -137,13 +144,13 @@ class FsState(object):
         emit('r = (intptr_t)mmap(va, 4096, %s, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);' % prot,
              'if (r == -1) setup_error("mmap");')
         if vainfo.writable:
-          emit('*va = %d;' % self.databytes[vainfo.anondata])
+          emit('*va = %d;' % self.datavals[vainfo.anondata].first_byte)
         else:
           emit('*(volatile int*)va;')
       else:
         emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
              'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % (prot, vainfo.off),
+             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % (prot, vainfo.off * PAGE_BYTES),
              'if (r == -1) setup_error("mmap");',
              'close(fd);')
 
@@ -173,10 +180,10 @@ class FsState(object):
              'final': testgen.CodeWriter()}
 
     try:
-      # setup_proc reads nothing; extends inodefiles, databytes, pipes
+      # setup_proc reads nothing; extends inodefiles, datavals, pipes
       self.emit = setup['proc0']; self.setup_proc(fdmap0, vamap0)
       self.emit = setup['proc1']; self.setup_proc(fdmap1, vamap1),
-      # setup_inodes reads inodefiles, pipes; extends databytes
+      # setup_inodes reads inodefiles, pipes; extends datavals
       self.emit = setup['common']; self.setup_inodes()
       # setup_filenames reads nothing; extends nothing
       self.emit = setup['common']; self.setup_filenames(fn_to_ino)
@@ -201,13 +208,16 @@ class FsState(object):
     """Return code to check the expected values of res.
 
     res must be a dictionary mapping variable names to expected
-    values.  'errno' is handled specially.
+    values.  'errno' and DataVals are handled specially.
     """
     emit = testgen.CodeWriter()
     for var, val in res.items():
       if var == 'errno':
         continue
-      emit('expect_result("%s", %s, %d);' % (var, var, val))
+      if isinstance(val, DataVal):
+        emit('expect_result("%s", %s[0], %d);' % (var, var, val.first_byte))
+      else:
+        emit('expect_result("%s", %s, %d);' % (var, var, val))
     if 'errno' in res:
       emit('expect_errno(%d);' % res['errno'])
     return emit
@@ -243,40 +253,42 @@ class FsState(object):
 
   def pread(self, args, res):
     if 'data' in res:
-      res['data'] = self.databytes[res['data']]
+      res['data'] = self.datavals[res['data']]
     self.emit(
-      'char data;',
-      'ssize_t r = pread(%d, &data, 1, %d);' %
-      (self.procs[args.pid].fds[args.fd], args.off),
+      'char data[%d];' % DATAVAL_BYTES,
+      'ssize_t r = pread(%d, &data, sizeof data, %d);' % \
+      (self.procs[args.pid].fds[args.fd], args.off * DATAVAL_BYTES),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
-      'return data;')
+      'return data[0];')
 
   def pwrite(self, args, res):
     self.emit(
-      'char data = %d;' % self.databytes[args.databyte],
-      'ssize_t r = pwrite(%d, &data, 1, %d);' % \
-      (self.procs[args.pid].fds[args.fd], args.off),
+      'ssize_t r = pwrite(%d, %s, %d, %d);' % \
+      (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
+       DATAVAL_BYTES, args.off * DATAVAL_BYTES),
       self.__check(res),
       'return xerrno(r);')
 
   def read(self, args, res):
     if 'data' in res:
-      res['data'] = self.databytes[res['data']]
+      res['data'] = self.datavals[res['data']]
     self.emit(
-      'char data;',
-      'ssize_t r = read(%d, &data, 1);' % self.procs[args.pid].fds[args.fd],
+      'char data[%d];' % DATAVAL_BYTES,
+      'ssize_t r = read(%d, &data, sizeof data);' % \
+      self.procs[args.pid].fds[args.fd],
       self.__check(res),
       'if (r < 0) return xerrno(r);',
-      'return data;')
+      'return data[0];')
 
   def write(self, args, res):
     self.emit(
-      'char data = %d;' % self.databytes[args.databyte],
-      'ssize_t r = write(%d, &data, 1);' % self.procs[args.pid].fds[args.fd],
+      'ssize_t r = write(%d, &data, %d);' % \
+      (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
+       DATAVAL_BYTES),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
-      'return data;')
+      'return r;')
 
   def unlink(self, args, res):
     self.emit(
@@ -336,7 +348,7 @@ class FsState(object):
     self.emit(
       'int r = lseek(%d, %d, %s);' %
       (self.procs[args.pid].fds[args.fd],
-       args.off,
+       args.off * DATAVAL_BYTES,
        'SEEK_SET' if args.whence_set else
        'SEEK_CUR' if args.whence_cur else
        'SEEK_END' if args.whence_end else '999'),
@@ -366,7 +378,7 @@ class FsState(object):
     self.emit(
       'int* va = (int*) %#xUL;' % va,
       'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL * 4096);' %
-      (prot, flags, self.procs[args.pid].fds[args.fd], args.off),
+      (prot, flags, self.procs[args.pid].fds[args.fd], args.off * PAGE_BYTES),
       self.__check(res),
       'return xerrno(r);')
 
@@ -389,7 +401,7 @@ class FsState(object):
 
   def memread(self, args, res):
     if 'r:data' in res:
-      res['r'] = self.databytes[res.pop('r:data')]
+      res['r'] = self.datavals[res.pop('r:data')].first_byte
     self.emit(
       'char* p = (char*) %#xUL;' % self.procs[args.pid].vas[args.va],
       'int r, signal;',
@@ -410,7 +422,7 @@ class FsState(object):
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
       '  r = -1;',
       'else',
-      '  *p = %d;' % self.databytes[args.databyte],
+      '  *p = %d;' % self.datavals[args.databyte].first_byte,
       'pf_active = 0;',
       self.__check(res),
       'return r;')
@@ -424,6 +436,11 @@ class FsTestGenerator(testgen.TestGenerator):
     self.__funcs = {}
     self.__pending_funcs = {}
 
+    # Get some constants from fs
+    global DATAVAL_BYTES, PAGE_BYTES
+    DATAVAL_BYTES = fs_module.DATAVAL_BYTES
+    PAGE_BYTES = fs_module.PAGE_BYTES
+
     self.emit("""\
 //+++ common
 #define _GNU_SOURCE 1
@@ -436,8 +453,15 @@ class FsTestGenerator(testgen.TestGenerator):
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include "fstest.h"
+""")
 
-//+++ tests""")
+    # Generate datavals
+    for i, d in enumerate(all_datavals):
+      self.emit("const char %s[%d] = {%d};" %
+                (d.expr, DATAVAL_BYTES, d.first_byte))
+    self.emit()
+
+    self.emit("//+++ tests")
 
   def begin_path(self, result):
     super(FsTestGenerator, self).begin_path(result)

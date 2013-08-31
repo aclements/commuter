@@ -12,6 +12,11 @@ SDataVal = simsym.tuninterpreted("SDataVal")
 SVa = simsym.tuninterpreted("SVa")
 SPipeId = simsym.tuninterpreted("SPipeId")
 
+DATAVAL_BYTES = 1
+PAGE_BYTES = 4096
+PAGE_DATAVALS = PAGE_BYTES / DATAVAL_BYTES
+assert PAGE_BYTES % DATAVAL_BYTES == 0
+
 SPid = simsym.SBool
 SOffset = simsym.tsynonym("SOffset", simsym.SInt)
 class SData(symtypes.tlist(SDataVal, lenType=SOffset)):
@@ -24,6 +29,7 @@ class SFd(simsym.tstruct(ispipe = simsym.SBool,
                          pipeid = SPipeId,
                          pipewriter = simsym.SBool,
                          inum = SInum,
+                         # This offset is in datavals
                          off = SOffset)):
     def _declare_assumptions(self, assume):
         super(SFd, self)._declare_assumptions(assume)
@@ -33,7 +39,7 @@ SFdMap = symtypes.tdict(SFdNum, SFd)
 SVMA = simsym.tstruct(anon = simsym.SBool,
                       writable = simsym.SBool,
                       inum = SInum,
-                      # This offset is in pages, not bytes
+                      # This offset is in pages, not bytes or datavals
                       off = SOffset,
                       anondata = SDataVal)
 SVaMap = symtypes.tdict(SVa, SVMA)
@@ -535,7 +541,9 @@ class Fs(simsym.tstruct(
         if myproc.va_map[va].anon:
             return {'r:data': myproc.va_map[va].anondata, 'signal': 0}
         ## TODO: memory-mapped reads don't bump atime?
-        res = self.iread(myproc.va_map[va].inum, myproc.va_map[va].off * 4096, False)
+        res = self.iread(myproc.va_map[va].inum,
+                         myproc.va_map[va].off * PAGE_DATAVALS,
+                         False)
         if res['r'] == 0:
             # This means there was no page here
             return {'r': -1, 'signal': signal.SIGBUS}
@@ -559,7 +567,8 @@ class Fs(simsym.tstruct(
         if vma.off >= self.i_map[vma.inum].data._len:
             return {'r': -1, 'signal': signal.SIGBUS}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
-        res = self.iwrite(myproc.va_map[va].inum, myproc.va_map[va].off * 4096,
+        res = self.iwrite(myproc.va_map[va].inum,
+                          myproc.va_map[va].off * PAGE_DATAVALS,
                           databyte, False)
         if res['r'] == 1:
             return {'r': 0, 'signal': 0}

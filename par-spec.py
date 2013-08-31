@@ -4,6 +4,19 @@ import re
 import copy
 import json
 import collections
+import traceback
+import sys
+
+def wrapped_main(*args):
+    # Blarg!  multiprocessing eats tracebacks
+    try:
+        return spec.main(*args)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print >>sys.stderr, "Exception in child:\n" + tb
+        if len(e.args) == 1:
+            e.args = ("%s\nin child at:\n" + tb)
+        raise
 
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(
@@ -21,7 +34,7 @@ for i, callset in enumerate(callsets):
     if csargs.test_file:
         csargs.test_file += suffix
     csargs.functions = "/".join(c.__name__ for c in callset)
-    asyncs.append(pool.apply_async(spec.main, [csargs]))
+    asyncs.append(pool.apply_async(wrapped_main, [csargs]))
     subargs.append(csargs)
 pool.close()
 for async in asyncs:

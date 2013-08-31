@@ -1093,14 +1093,21 @@ class PathState(object):
         self.solver = z3.Solver()
 
     def str_path(self):
-        """Return the current path constraint as a string, or None if the
-        path is unconstrained."""
+        """Return the current path constraint as a string."""
 
-        asserts = self.solver.assertions()
-        if len(asserts) == 0:
-            return None
-        return str(z3.simplify(z3.And(*asserts),
-                               expand_select_store=True))
+        out = []
+        for node in self.sched[:self.schedidx]:
+            if node.typ == "exception":
+                note = str(node.val)
+            else:
+                note = str(simplify(node.path_expr()))
+                #note = str(node.path_expr())
+            if "\n" in note:
+                note = "\n  " + note.replace("\n", "\n  ")
+            out.append("%s:%s: %s" %
+                       (os.path.basename(node.frames[0].filename),
+                        node.frames[0].lineno, note))
+        return "\n".join(out)
 
 def simplify(expr, try_harder=False):
     core_simplifier = 'ctx-simplify'

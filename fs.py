@@ -8,13 +8,13 @@ import fs_testgen
 
 SFn = simsym.tuninterpreted("SFn")
 SInum = simsym.tuninterpreted("SInum")
-SDataByte = simsym.tuninterpreted("SDataByte")
+SDataVal = simsym.tuninterpreted("SDataVal")
 SVa = simsym.tuninterpreted("SVa")
 SPipeId = simsym.tuninterpreted("SPipeId")
 
 SPid = simsym.SBool
 SOffset = simsym.tsynonym("SOffset", simsym.SInt)
-class SData(symtypes.tlist(SDataByte, lenType=SOffset)):
+class SData(symtypes.tlist(SDataVal, lenType=SOffset)):
     def _declare_assumptions(self, assume):
         super(SData, self)._declare_assumptions(assume)
         assume(self._len <= 16)
@@ -35,7 +35,7 @@ SVMA = simsym.tstruct(anon = simsym.SBool,
                       inum = SInum,
                       # This offset is in pages, not bytes
                       off = SOffset,
-                      anondata = SDataByte)
+                      anondata = SDataVal)
 SVaMap = symtypes.tdict(SVa, SVMA)
 SProc = symtypes.tstruct(fd_map = SFdMap,
                          va_map = SVaMap)
@@ -62,7 +62,7 @@ isomorphism_types = {
     SFdNum: "equal",
     # Ignore data bytes or we'll try to enumerate all distinct
     # equivalence classes for file contents.
-    SDataByte: "ignore",
+    SDataVal: "ignore",
 }
 
 class Fs(simsym.tstruct(
@@ -372,7 +372,7 @@ class Fs(simsym.tstruct(
             self.i_map[inum].ctime = time
         return {'r': 1}
 
-    @model.methodwrap(fd=SFdNum, databyte=SDataByte, pid=SPid)
+    @model.methodwrap(fd=SFdNum, databyte=SDataVal, pid=SPid)
     def write(self, fd, databyte, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
@@ -405,7 +405,7 @@ class Fs(simsym.tstruct(
         self.getproc(pid).fd_map[fd].off = off + 1
         return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
 
-    @model.methodwrap(fd=SFdNum, off=SOffset, databyte=SDataByte, pid=SPid)
+    @model.methodwrap(fd=SFdNum, off=SOffset, databyte=SDataVal, pid=SPid)
     def pwrite(self, fd, off, databyte, pid):
         self.add_selfpid(pid)
         if not self.getproc(pid).fd_map.contains(fd):
@@ -502,7 +502,7 @@ class Fs(simsym.tstruct(
         vma.anon = anon
         vma.writable = writable
         if anon:
-            vma.anondata = SDataByte.var()
+            vma.anondata = SDataVal.var()
         else:
             simsym.assume(off >= 0)
             vma.off = off
@@ -544,7 +544,7 @@ class Fs(simsym.tstruct(
         else:
             raise RuntimeError('Unexpected result from iread: %r' % res)
 
-    @model.methodwrap(va=SVa, databyte=SDataByte, pid=SPid)
+    @model.methodwrap(va=SVa, databyte=SDataVal, pid=SPid)
     def memwrite(self, va, databyte, pid):
         self.add_selfpid(pid)
         myproc = self.getproc(pid)

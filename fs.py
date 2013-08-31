@@ -12,7 +12,7 @@ SDataVal = simsym.tuninterpreted("SDataVal")
 SVa = simsym.tuninterpreted("SVa")
 SPipeId = simsym.tuninterpreted("SPipeId")
 
-DATAVAL_BYTES = 1
+DATAVAL_BYTES = 4096
 PAGE_BYTES = 4096
 PAGE_DATAVALS = PAGE_BYTES / DATAVAL_BYTES
 assert PAGE_BYTES % DATAVAL_BYTES == 0

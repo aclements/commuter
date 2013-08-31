@@ -81,10 +81,6 @@ class FsState(object):
 
       inode = self.fs.i_map[symino]
       if inode is not None:
-        ## XXX
-        ## We may want to implement each Databyte as a separate 4KB page,
-        ## to check for scalability of writes to different pages (as opposed
-        ## to writes to different bytes, which is less interesting).
         writen('fd', inode.data)
 
       emit('close(fd);')
@@ -150,7 +146,7 @@ class FsState(object):
       else:
         emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
              'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %d * 4096);' % (prot, vainfo.off * PAGE_BYTES),
+             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, vainfo.off * PAGE_BYTES),
              'if (r == -1) setup_error("mmap");',
              'close(fd);')
 
@@ -283,7 +279,7 @@ class FsState(object):
 
   def write(self, args, res):
     self.emit(
-      'ssize_t r = write(%d, &data, %d);' % \
+      'ssize_t r = write(%d, %s, %d);' % \
       (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
        DATAVAL_BYTES),
       self.__check(res),
@@ -377,7 +373,7 @@ class FsState(object):
 
     self.emit(
       'int* va = (int*) %#xUL;' % va,
-      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL * 4096);' %
+      'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL);' %
       (prot, flags, self.procs[args.pid].fds[args.fd], args.off * PAGE_BYTES),
       self.__check(res),
       'return xerrno(r);')
@@ -457,7 +453,7 @@ class FsTestGenerator(testgen.TestGenerator):
 
     # Generate datavals
     for i, d in enumerate(all_datavals):
-      self.emit("const char %s[%d] = {%d};" %
+      self.emit("__attribute__((__weak__)) const char %s[%d] = {%d};" %
                 (d.expr, DATAVAL_BYTES, d.first_byte))
     self.emit()
 

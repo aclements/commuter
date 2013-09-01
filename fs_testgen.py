@@ -251,9 +251,10 @@ class FsState(object):
     if 'data' in res:
       res['data'] = self.datavals[res['data']]
     self.emit(
-      'char data[%d];' % DATAVAL_BYTES,
-      'ssize_t r = pread(%d, &data, sizeof data, %d);' % \
-      (self.procs[args.pid].fds[args.fd], args.off * DATAVAL_BYTES),
+      'char *data = datavalbuf;',
+      'ssize_t r = pread(%d, data, %d, %d);' % \
+      (self.procs[args.pid].fds[args.fd], DATAVAL_BYTES,
+       args.off * DATAVAL_BYTES),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
       'return data[0];')
@@ -270,9 +271,9 @@ class FsState(object):
     if 'data' in res:
       res['data'] = self.datavals[res['data']]
     self.emit(
-      'char data[%d];' % DATAVAL_BYTES,
-      'ssize_t r = read(%d, &data, sizeof data);' % \
-      self.procs[args.pid].fds[args.fd],
+      'char *data = datavalbuf;',
+      'ssize_t r = read(%d, data, %d);' % \
+      (self.procs[args.pid].fds[args.fd], DATAVAL_BYTES),
       self.__check(res),
       'if (r < 0) return xerrno(r);',
       'return data[0];')
@@ -455,6 +456,9 @@ class FsTestGenerator(testgen.TestGenerator):
     for i, d in enumerate(all_datavals):
       self.emit("__attribute__((__weak__)) const char %s[%d] = {%d};" %
                 (d.expr, DATAVAL_BYTES, d.first_byte))
+    # Create a buffer for datavals.  This is in the BSS, so we'll
+    # touch it after fork (unlike, say, if it were on the stack).
+    self.emit("__attribute__((__weak__)) char datavalbuf[%d];" % DATAVAL_BYTES)
     self.emit()
 
     self.emit("//+++ tests")

@@ -523,7 +523,7 @@ class FsTestGenerator(testgen.TestGenerator):
         # Generate test code for this call.  As a side-effect, this will
         # fill in structures we need to write the setup code.
         args = self.get_call_args(callidx)
-        res = {k: self.eval(v) for k, v in self.get_result(callidx).items()}
+        res = self.get_result(callidx)
         fns['test_%d' % callidx] \
           = self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
                       fs.gen_code(callname, args, res))

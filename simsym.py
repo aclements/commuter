@@ -194,8 +194,12 @@ class Symbolic(object):
         """
         # Assumptions have already been declared on the underlying Z3
         # value, so don't assume them again
+        return self.bind(MODEL_FETCH)
+
+    def bind(self, model):
+        """Return a deep copy of this object that is bound to model."""
         return self._new_lvalue(compound_map(lambda x:x, self._z3_value()),
-                                MODEL_FETCH)
+                                model)
 
 class SymbolicConst(Symbolic):
     """The base class for symbolic constants.  Symbolic constants are

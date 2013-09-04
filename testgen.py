@@ -39,11 +39,12 @@ class TestGenerator(object):
     def get_result(self, callno, permno=0):
         """Return the result for the callno'th call.
 
-        This may contain unevaluated symbolic expressions.  These
-        should be passed to self.eval to evaluate them to concrete
-        values.
+        The result must be a dictionary.  Any values that are symbolic
+        will be automatically bound to the model.
         """
-        return self.__result.value.results[permno][callno]
+        res = self.__result.value.results[permno][callno]
+        return {k: v.bind(self.__model) if isinstance(v, simsym.Symbolic) else v
+                for k, v in res.iteritems()}
 
     def eval(self, expr):
         """Evaluate a symbolic expression.

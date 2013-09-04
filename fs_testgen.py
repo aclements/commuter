@@ -28,35 +28,40 @@ class PerProc(object):
   def __init__(self):
     assert(fd_begin > 3)
     # Map from SFdNum to concrete FD number
-    self.fds = testgen.DynamicDict(range(fd_begin, fd_end))
+    self.fds = testgen.Interpreter(fs_module.SFdNum, range(fd_begin, fd_end))
     # Map from SVa to concrete virtual address
-    self.vas = testgen.DynamicDict((va_base + i * 4096) for i in range(va_len))
+    self.vas = testgen.Interpreter(
+      fs_module.SVa, ((va_base + i * 4096) for i in range(va_len)))
 
 class Inode(object):
   def __init__(self, num):
     if num is not None:
       self.fname = '__i%d' % num
     # Map from SOffset (in datavals) to physical byte offset
-    self.offsets = testgen.DynamicDict(lambda off: off * DATAVAL_BYTES)
+    self.offsets = testgen.Interpreter(
+      fs_module.SOffset, lambda off: off * DATAVAL_BYTES)
 
 class FsState(object):
   def __init__(self, fs):
     self.fs = fs
     # Map from uninterpreted path names to concrete file names
-    self.filenames = testgen.DynamicDict(all_filenames)
+    self.filenames = testgen.Interpreter(fs_module.SFn, all_filenames)
     # Map from SInum to concrete Inode object
-    self.inums = testgen.DynamicDict(map(Inode, range(0, 6)))
+    self.inums = testgen.Interpreter(
+      fs_module.SInum, map(Inode, range(0, 6)))
     # Map from SDataVal to DataVal
-    self.datavals = testgen.DynamicDict(all_datavals)
+    self.datavals = testgen.Interpreter(fs_module.SDataVal, all_datavals,
+                                        enumerate=False)
     # Map from uninterpreted pipe IDs to reader FDs (writers are +1)
-    self.pipes = testgen.DynamicDict(range(pipe_begin, pipe_end, 2))
+    self.pipes = testgen.Interpreter(
+      fs_module.SPipeId, range(pipe_begin, pipe_end, 2))
     self.procs = testgen.DynamicDict(iter(PerProc, None))
 
   def pid_to_sproc(self, pid):
     return self.fs.proc1 if pid else self.fs.proc0
 
   def fd_to_inode(self, pid, fd):
-    fd_map = self.pid_to_sproc(pid).fd_map
+    fd_map = self.pid_to_sproc(pid.val).fd_map
     if not fd_map.contains(fd):
       # Return a bogus Inode to provide an offset pool
       return Inode(None)
@@ -79,12 +84,13 @@ class FsState(object):
 
   def setup_inodes(self):
     def writen(fdexpr, data):
-      alen = data.len()
+      alen = data.len().someval # Don't enumerate lengths
       assert 0 <= alen <= 16
       if alen == 0:
         return
       for i in range(alen):
-        emit('r = write(%s, %s, %d);' % (fdexpr, self.datavals[data[i]].expr,
+        emit('r = write(%s, %s, %d);' % (fdexpr,
+                                         self.datavals[data._vals[i]].expr,
                                          DATAVAL_BYTES),
              'if (r != %d) setup_error("write => %%d", r);' % DATAVAL_BYTES)
 
@@ -230,9 +236,15 @@ class FsState(object):
       if var == 'errno':
         continue
       if isinstance(val, DataVal):
-        emit('expect_result("%s", %s[0], %d);' % (var, var, val.first_byte))
+        cval = val.first_byte
+        var += '[0]'
+      elif isinstance(val, simsym.Symbolic):
+        # XXX Should we enumerate result values?  This might only come
+        # up in lseek.
+        cval = val.someval
       else:
-        emit('expect_result("%s", %s, %d);' % (var, var, val))
+        cval = val
+      emit('expect_result("%s", %s, %d);' % (var, var, cval))
     if 'errno' in res:
       emit('expect_errno(%d);' % res['errno'])
     return emit
@@ -247,7 +259,7 @@ class FsState(object):
       flags.append('O_TRUNC')
     if args.anyfd:
       flags.append('O_ANYFD')
-    if res['r'] >= 0:
+    if 'errno' not in res:
       # XXX Can we match up the symbolic FD with the real FD?
       del res['r']
     self.emit(
@@ -272,7 +284,7 @@ class FsState(object):
     self.emit(
       'char *data = datavalbuf;',
       'ssize_t r = pread(%d, data, %d, %d);' % \
-      (self.procs[args.pid].fds[args.fd], DATAVAL_BYTES,
+      (self.procs[args.pid.val].fds[args.fd], DATAVAL_BYTES,
        self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
@@ -281,7 +293,7 @@ class FsState(object):
   def pwrite(self, args, res):
     self.emit(
       'ssize_t r = pwrite(%d, %s, %d, %d);' % \
-      (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
+      (self.procs[args.pid.val].fds[args.fd], self.datavals[args.databyte].expr,
        DATAVAL_BYTES, self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'return xerrno(r);')
@@ -292,7 +304,7 @@ class FsState(object):
     self.emit(
       'char *data = datavalbuf;',
       'ssize_t r = read(%d, data, %d);' % \
-      (self.procs[args.pid].fds[args.fd], DATAVAL_BYTES),
+      (self.procs[args.pid.val].fds[args.fd], DATAVAL_BYTES),
       self.__check(res),
       'if (r < 0) return xerrno(r);',
       'return data[0];')
@@ -300,7 +312,7 @@ class FsState(object):
   def write(self, args, res):
     self.emit(
       'ssize_t r = write(%d, %s, %d);' % \
-      (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
+      (self.procs[args.pid.val].fds[args.fd], self.datavals[args.databyte].expr,
        DATAVAL_BYTES),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
@@ -348,7 +360,7 @@ class FsState(object):
     self.__prune_stat_res(res)
     self.emit(
       'struct stat st;',
-      'int r = fstat(%d, &st);' % self.procs[args.pid].fds[args.fd],
+      'int r = fstat(%d, &st);' % self.procs[args.pid.val].fds[args.fd],
       self.__check(res),
       'if (r < 0) return xerrno(r);',
       '/* Hack, to test for approximate equality */',
@@ -356,14 +368,14 @@ class FsState(object):
 
   def close(self, args, res):
     self.emit(
-      'int r = close(%d);' % self.procs[args.pid].fds[args.fd],
+      'int r = close(%d);' % self.procs[args.pid.val].fds[args.fd],
       self.__check(res),
       'return xerrno(r);')
 
   def lseek(self, args, res):
     self.emit(
       'int r = lseek(%d, %d, %s);' %
-      (self.procs[args.pid].fds[args.fd],
+      (self.procs[args.pid.val].fds[args.fd],
        self.fd_to_inode(args.pid, args.fd).offsets[args.off],
        'SEEK_SET' if args.whence_set else
        'SEEK_CUR' if args.whence_cur else
@@ -382,26 +394,26 @@ class FsState(object):
 
     if args.fixed:
       flags += ' | MAP_FIXED'
-      va = self.procs[args.pid].vas[args.va]
+      va = self.procs[args.pid.val].vas[args.va]
     else:
       va = 0
 
     if 'r:va' in res:
       if args.fixed:
-        res['r'] = self.procs[args.pid].vas[res['r:va']]
+        res['r'] = self.procs[args.pid.val].vas[res['r:va']]
       del res['r:va']
 
     self.emit(
       'int* va = (int*) %#xUL;' % va,
       'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL);' %
-      (prot, flags, self.procs[args.pid].fds[args.fd],
+      (prot, flags, self.procs[args.pid.val].fds[args.fd],
        self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'return xerrno(r);')
 
   def munmap(self, args, res):
     self.emit(
-      'int* va = (int*) %#xUL;' % self.procs[args.pid].vas[args.va],
+      'int* va = (int*) %#xUL;' % self.procs[args.pid.val].vas[args.va],
       'int r = munmap(va, 4096);',
       self.__check(res),
       'return xerrno(r);')
@@ -411,7 +423,7 @@ class FsState(object):
     if args.writable:
       prot += ' | PROT_WRITE'
     self.emit(
-      'int* va = (int*) %#xUL;' % self.procs[args.pid].vas[args.va],
+      'int* va = (int*) %#xUL;' % self.procs[args.pid.val].vas[args.va],
       'int r = mprotect(va, 4096, %s);' % prot,
       self.__check(res),
       'return xerrno(r);')
@@ -420,7 +432,7 @@ class FsState(object):
     if 'r:data' in res:
       res['r'] = self.datavals[res.pop('r:data')].first_byte
     self.emit(
-      'char* p = (char*) %#xUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) %#xUL;' % self.procs[args.pid.val].vas[args.va],
       'int r, signal;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
@@ -433,7 +445,7 @@ class FsState(object):
 
   def memwrite(self, args, res):
     self.emit(
-      'char* p = (char*) %#xUL;' % self.procs[args.pid].vas[args.va],
+      'char* p = (char*) %#xUL;' % self.procs[args.pid.val].vas[args.va],
       'int signal, r = 0;',
       'pf_active = 1;',
       'if ((signal = sigsetjmp(pf_jmpbuf, 1)))',
@@ -528,7 +540,7 @@ class FsTestGenerator(testgen.TestGenerator):
           = self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
                       fs.gen_code(callname, args, res))
         if hasattr(args, 'pid'):
-          pids.append(args.pid)
+          pids.append(args.pid.val)
         else:
           # Some calls don't take a pid because their process doesn't matter
           pids.append(False)

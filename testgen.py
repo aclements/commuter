@@ -115,6 +115,15 @@ class CodeWriter(object):
         indented = by + str(self).replace('\n', '\n' + by)
         return CodeWriter()(indented)
 
+def _is_literal(z3ast):
+    if z3.is_int(z3ast):
+        return z3.is_int_value(z3ast)
+    if z3.is_bool(z3ast):
+        return z3.is_true(z3ast) or z3.is_false(z3ast)
+    if z3ast.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
+        return z3.is_const(z3ast) and '!' in str(z3ast)
+    raise NotImplementedError('Don\'t know how to literal-check %s' % z3ast)
+
 class DynamicDict(object):
     """A dynamically-filled dictionary.
 
@@ -142,16 +151,6 @@ class DynamicDict(object):
 
         self.__map = {}
 
-    @staticmethod
-    def __is_literal(z3ast):
-        if z3.is_int(z3ast):
-            return z3.is_int_value(z3ast)
-        if z3.is_bool(z3ast):
-            return z3.is_true(z3ast) or z3.is_false(z3ast)
-        if z3ast.sort_kind() == z3.Z3_UNINTERPRETED_SORT:
-            return '!' in str(z3ast)
-        raise NotImplementedError('Don\'t know how to literal-check %s' % z3ast)
-
     def __getitem__(self, key):
        """Return the value associated with key.
 
@@ -164,7 +163,7 @@ class DynamicDict(object):
 
        if hkey not in self.__map:
            if isinstance(key, simsym.Symbolic) and \
-              not self.__is_literal(simsym.unwrap(key)):
+              not _is_literal(simsym.unwrap(key)):
                # There's nothing wrong with supporting arbitrary ASTs,
                # but in every place we use DynamicDict, this indicates
                # an easy-to-miss bug.
@@ -190,3 +189,70 @@ class DynamicDict(object):
     def items(self):
         self.__fn = None
         return ((hkey.ast, val) for hkey, val in self.__map.iteritems())
+
+class Interpreter(object):
+    """An interpreter for uninterpreted values.
+
+    This is like a DynamicDict, but expects keys to be unevaluated
+    expressions with uninterpreted sorts (or sorts we wish to treat as
+    uninterpreted).  This interprets these expressions into physical
+    values.  Keys are considered equal if they evaluate to the same
+    value in the model.  This also type-checks all keys.
+    """
+
+    def __init__(self, key_type, iterable_or_fn, enumerate=True):
+        """Initialize an empty Interpreter.
+
+        key_type must be a Symbolic subclass.  iterable_or_fn must be
+        as for DynamicDict.  If iterable_or_fn is a function, it will
+        be applied to the literal key, not the expression.  If
+        enumerate is False, keys in this Interpreter will not be
+        considered for path enumeration.
+        """
+
+        if not issubclass(key_type, simsym.Symbolic):
+            raise TypeError("key_type must be subclass of Symbolic, not %r" %
+                            simsym.strtype(key_type))
+        self.__key_type = key_type
+
+        if isinstance(iterable_or_fn, collections.Iterable):
+            it = iter(iterable_or_fn)
+            self.__fn = lambda x: it.next()
+        else:
+            self.__fn = iterable_or_fn
+
+        self.__enumerate = enumerate
+
+        self.__map = {}
+
+    def __getitem__(self, key):
+        if not isinstance(key, self.__key_type):
+            raise TypeError("key must be %r instance, not %r" %
+                            (self.__key_type.__name__, simsym.strtype(key)))
+        if _is_literal(simsym.unwrap(key)):
+            raise ValueError("key must be non-literal, not %r" % key)
+
+        lit = key.val if self.__enumerate else key.someval
+        hlit = z3util.HashableAst(lit)
+
+        if hlit not in self.__map:
+            if self.__fn is None:
+                raise ValueError("Interpreter has been read; cannot be extended")
+            try:
+                self.__map[hlit] = (key, self.__fn(lit))
+            except StopIteration:
+                raise ValueError("Ran out of values for %r" % key)
+        return self.__map[hlit][1]
+
+    def keys(self):
+        self.__fn = None
+        return (p[0] for p in self.__map.itervalues())
+    __iter__ = keys
+
+    def values(self):
+        self.__fn = None
+        return (p[1] for p in self.__map.itervalues())
+
+    def items(self):
+        self.__fn = None
+        return self.__map.itervalues()

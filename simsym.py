@@ -330,10 +330,7 @@ class MetaZ3Wrapper(type):
                              strtype(z3ref)))
         obj = cls.__new__(cls)
         obj._v = z3ref
-        if model and model is not MODEL_FETCH:
-            # Interpret this symbolic value into a concrete value
-            # using the model
-            return model._eval(obj)
+        obj._model = model
         return obj
 
 class SExpr(Symbolic):
@@ -349,6 +346,28 @@ class SExpr(Symbolic):
 
     def _z3_value(self):
         return self._v
+
+    @property
+    def val(self):
+        """The concrete value of this constant in the bound model.
+
+        This will track the evaluation in the model so that over
+        values can be enumerated by concolic execution.
+        """
+        if self._model and self._model is not MODEL_FETCH:
+            return self._model._eval(self)
+        raise ValueError("%s is not bound to a model" % self)
+
+    @property
+    def someval(self):
+        """Some concrete value of this constant in the bound model.
+
+        Unlike val, this does not track this evaluation in the model,
+        so it will not cause concolic execution to try other values.
+        """
+        if self._model and self._model is not MODEL_FETCH:
+            return self._model._eval(self, track=False)
+        raise ValueError("%s is not bound to a model" % self)
 
 class SArith(SExpr):
     __ref_type__ = z3.ArithRef
@@ -387,6 +406,9 @@ class SBool(SExpr, SymbolicConst):
     __z3_sort__ = z3.BoolSort()
 
     def __nonzero__(self):
+        if self._model and self._model is not MODEL_FETCH:
+            return self.val
+
         scheduler, path_state = Env.scheduler(), Env.path_state()
         solver = path_state.solver
         cursched = path_state.sched

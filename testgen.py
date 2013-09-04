@@ -1,6 +1,7 @@
 import simsym
 import z3
 import z3util
+import collections
 
 class TestGenerator(object):
     """Base class for test case generators.
@@ -141,8 +142,20 @@ class DynamicDict(object):
     doing so freezes its contents to prevent further additions.
     """
 
-    def __init__(self, iterable):
-        self.__gen = iter(iterable)
+    def __init__(self, iterable_or_fn):
+        """Initialize an empty DynamicDict fed by iterable_or_fn.
+
+        iterable_or_fn must either be an iterable object over physical
+        values or a function that will be called with the key and must
+        return a value or raise StopIteration.
+        """
+
+        if isinstance(iterable_or_fn, collections.Iterable):
+            it = iter(iterable_or_fn)
+            self.__fn = lambda x: it.next()
+        else:
+            self.__fn = iterable_or_fn
+
         self.__map = {}
 
     @staticmethod
@@ -173,23 +186,23 @@ class DynamicDict(object):
                # an easy-to-miss bug.
                raise ValueError("Key is not a literal: %r" % key)
 
-           if self.__gen is None:
+           if self.__fn is None:
                raise ValueError("DynamicDict has been read; cannot be extended")
            try:
-               self.__map[hkey] = self.__gen.next()
+               self.__map[hkey] = self.__fn(key)
            except StopIteration:
                raise ValueError("Ran out of values for %r" % key)
        return self.__map[hkey]
 
     def keys(self):
-        self.__gen = None
+        self.__fn = None
         return (hkey.ast for hkey in self.__map.iterkeys())
     __iter__ = keys
 
     def values(self):
-        self.__gen = None
+        self.__fn = None
         return self.__map.itervalues()
 
     def items(self):
-        self.__gen = None
+        self.__fn = None
         return ((hkey.ast, val) for hkey, val in self.__map.iteritems())

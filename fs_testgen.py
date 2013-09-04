@@ -34,7 +34,10 @@ class PerProc(object):
 
 class Inode(object):
   def __init__(self, num):
-    self.fname = '__i%d' % num
+    if num is not None:
+      self.fname = '__i%d' % num
+    # Map from SOffset (in datavals) to physical byte offset
+    self.offsets = testgen.DynamicDict(lambda off: off * DATAVAL_BYTES)
 
 class FsState(object):
   def __init__(self, fs):
@@ -49,13 +52,24 @@ class FsState(object):
     self.pipes = testgen.DynamicDict(range(pipe_begin, pipe_end, 2))
     self.procs = testgen.DynamicDict(iter(PerProc, None))
 
+  def pid_to_sproc(self, pid):
+    return self.fs.proc1 if pid else self.fs.proc0
+
+  def fd_to_inode(self, pid, fd):
+    fd_map = self.pid_to_sproc(pid).fd_map
+    if not fd_map.contains(fd):
+      # Return a bogus Inode to provide an offset pool
+      return Inode(None)
+    return self.inums[fd_map[fd].inum]
+
   def build_proc(self, pid):
     fdmap = {}
-    proc = self.fs.proc1 if pid else self.fs.proc0
-    for symfd, fd in self.procs[pid].fds.items():
-      if not proc.fd_map.contains(symfd):
+    proc = self.pid_to_sproc(pid)
+    for symfdnum, fdnum in self.procs[pid].fds.items():
+      if not proc.fd_map.contains(symfdnum):
         continue
-      fdmap[fd] = proc.fd_map[symfd]
+      symfd = proc.fd_map[symfdnum]
+      fdmap[fdnum] = (symfd, self.inums[symfd.inum])
     vamap = {}
     for symva, va in self.procs[pid].vas.items():
       if not proc.va_map.contains(symva):
@@ -119,16 +133,16 @@ class FsState(object):
     emit = self.emit
     emit('int fd __attribute__((unused));',
          'int r __attribute__((unused));')
-    for fd, fdinfo in fdmap.items():
-      if fdinfo.ispipe:
-        pipe_setup_fd = self.pipes[fdinfo.pipeid]
-        if fdinfo.pipewriter: pipe_setup_fd += 1
+    for fd, (symfd, inode) in fdmap.items():
+      if symfd.ispipe:
+        pipe_setup_fd = self.pipes[symfd.pipeid]
+        if symfd.pipewriter: pipe_setup_fd += 1
         emit('r = dup2(%d, %d);' % (pipe_setup_fd, fd),
              'if (r < 0) setup_error("dup2");')
       else:
-        emit('fd = open("%s", O_RDWR);' % self.inums[fdinfo.inum].fname,
+        emit('fd = open("%s", O_RDWR);' % self.inums[symfd.inum].fname,
              'if (fd < 0) setup_error("open");',
-             'r = lseek(fd, %d, SEEK_SET);' % (fdinfo.off * DATAVAL_BYTES),
+             'r = lseek(fd, %d, SEEK_SET);' % (inode.offsets[symfd.off]),
              'if (fd >= 0 && r < 0) setup_error("lseek");',
              'r = dup2(fd, %d);' % fd,
              'if (fd >= 0 && r < 0) setup_error("dup2");',
@@ -148,9 +162,10 @@ class FsState(object):
         else:
           emit('*(volatile int*)va;')
       else:
-        emit('fd = open("%s", O_RDWR);' % self.inums[vainfo.inum].fname,
+        inode = self.inums[vainfo.inum]
+        emit('fd = open("%s", O_RDWR);' % inode.fname,
              'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, vainfo.off * DATAVAL_BYTES),
+             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, inode.offsets[vainfo.off]),
              'if (r == -1) setup_error("mmap");',
              'close(fd);')
 
@@ -258,7 +273,7 @@ class FsState(object):
       'char *data = datavalbuf;',
       'ssize_t r = pread(%d, data, %d, %d);' % \
       (self.procs[args.pid].fds[args.fd], DATAVAL_BYTES,
-       args.off * DATAVAL_BYTES),
+       self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'if (r <= 0) return xerrno(r);',
       'return data[0];')
@@ -267,7 +282,7 @@ class FsState(object):
     self.emit(
       'ssize_t r = pwrite(%d, %s, %d, %d);' % \
       (self.procs[args.pid].fds[args.fd], self.datavals[args.databyte].expr,
-       DATAVAL_BYTES, args.off * DATAVAL_BYTES),
+       DATAVAL_BYTES, self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'return xerrno(r);')
 
@@ -349,7 +364,7 @@ class FsState(object):
     self.emit(
       'int r = lseek(%d, %d, %s);' %
       (self.procs[args.pid].fds[args.fd],
-       args.off * DATAVAL_BYTES,
+       self.fd_to_inode(args.pid, args.fd).offsets[args.off],
        'SEEK_SET' if args.whence_set else
        'SEEK_CUR' if args.whence_cur else
        'SEEK_END' if args.whence_end else '999'),
@@ -379,7 +394,8 @@ class FsState(object):
     self.emit(
       'int* va = (int*) %#xUL;' % va,
       'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL);' %
-      (prot, flags, self.procs[args.pid].fds[args.fd], args.off * DATAVAL_BYTES),
+      (prot, flags, self.procs[args.pid].fds[args.fd],
+       self.fd_to_inode(args.pid, args.fd).offsets[args.off]),
       self.__check(res),
       'return xerrno(r);')
 

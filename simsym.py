@@ -40,6 +40,8 @@ def gen_name(template=None):
 
 MODEL_FETCH = object()
 
+REALM_IGNORE = object()
+
 class Symbolic(object):
     """Base class of symbolic types.  Symbolic types come in two
     groups: constant and mutable.  Symbolic constants are deeply
@@ -347,6 +349,19 @@ class SExpr(Symbolic):
     def _z3_value(self):
         return self._v
 
+    def eval(self, realm=None):
+        """The concrete value of this constant in the bound model.
+
+        The concrete assignment of this constant will be recorded in
+        the bound model.  realm specifies the assignment realm to
+        record it under.  The default realm is None.  REALM_IGNORE is
+        handled specially and will cause this assignment to not be
+        recorded.
+        """
+        if self._model and self._model is not MODEL_FETCH:
+            return self._model._eval(self, realm)
+        raise ValueError("%s is not bound to a model" % self)
+
     @property
     def val(self):
         """The concrete value of this constant in the bound model.
@@ -354,9 +369,7 @@ class SExpr(Symbolic):
         This will track the evaluation in the model so that over
         values can be enumerated by concolic execution.
         """
-        if self._model and self._model is not MODEL_FETCH:
-            return self._model._eval(self)
-        raise ValueError("%s is not bound to a model" % self)
+        return self.eval()
 
     @property
     def someval(self):
@@ -365,9 +378,7 @@ class SExpr(Symbolic):
         Unlike val, this does not track this evaluation in the model,
         so it will not cause concolic execution to try other values.
         """
-        if self._model and self._model is not MODEL_FETCH:
-            return self._model._eval(self, track=False)
-        raise ValueError("%s is not bound to a model" % self)
+        return self.eval(REALM_IGNORE)
 
 class SArith(SExpr):
     __ref_type__ = z3.ArithRef
@@ -1432,7 +1443,7 @@ class Model(object):
         self.__var_constructors = var_constructors
         self.__z3_model = z3_model
         self.__track = False
-        self.__asignments = []
+        self.__asignments = collections.defaultdict(list)
 
     def __getitem__(self, name):
         # XXX This is good for things where the initial variable name
@@ -1456,16 +1467,17 @@ class Model(object):
         self.__track = enable
 
     def assignments(self):
-        """Return a list of expressions evaluated by the model.
+        """Return the expressions evaluated by the model.
 
-        The returned list consists of pairs of (expression, value)
-        where both expression and value are instances of Symbolic.
-        The list will be in the order the expressions were evaluated,
-        with duplicate expressions suppressed.
+        The returned value is a dictionary mapping from assignment
+        realms to lists, where each list consists of pairs of
+        (expression, value).  Both expression and value are instances
+        of Symbolic.  The list will be in the order the expressions
+        were evaluated, with duplicate expressions suppressed.
         """
         return self.__asignments
 
-    def _eval(self, expr, track=True):
+    def _eval(self, expr, realm=None):
         """Evaluate a Symbolic expression to a concrete Python value."""
 
         # model_completion asks Z3 to make up concrete values if they
@@ -1473,13 +1485,13 @@ class Model(object):
         z3val = self.__z3_model.evaluate(unwrap(expr), model_completion=True)
         res = to_concrete(z3val, type(expr))
 
-        if self.__track and track:
-            for aexpr, _ in self.__asignments:
+        if self.__track and realm is not REALM_IGNORE:
+            for aexpr, _ in self.__asignments[realm]:
                 if unwrap(expr).eq(unwrap(aexpr)):
                     break
             else:
                 val = type(expr)._wrap(z3val, None)
-                self.__asignments.append((expr, val))
+                self.__asignments[realm].append((expr, val))
 
         return res
 

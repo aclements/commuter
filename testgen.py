@@ -221,7 +221,10 @@ class Interpreter(object):
         else:
             self.__fn = iterable_or_fn
 
-        self.__enumerate = enumerate
+        if enumerate:
+            self.__realm = None # Default realm
+        else:
+            self.__realm = simsym.REALM_IGNORE
 
         self.__map = {}
 
@@ -232,7 +235,7 @@ class Interpreter(object):
         if _is_literal(simsym.unwrap(key)):
             raise ValueError("key must be non-literal, not %r" % key)
 
-        lit = key.val if self.__enumerate else key.someval
+        lit = key.eval(self.__realm)
         hlit = z3util.HashableAst(lit)
 
         if hlit not in self.__map:

@@ -658,7 +658,7 @@ class TestWriter(object):
             smodel = result.get_model(model)
             smodel.track_assignments(True)
             self.testgen.on_model(smodel)
-            res = smodel.assignments()
+            res = smodel.assignments()[None]
 
         self.npathmodel += 1
         return res

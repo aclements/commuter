@@ -32,13 +32,17 @@ class PerProc(object):
     # Map from SVa to concrete virtual address
     self.vas = testgen.DynamicDict((va_base + i * 4096) for i in range(va_len))
 
+class Inode(object):
+  def __init__(self, num):
+    self.fname = '__i%d' % num
+
 class FsState(object):
   def __init__(self, fs):
     self.fs = fs
     # Map from uninterpreted path names to concrete file names
     self.filenames = testgen.DynamicDict(all_filenames)
-    # Map from uninterpreted inodes to inode file names
-    self.inodefiles = testgen.DynamicDict(['__i%d' % x for x in range(0, 6)])
+    # Map from SInum to concrete Inode object
+    self.inums = testgen.DynamicDict(map(Inode, range(0, 6)))
     # Map from SDataVal to DataVal
     self.datavals = testgen.DynamicDict(all_datavals)
     # Map from uninterpreted pipe IDs to reader FDs (writers are +1)
@@ -75,13 +79,13 @@ class FsState(object):
          'int fds[2] __attribute__((unused));',
          'int r __attribute__((unused));',
          'char c __attribute__((unused));')
-    for symino, ifn in self.inodefiles.items():
-      emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % ifn,
+    for syminum, inode in self.inums.items():
+      emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % inode.fname,
            'if (fd < 0) setup_error("open");')
 
-      inode = self.fs.i_map[symino]
-      if inode is not None:
-        writen('fd', inode.data)
+      syminode = self.fs.i_map[syminum]
+      if syminode is not None:
+        writen('fd', syminode.data)
 
       emit('close(fd);')
 
@@ -100,12 +104,12 @@ class FsState(object):
 
   def setup_filenames(self, fn_to_ino):
     for fn in fn_to_ino:
-      self.emit('r = link("%s", "%s");' % (fn_to_ino[fn], fn),
+      self.emit('r = link("%s", "%s");' % (fn_to_ino[fn].fname, fn),
                 'if (r < 0) setup_error("link");')
 
   def setup_inodes_finalize(self):
-    for inodefile in self.inodefiles.values():
-      self.emit('unlink("%s");' % inodefile)
+    for inode in self.inums.values():
+      self.emit('unlink("%s");' % inode.fname)
     for reader_fd in self.pipes.values():
       writer_fd = reader_fd + 1
       self.emit('close(%d);' % reader_fd,
@@ -122,7 +126,7 @@ class FsState(object):
         emit('r = dup2(%d, %d);' % (pipe_setup_fd, fd),
              'if (r < 0) setup_error("dup2");')
       else:
-        emit('fd = open("%s", O_RDWR);' % self.inodefiles[fdinfo.inum],
+        emit('fd = open("%s", O_RDWR);' % self.inums[fdinfo.inum].fname,
              'if (fd < 0) setup_error("open");',
              'r = lseek(fd, %d, SEEK_SET);' % (fdinfo.off * DATAVAL_BYTES),
              'if (fd >= 0 && r < 0) setup_error("lseek");',
@@ -144,7 +148,7 @@ class FsState(object):
         else:
           emit('*(volatile int*)va;')
       else:
-        emit('fd = open("%s", O_RDWR);' % self.inodefiles[vainfo.inum],
+        emit('fd = open("%s", O_RDWR);' % self.inums[vainfo.inum].fname,
              'if (fd < 0) setup_error("open");',
              'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, vainfo.off * PAGE_BYTES),
              'if (r == -1) setup_error("mmap");',
@@ -157,13 +161,13 @@ class FsState(object):
                 'close(%d);' % writer_fd)
 
   def build_dir(self):
-    # Reads filenames; extends inodefiles
+    # Reads filenames; extends inums
     fn_to_ino = {}
     for symfn, fn in self.filenames.items():
       if not self.fs.root_dir.contains(symfn):
         continue
-      symino = self.fs.root_dir[symfn]
-      fn_to_ino[fn] = self.inodefiles[symino]
+      syminum = self.fs.root_dir[symfn]
+      fn_to_ino[fn] = self.inums[syminum]
 
     # Reads procs[pid].fds and procs[pid].vas; extends nothing
     (fdmap0, vamap0) = self.build_proc(False)
@@ -176,16 +180,16 @@ class FsState(object):
              'final': testgen.CodeWriter()}
 
     try:
-      # setup_proc reads nothing; extends inodefiles, datavals, pipes
+      # setup_proc reads nothing; extends inums, datavals, pipes
       self.emit = setup['proc0']; self.setup_proc(fdmap0, vamap0)
       self.emit = setup['proc1']; self.setup_proc(fdmap1, vamap1),
-      # setup_inodes reads inodefiles, pipes; extends datavals
+      # setup_inodes reads inums, pipes; extends datavals
       self.emit = setup['common']; self.setup_inodes()
       # setup_filenames reads nothing; extends nothing
       self.emit = setup['common']; self.setup_filenames(fn_to_ino)
       # setup_proc_finalize reads pipes; extends nothing
       self.emit = setup['procfinal']; self.setup_proc_finalize()
-      # setup_inodes_finalize reads inodefiles, pipes; extends nothing
+      # setup_inodes_finalize reads inums, pipes; extends nothing
       self.emit = setup['final']; self.setup_inodes_finalize()
     finally:
       self.emit = None

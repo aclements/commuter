@@ -150,7 +150,7 @@ class FsState(object):
       else:
         emit('fd = open("%s", O_RDWR);' % self.inums[vainfo.inum].fname,
              'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, vainfo.off * PAGE_BYTES),
+             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, vainfo.off * DATAVAL_BYTES),
              'if (r == -1) setup_error("mmap");',
              'close(fd);')
 
@@ -379,7 +379,7 @@ class FsState(object):
     self.emit(
       'int* va = (int*) %#xUL;' % va,
       'long r = (intptr_t) mmap(va, 4096, %s, %s, %d, %#xUL);' %
-      (prot, flags, self.procs[args.pid].fds[args.fd], args.off * PAGE_BYTES),
+      (prot, flags, self.procs[args.pid].fds[args.fd], args.off * DATAVAL_BYTES),
       self.__check(res),
       'return xerrno(r);')
 
@@ -438,9 +438,8 @@ class FsTestGenerator(testgen.TestGenerator):
     self.__pending_funcs = {}
 
     # Get some constants from fs
-    global DATAVAL_BYTES, PAGE_BYTES
+    global DATAVAL_BYTES
     DATAVAL_BYTES = fs_module.DATAVAL_BYTES
-    PAGE_BYTES = fs_module.PAGE_BYTES
 
     self.emit("""\
 //+++ common

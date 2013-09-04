@@ -36,12 +36,16 @@ class SFd(simsym.tstruct(ispipe = simsym.SBool,
         assume(self.off >= 0)
 SFdNum = simsym.tsynonym("SFdNum", simsym.SInt)
 SFdMap = symtypes.tdict(SFdNum, SFd)
-SVMA = simsym.tstruct(anon = simsym.SBool,
-                      writable = simsym.SBool,
-                      inum = SInum,
-                      # This offset is in pages, not bytes or datavals
-                      off = SOffset,
-                      anondata = SDataVal)
+class SVMA(simsym.tstruct(anon = simsym.SBool,
+                          writable = simsym.SBool,
+                          inum = SInum,
+                          # This offset is in datavals
+                          off = SOffset,
+                          anondata = SDataVal)):
+    def _declare_assumptions(self, assume):
+        super(SVMA, self)._declare_assumptions(assume)
+        assume(self.off >= 0)
+        assume(self.off % PAGE_DATAVALS == 0)
 SVaMap = symtypes.tdict(SVa, SVMA)
 SProc = symtypes.tstruct(fd_map = SFdMap,
                          va_map = SVaMap)
@@ -511,6 +515,7 @@ class Fs(simsym.tstruct(
             vma.anondata = SDataVal.var()
         else:
             simsym.assume(off >= 0)
+            simsym.assume(off % PAGE_DATAVALS == 0)
             vma.off = off
             vma.inum = myproc.fd_map[fd].inum
         # This has to be well-typed, so we use a different variable to
@@ -542,7 +547,7 @@ class Fs(simsym.tstruct(
             return {'r:data': myproc.va_map[va].anondata, 'signal': 0}
         ## TODO: memory-mapped reads don't bump atime?
         res = self.iread(myproc.va_map[va].inum,
-                         myproc.va_map[va].off * PAGE_DATAVALS,
+                         myproc.va_map[va].off,
                          False)
         if res['r'] == 0:
             # This means there was no page here
@@ -568,7 +573,7 @@ class Fs(simsym.tstruct(
             return {'r': -1, 'signal': signal.SIGBUS}
         ## TODO: memory-mapped writes don't bump mtime/ctime?
         res = self.iwrite(myproc.va_map[va].inum,
-                          myproc.va_map[va].off * PAGE_DATAVALS,
+                          myproc.va_map[va].off,
                           databyte, False)
         if res['r'] == 1:
             return {'r': 0, 'signal': 0}

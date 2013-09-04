@@ -46,23 +46,6 @@ class TestGenerator(object):
         return {k: v.bind(self.__model) if isinstance(v, simsym.Symbolic) else v
                 for k, v in res.iteritems()}
 
-    def eval(self, expr):
-        """Evaluate a symbolic expression.
-
-        This isn't necessary for things retrieved from the model such
-        as call arguments and state since those are automatically
-        evaluated, but result values from model methods require
-        explicit evaluation.
-        """
-        if isinstance(expr, simsym.Symbolic):
-            # This is used for result values, so don't track explicit
-            # evaluations or we'll try to enumerate result values
-            # (testgen should never use a result value that isn't
-            # completely deterministic, but IsomorphicMatch will still
-            # try to destructure any tracked evaluations)
-            return self.__model._eval(expr, track=False)
-        return expr
-
     def get_call_args(self, callno):
         """Return the arguments struct for the callno'th call."""
         var_name = (chr(ord('a') + callno) + "." +

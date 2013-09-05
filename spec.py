@@ -10,6 +10,7 @@ import z3util
 import pprint
 import json
 import progress
+import testgen
 
 # A test module must have the following three attributes:
 #
@@ -133,19 +134,16 @@ class IsomorphicMatch(object):
     ## the isomorphism condition would be the values being in the same
     ## order, rather than in the same equality pattern.
 
-    def __init__(self, isomorphism_types={}):
-        self.__isomorphism_types = isomorphism_types
-
-        # This maps from the simsym.Symbolic subclass of each type
-        # with "equal" isomorphism type to representative maps.  A
-        # representative map is a dictionary from HashableAst value to
-        # the Z3 expression that represents that value.
-        self.__representatives = collections.defaultdict(dict)
-        # Set of isomorphism conditions, except for representative
-        # distinctness.
+    def __init__(self):
+        # This maps from Interpreter instances to representative maps.
+        # A representative map is a dictionary from HashableAst
+        # literal values to Z3 expressions that represent those
+        # values.
+        self.__distinct_realms = collections.defaultdict(dict)
+        # Set of isomorphism conditions for value isomorphisms.
         self.__conds = z3util.AstSet()
 
-    def add(self, expr, val, env):
+    def add(self, realm, expr, val, env):
         """Add a condition on the value of expr.
 
         expr and val must be instances of simsym.Symbolic.  env must
@@ -155,18 +153,12 @@ class IsomorphicMatch(object):
         For most expr's, this will require that an isomorphic
         assignment assign val to expr.
 
-        If expr's sort is uninterpreted or has isomorphism type
-        "equal", then expr's of the same sort will be grouped into
-        equivalence classes by val and the isomorphism assignment will
-        require that these expr's form the same equivalence classes.
-
-        If expr's sort has isomorphism type "ignore", then this
-        condition will be ignored.
-
-        Before adding any expr that uses an uninterpreted value, the
-        caller must add an expr that is equal to that uninterpreted
-        value.  (This happens naturally when conditions are added in
-        the order they arise during test generation.)
+        If realm is an Interpreter, then this will require that all
+        keys in the Interpreter be distinct, but it will not place
+        constraints on their specific values.  This makes it possible
+        to match isomorphic "equality patterns" between values of
+        uninterpreted sorts, or values we wish to treat as
+        uninterpreted.
         """
 
         if not isinstance(expr, simsym.Symbolic):
@@ -174,148 +166,32 @@ class IsomorphicMatch(object):
         if not isinstance(val, simsym.Symbolic):
             raise TypeError("Expected instance of simsym.Symbolic, got %r" % val)
 
-        # Resolve the isomorphism type of expr
-        symtype = type(expr)
-        isomorphism_type = self.__get_iso_type(symtype)
-        if isomorphism_type == None and not issubclass(symtype, simsym.SBool):
-            print 'WARNING: Interpreted sort assignment:', type(expr), expr, val
-
-        # Don't bother with rewriting and such if we're going to
-        # ignore this condition anyway
-        if isomorphism_type == "ignore":
-            return
-
-        z3expr, z3val = simsym.unwrap(expr), simsym.unwrap(val)
-
-        # Rewrite expression to use representatives.  The requirement
-        # on the order that the caller adds conditions means that
-        # we'll always have a representative for uninterpreted values
-        # in expr.  This also means we never have to worry about
-        # cyclic representatives (where the representative expression
-        # depends on some uninterpreted value whose representative
-        # depends on the first representative).
-        rexpr = self.__rewrite(z3expr, symtype, env)
-        if rexpr is None:
-            return
-
-        # Register representative expressions.  We do this after
-        # rewriting the expression so we won't have uninterpreted
-        # values in the representative expression.
-        if isomorphism_type == "equal":
-            hval = z3util.HashableAst(z3val)
-            self.__representatives[symtype].setdefault(hval, rexpr)
-
-        # Rewrite the value to use representatives.  We do this
-        # after registering representative expressions in case we
-        # just registered the representative for this value.
-        rval = self.__rewrite(z3val, symtype, env)
-        if rval is None:
-            return
-
-        # Handle assignment
-        if isomorphism_type == "equal" or isomorphism_type == None:
-            self.__conds.add(rexpr == rval)
+        if realm is None:
+            # Default realm.  Use value equality.
+            if not isinstance(expr, simsym.SBool):
+                print 'WARNING: Interpreted sort assignment:', \
+                    type(expr), expr, val
+            self.__conds.add(expr == val)
+        elif isinstance(realm, testgen.Interpreter):
+            # Use equality isomorphism within this realm
+            rep_map = self.__distinct_realms[realm]
+            hval = z3util.HashableAst(val)
+            rep_map.setdefault(hval, expr)
         else:
-            raise ValueError("Unknown isomorphism type %r" % isomorphism_type)
-
-    def __get_iso_type(self, symtype):
-        """Return the isomorphism type of symtype."""
-
-        for cls in symtype.__mro__:
-            if cls in self.__isomorphism_types:
-                return self.__isomorphism_types[cls]
-
-        kind = symtype._z3_sort().kind()
-        if kind == z3.Z3_UNINTERPRETED_SORT:
-            return "equal"
-        return None
-
-    def __rewrite(self, expr, symtype, env):
-        """Replace uninterpreted values in expr with their representatives.
-
-        env must be a simsym.SymbolicApplyResult that provides the
-        environment for this rewriting.
-        """
-
-        # The expression may consist of constants and selects.  We
-        # need to map every select index to its Symbolic type to
-        # figure out its isomorphism type, so we unwind the whole
-        # expression, get the pseudo-Symbolic type of the base
-        # constant, and use this to work out the types of the indexes.
-
-        class Ignore(Exception): pass
-
-        def rec(expr):
-            if z3.is_select(expr):
-                array, idx = expr.children()
-                array2, pseudo_type = rec(array)
-                idx2 = rewrite_const(idx, pseudo_type[0], True)
-                return array2[idx2], pseudo_type[1]
-            elif z3.is_const(expr):
-                return expr, env.symbolic_type(expr)
-            else:
-                raise Exception("Unexpected AST type %r" % expr)
-
-        def rewrite_const(const, symtype, is_index):
-            rep = self.__representatives[symtype].get(z3util.HashableAst(const))
-            if rep is not None:
-                if args.verbose_testgen:
-                    print "Replacing", const, "of type", symtype, "with", rep
-                return rep
-            elif const.sort().kind() == z3.Z3_UNINTERPRETED_SORT and \
-                 '!' in str(const):
-                # This is one of the Z3-generated values from this
-                # sort's universe.
-                if is_index:
-                    # This is used as an array index.  Since there's
-                    # no expression actually equal to this index
-                    # value, there's no way this value of the array
-                    # can matter, so we just ignore it.
-                    if args.verbose_testgen:
-                        print "Ignoring unrepresented index in", expr
-                    raise Ignore()
-                # If this was not just an array index, we can't
-                # express an isomorphism.
-                raise Exception("No representative for %r in %r" %
-                                (const, expr))
-            else:
-                # No transformation
-                return const
-
-        if z3.is_const(expr):
-            # If we're called with a constant, it could be something
-            # like z3.IntNumRef(42), which doesn't carry enough of its
-            # own type information for us to resolve it bottom-up, but
-            # we do know its type from the top down.
-            return rewrite_const(expr, symtype, False)
-        else:
-            # If we're not called with a constant, it must be a
-            # select, in which case the recursive base of the select
-            # must be an uninterpreted constant, which we can resolve
-            # type information for bottom-up.  Ugh.
-            try:
-                return rec(expr)[0]
-            except Ignore:
-                return None
-
-    @staticmethod
-    def __xand(exprs):
-        if len(exprs) == 0:
-            return True
-        return z3.And(exprs)
+            raise ValueError("Unknown realm type %r" % realm)
 
     def __same_cond(self):
         conds = list(self.__conds)
 
-        for rep_map in self.__representatives.values():
+        for rep_map in self.__distinct_realms.values():
             representatives = rep_map.values()
             if len(representatives) > 1:
-                conds.append(z3.Distinct(representatives))
+                conds.append(simsym.distinct(*representatives))
 
-        return self.__xand(conds)
+        return simsym.symand(conds)
 
     def notsame_cond(self):
-        return simsym.wrap(z3.Not(self.__same_cond()))
+        return simsym.symnot(self.__same_cond())
 
 def is_idempotent(result):
     """Return whether the calls in test_result can be idempotent.
@@ -609,7 +485,7 @@ class TestWriter(object):
                 self.last_assignments = new_assignments
 
             testinfo['assignments'] = {}
-            for aexpr, val in assignments:
+            for aexpr, val in assignments[None]:
                 testinfo['assignments'][str(aexpr)] = str(val)
 
             # Construct the isomorphism condition for the assignments
@@ -624,13 +500,14 @@ class TestWriter(object):
             # testgen and appeared in the path condition expression.
             # XXX We should revisit this and see how much difference
             # this makes.
-            same = IsomorphicMatch(self.isomorphism_types)
-            for aexpr, val in assignments:
-                aexpr_vars = expr_vars(aexpr)
-                if not aexpr_vars.isdisjoint(e_vars):
-                    same.add(aexpr, val, result)
-                elif args.verbose_testgen:
-                    print 'Ignoring assignment:', (aexpr, val)
+            same = IsomorphicMatch()
+            for realm, rassigns in assignments.iteritems():
+                for aexpr, val in rassigns:
+                    aexpr_vars = expr_vars(aexpr)
+                    if not aexpr_vars.isdisjoint(e_vars):
+                        same.add(realm, aexpr, val, result)
+                    elif args.verbose_testgen:
+                        print 'Ignoring assignment:', (aexpr, val)
 
             notsame = same.notsame_cond()
             if args.verbose_testgen:
@@ -658,7 +535,7 @@ class TestWriter(object):
             smodel = result.get_model(model)
             smodel.track_assignments(True)
             self.testgen.on_model(smodel)
-            res = smodel.assignments()[None]
+            res = smodel.assignments()
 
         self.npathmodel += 1
         return res

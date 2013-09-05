@@ -222,7 +222,7 @@ class Interpreter(object):
             self.__fn = iterable_or_fn
 
         if enumerate:
-            self.__realm = None # Default realm
+            self.__realm = self
         else:
             self.__realm = simsym.REALM_IGNORE
 

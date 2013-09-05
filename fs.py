@@ -67,14 +67,6 @@ SIMap = symtypes.tmap(SInum, SInode)
 ## XXX Non-directories impl:
 SPathname = SFn
 
-isomorphism_types = {
-    SOffset: "equal",
-    SFdNum: "equal",
-    # Ignore data bytes or we'll try to enumerate all distinct
-    # equivalence classes for file contents.
-    SDataVal: "ignore",
-}
-
 class Fs(simsym.tstruct(
         i_map=SIMap, proc0=SProc, proc1=SProc, pipes=SPipeMap,
         ## XXX Non-directories impl:

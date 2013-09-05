@@ -12,7 +12,7 @@ import json
 import progress
 import testgen
 
-# A test module must have the following three attributes:
+# A test module must have the following two attributes:
 #
 # * model_class must be the state class whose methods are the
 #   operations to test.  The test operations must be decorated with
@@ -21,25 +21,6 @@ import testgen
 # * model_testgen (optional) must be the test generator class for this
 #   model.  It should subclass and implement testgen.TestGenerator.
 #   If this attribute is not present, tests cannot be generated.
-#
-# * isomorphism_types (optional) is a dictionary overriding the
-#   default isomorphism types used by IsomorphicMatch during test
-#   enumeration.  By default, uninterpreted types are constrained only
-#   by equality and all other types are concrete-valued.  In
-#   particular, it's often necessary to treat integer types like
-#   uninterpreted types or to ignore them entirely to avoid infinite
-#   enumeration during test generation.  isomorphism_types maps from
-#   Symbolic types to one of:
-#
-#   - "ignore", if values of this type should be ignored altogether
-#     when enumerating models.
-#
-#   - "equal", if values of this type should be constrained only by
-#     their pattern of equality (like an uninterpreted sort).
-#
-#   At present, the Symbolic type can only be a primitive type or a
-#   synonym for a primitive type, since isomorphism will destructure
-#   any compound types before checking this.
 
 TestResult = collections.namedtuple(
     'TestResult', 'diverge results post_states op_states')
@@ -328,8 +309,7 @@ def idempotent_projs(result):
     return res
 
 class TestWriter(object):
-    def __init__(self, trace_file, model_file, test_file, testgen,
-                 isomorphism_types):
+    def __init__(self, trace_file, model_file, test_file, testgen):
         if isinstance(trace_file, basestring):
             trace_file = open(trace_file, 'w')
         self.trace_file, self.model_file, self.test_file \
@@ -338,7 +318,6 @@ class TestWriter(object):
             self.testgen = testgen(test_file)
         else:
             self.testgen = None
-        self.isomorphism_types = isomorphism_types
 
         # model_data schema:
         #   root     -> {'tests': {callsetname: {pathid: pathinfo}}}
@@ -645,10 +624,9 @@ def main(spec_args):
     testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
     if testgen is None and args.test_file:
         parser.error("No test case generator for this module")
-    isomorphism_types = getattr(m, 'isomorphism_types', {})
 
     test_writer = TestWriter(args.trace_file, args.model_file, args.test_file,
-                             testgen, isomorphism_types)
+                             testgen)
 
     for callset in parse_functions(args.functions, args.ncomb, m):
         do_callset(m.model_class, callset, test_writer)

@@ -73,7 +73,7 @@ class HashableAst(object):
         return hash(self.ast)
 
 class AstSet(object):
-    """A set of z3.AstRef objects."""
+    """A set of z3.AstRef/Symbolic objects."""
 
     def __init__(self):
         self.__set = set()
@@ -82,7 +82,7 @@ class AstSet(object):
         return "{" + ",".join(map(str, self)) + "}"
 
     def __contains__(self, ast):
-        if not isinstance(ast, z3.AstRef):
+        if not isinstance(ast, (z3.AstRef, simsym.Symbolic)):
             raise TypeError("Expected instance of z3.AstRef, got %r" % ast)
         return HashableAst(ast) in self.__set
 
@@ -90,7 +90,7 @@ class AstSet(object):
         return len(self.__set)
 
     def add(self, ast):
-        if not isinstance(ast, z3.AstRef):
+        if not isinstance(ast, (z3.AstRef, simsym.Symbolic)):
             raise TypeError("Expected instance of z3.AstRef, got %r" % ast)
         self.__set.add(HashableAst(ast))
 

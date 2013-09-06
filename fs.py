@@ -22,7 +22,7 @@ SOffset = simsym.tsynonym("SOffset", simsym.SInt)
 class SData(symtypes.tlist(SDataVal, lenType=SOffset)):
     def _declare_assumptions(self, assume):
         super(SData, self)._declare_assumptions(assume)
-        assume(self._len <= 16)
+        assume(self._len <= 4)
 SPipe = simsym.tstruct(data = SData)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)
 class SFd(simsym.tstruct(ispipe = simsym.SBool,

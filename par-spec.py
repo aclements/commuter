@@ -33,7 +33,7 @@ for i, callset in enumerate(callsets):
         csargs.trace_file += suffix
     if csargs.test_file:
         csargs.test_file += suffix
-    csargs.functions = "/".join(c.__name__ for c in callset)
+    csargs.functions = "/".join(callset)
     asyncs.append(pool.apply_async(wrapped_main, [csargs]))
     subargs.append(csargs)
 pool.close()

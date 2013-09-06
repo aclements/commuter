@@ -543,7 +543,10 @@ parser.add_argument('-t', '--test-file',
 parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
                     help='Number of system calls to combine per test')
 parser.add_argument('-f', '--functions', action='store',
-                    help='Methods to run (e.g., stat,fstat)')
+                    help='Methods to run (e.g., stat,fstat).  Accepts x/y to \
+                    specify call sets, {x,y} for grouping, * for all calls, and \
+                    any combination of these.  All single calls will be \
+                    collected into combinations of size NCOMB.')
 parser.add_argument('--simplify-more', default=False, action='store_true',
                     help='Use ctx-solver-simplify')
 parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='store',
@@ -600,20 +603,69 @@ def parse_functions(functions, ncomb, module):
     """Parse a functions string, returning a list of callsets."""
 
     base = module.model_class
-    callsets = []
-    if functions is not None:
-        calls = []
-        for part in functions.split(','):
-            if '/' in part:
-                callsets.append([getattr(base, fname) for fname in part.split('/')])
-            else:
-                calls.append(getattr(base, part))
-    else:
-        calls = [getattr(base, a) for a in dir(base)
-                 if hasattr(getattr(base, a), 'model_function_pri')]
-        calls.sort(key=lambda x: x.model_function_pri)
-    callsets.extend(itertools.combinations_with_replacement(calls, ncomb))
-    return callsets
+    priorities = {a: getattr(base, a).model_function_pri for a in dir(base)
+                  if hasattr(getattr(base, a), 'model_function_pri')}
+    if functions is None:
+        functions = '*'
+    chars = list(functions)
+
+    def consume(char):
+        if chars and chars[0] == char:
+            return chars.pop(0)
+    def parse_list():
+        callsets = parse_set()
+        while consume(','):
+            callsets.extend(parse_set())
+        return callsets
+    def parse_set():
+        callsets = parse_call()
+        while consume('/'):
+            ncallsets = []
+            for cs2 in parse_call():
+                for cs1 in callsets:
+                    ncallsets.append(cs1 + cs2)
+            callsets = ncallsets
+        return callsets
+    def parse_call():
+        if not chars:
+            raise ValueError('Expected call name, found nothing')
+        if consume('{'):
+            res = parse_list()
+            if not consume('}'):
+                raise ValueError('Open brace with no close brace')
+            return res
+        if consume('*'):
+            return [[c] for c in priorities]
+        callname = ''
+        while chars and chars[0] not in '{},/*':
+            callname += chars.pop(0)
+        if callname not in priorities:
+            raise ValueError('Unknown call %r' % callname)
+        return [[callname]]
+
+    try:
+        callsets = parse_list()
+        if chars:
+            raise ValueError('Syntax error')
+    except ValueError as e:
+        raise
+        pos = len(functions) - len(chars) + 1
+        raise ValueError('%s\n%s\n%s' % (e, functions, ' '*(pos - 1) + '^'))
+
+    # Expand single calls
+    ncallsets, singles = [], []
+    for callset in callsets:
+        if len(callset) > 1:
+            ncallsets.append(callset)
+        else:
+            singles.append(callset[0])
+    ncallsets.extend(itertools.combinations_with_replacement(singles, ncomb))
+
+    # Canonicalize order of each callset and then all callsets
+    ncallsets = [sorted(callset, key=priorities.get) for callset in ncallsets]
+    ncallsets = sorted(ncallsets,
+                       key=lambda callset: map(priorities.get, callset))
+    return ncallsets
 
 def main(spec_args):
     global args                 # XXX Get rid of this global
@@ -629,7 +681,8 @@ def main(spec_args):
                              testgen)
 
     for callset in parse_functions(args.functions, args.ncomb, m):
-        do_callset(m.model_class, callset, test_writer)
+        calls = [getattr(m.model_class, callname) for callname in callset]
+        do_callset(m.model_class, calls, test_writer)
 
     test_writer.finish()
 

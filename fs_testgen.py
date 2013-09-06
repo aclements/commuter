@@ -241,7 +241,7 @@ class FsState(object):
       elif isinstance(val, fs_module.SOffset):
         # We can't map this through the per-file offsets interpreter
         # because we don't know which file to look in.
-        cval = val.soemval * DATAVAL_BYTES
+        cval = val.someval * DATAVAL_BYTES
       elif isinstance(val, simsym.Symbolic):
         # XXX Should we enumerate result values?  This might only come
         # up in lseek.

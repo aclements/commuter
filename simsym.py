@@ -85,7 +85,7 @@ class Symbolic(object):
         def setter(nval):
             val[0] = nval
         obj = cls._wrap_lvalue(lambda: val[0], setter, model)
-        if model is None:
+        if model is None and isinstance(obj, Symbolic):
             obj._declare_assumptions(assume)
         return obj
 
@@ -724,7 +724,9 @@ class SStructBase(Symbolic):
     def _declare_assumptions(self, assume):
         super(SStructBase, self)._declare_assumptions(assume)
         for fname in self._fields:
-            getattr(self, fname)._declare_assumptions(assume)
+            sub = getattr(self, fname)
+            if isinstance(sub, Symbolic):
+                sub._declare_assumptions(assume)
 
     def __eq__(self, o):
         # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?

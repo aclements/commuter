@@ -24,6 +24,15 @@ class SListBase(Symbolic):
     def __setitem__(self, idx, val):
         self._vals[self.__check_idx(idx) + self._start] = val
 
+    def __eq__(self, o):
+        if type(o) != type(self):
+            return NotImplemented
+        i = SInt.var()
+        return symand([self._len == o._len,
+                       forall(i, implies(symand([i >= 0, i < self._len]),
+                                         self._vals[i + self._start] ==
+                                         o._vals[i + o._start]))])
+
     def len(self):
         # Overriding __len__ isn't useful because the len() builtin
         # will try hard to coerce it to an integer.

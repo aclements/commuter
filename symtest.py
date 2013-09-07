@@ -72,4 +72,19 @@ def test():
     t1 = tset(SInt)
     assert not t1.empty().contains(1)
 
+    # Lists
+    ilist = tlist(SInt)
+    l1 = ilist.var(_len = 0)
+    l2 = ilist.var(_len = 0)
+    l1.append(1)
+    l2.append(1)
+    assert l1[0] == l2[0]
+    assert l1 == l2
+    l2[0] = 2
+    assert l1 != l2
+    l2.append(1)
+    assert l1 != l2
+    l2.shift()
+    assert l1 == l2
+
 list(symbolic_apply(test))

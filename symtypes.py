@@ -76,6 +76,18 @@ class SDictBase(Symbolic):
     def __delitem__(self, key):
         self._valid[key] = False
 
+    def __eq__(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        key = self._map._indexType.var()
+        return symand([self._valid == o._valid,
+                       forall(key, implies(self._valid[key],
+                                           self._map[key] == o._map[key]))])
+
+    @classmethod
+    def empty(cls, name=None):
+        return cls.var(name, _valid=cls._valid_type.constVal(False))
+
     def contains(self, key):
         return self._valid[key]
 
@@ -102,9 +114,10 @@ class SDictBase(Symbolic):
 
 def tdict(keyType, valueType):
     name = "SDict_" + keyType.__name__ + "_" + valueType.__name__
+    valid_type = tmap(keyType, SBool)
     base = tstruct(_map = tmap(keyType, valueType),
-                   _valid = tmap(keyType, SBool))
-    return type(name, (base, SDictBase), {})
+                   _valid = valid_type)
+    return type(name, (SDictBase, base), {'_valid_type':valid_type})
 
 class SSetBase(Symbolic):
     @classmethod

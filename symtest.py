@@ -87,4 +87,18 @@ def test():
     l2.shift()
     assert l1 == l2
 
+    # Dicts
+    idict = tdict(SInt, SInt)
+    d1 = idict.empty()
+    d2 = idict.empty()
+    assert d1 == d2
+    d1[0] = 1
+    assert d1 != d2
+    d2[0] = 1
+    assert d1 == d2
+    d1[0] = 2
+    assert d1 != d2
+    del d1[0], d2[0]
+    assert d1 == d2
+
 list(symbolic_apply(test))

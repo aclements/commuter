@@ -705,9 +705,10 @@ class SStructBase(Symbolic):
             Env.current().const_types[strname] = (cls, path)
             # Create the Z3 constant
             return z3.Const(strname, sort)
+        z3_val = mkValue((), cls._z3_sort())
         if fields:
             raise AttributeError("Unknown struct field %r" % fields.keys()[0])
-        return cls._new_lvalue(mkValue((), cls._z3_sort()), __model)
+        return cls._new_lvalue(z3_val, __model)
 
     @classmethod
     def _wrap_lvalue(cls, getter, setter, model):

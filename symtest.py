@@ -72,4 +72,4 @@ def test():
     t1 = tset(SInt)
     assert not t1.empty().contains(1)
 
-symbolic_apply(test)
+list(symbolic_apply(test))

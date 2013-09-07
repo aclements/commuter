@@ -2,8 +2,9 @@ import z3
 from simsym import *
 
 class SListBase(Symbolic):
-    def var(self, *args, **kwargs):
-        return super(SListBase, self).var(*args, _start=0, **kwargs)
+    @classmethod
+    def var(cls, *args, **kwargs):
+        return super(SListBase, cls).var(*args, _start=0, **kwargs)
 
     def _declare_assumptions(self, assume):
         super(SListBase, self)._declare_assumptions(assume)
@@ -51,7 +52,7 @@ def tlist(valueType, lenType=SInt):
     name = "SList_" + valueType.__name__
     base = tstruct(_vals = tmap(lenType, valueType), _len = lenType,
                    _start = lenType)
-    return type(name, (base, SListBase), {})
+    return type(name, (SListBase, base), {})
 
 class SDictBase(Symbolic):
     def __getitem__(self, key):

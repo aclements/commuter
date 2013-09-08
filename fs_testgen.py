@@ -487,6 +487,8 @@ init_map_anon(uintptr_t va, bool writable, char value)
     int r2 = mprotect(r, 4096, PROT_READ);
     if (r2 < 0) setup_error("mprotect");
   }
+  // Ensure test cores don't shoot down the setup core
+  xinvalidate(r, 4096);
 }
 
 __attribute__((__unused__)) static void

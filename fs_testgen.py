@@ -479,13 +479,14 @@ class FsTestGenerator(testgen.TestGenerator):
 __attribute__((__unused__)) static void
 init_map_anon(uintptr_t va, bool writable, char value)
 {
-  char *r = mmap((void*)va, 4096, PROT_READ | (writable ? PROT_WRITE : 0),
+  char *r = mmap((void*)va, 4096, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if (r == MAP_FAILED) setup_error("mmap");
-  if (writable)
-    *r = value;
-  else
-    *(volatile char*)r;
+  *r = value;
+  if (!writable) {
+    int r2 = mprotect(r, 4096, PROT_READ);
+    if (r2 < 0) setup_error("mprotect");
+  }
 }
 
 __attribute__((__unused__)) static void

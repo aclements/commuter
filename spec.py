@@ -196,12 +196,12 @@ def is_idempotent(result):
             # internal variables (e.g., time) to make idempotence
             # possible, while other equally valid assignments would
             # not be idempotent.
-            idem_z3, m = simsym.check(
+            check = simsym.check(
                 simsym.symand([result.path_condition, s1 == s2]))
-            if idem_z3 == z3.unknown:
-                print '  Idempotence unknown:', m
+            if check.is_unknown:
+                print '  Idempotence unknown:', check.reason
                 return None
-            idem = (idem_z3 == z3.sat)
+            idem = check.is_sat
 
             res[snum] = res[snum] and idem
 
@@ -210,11 +210,11 @@ def is_idempotent(result):
                 # easy to pick internal variables (time, especially) that
                 # will cause an operation to be non-idempotent, so we
                 # quantify over all internal variables.
-                notidem_z3, m2 = simsym.check(
+                check = simsym.check(
                     simsym.forall(result.internals,
                                   simsym.symand([result.path_condition,
                                                  s1 != s2])))
-                notidem = (notidem_z3 == z3.sat)
+                notidem = check.is_sat
                 # XXX This doesn't seem to hold either way (sat/unsat
                 # or unsat/sat), though they're very rarely sat/sat.
                 assert not (idem and notidem)
@@ -247,12 +247,12 @@ def idempotent_projs(result):
 
     root = __import__(args.module).model_class
     pc = result.path_condition
-    def check(cond):
-        res, m = simsym.check(simsym.symand([pc, cond]))
-        if res == z3.unknown:
-            print '  Idempotence unknown:', m
+    def xcheck(cond):
+        check = simsym.check(simsym.symand([pc, cond]))
+        if check.is_unknown:
+            print '  Idempotence unknown:', check.reason
             print '    ' + str(cond)
-        return res, m
+        return check
 
     res = []
     # For each call
@@ -276,8 +276,8 @@ def idempotent_projs(result):
             idem_expr = simsym.symand([simsym.symor(did_change),
                                        simsym.symor(did_not_change)])
 
-            sat_z3, m = check(idem_expr)
-            if sat_z3 == z3.sat:
+            check = xcheck(idem_expr)
+            if check.is_sat:
                 # This projection is idempotent
                 # XXX We might still want to descend.  More detailed
                 # leaf information can be useful.
@@ -415,29 +415,29 @@ class TestWriter(object):
         self.last_assignments = None
         while self.keep_going() and self.npathmodel < args.max_tests_per_path:
             # XXX Would it be faster to reuse the solver?
-            check, model = simsym.check(e)
-            if check == z3.unsat: break
-            if check == z3.unknown:
+            check = simsym.check(e)
+            if check.is_unsat: break
+            if check.is_unknown:
                 # raise Exception('Cannot enumerate: %s' % str(e))
                 print 'Cannot enumerate, moving on..'
-                print 'Failure reason:', model
+                print 'Failure reason:', check.reason
                 break
 
-            if check == z3.sat and 'array-ext' in model.sexpr():
+            if 'array-ext' in check.z3_model.sexpr():
                 # Work around some non-deterministic bug that causes
                 # Z3 to occasionally produce models containing
                 # 'array-ext' applications that break evaluation.
                 print 'Warning: Working around array-ext bug'
                 for i in range(10):
-                    check, model = simsym.check(e)
-                    if 'array-ext' not in model.sexpr():
+                    check = simsym.check(e)
+                    if 'array-ext' not in check.z3_model.sexpr():
                         break
                 else:
                     print 'Workaround failed; this won\' end well'
 
             if args.verbose_testgen:
                 print "Model:"
-                print model
+                print check.model
 
             testinfo = collections.OrderedDict(
                 id=('_'.join(c.__name__ for c in self.callset) +
@@ -445,7 +445,7 @@ class TestWriter(object):
             )
             self.model_data_testinfo_list.append(testinfo)
 
-            assignments = self.__on_model(result, model)
+            assignments = self.__on_model(result, check.z3_model)
             if assignments is None:
                 break
             if args.verbose_testgen:
@@ -563,7 +563,7 @@ parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., fs)')
 
 def print_cond(msg, cond):
-    if args.check_conds and simsym.check(cond)[0] == z3.unsat:
+    if args.check_conds and simsym.check(cond).is_unsat:
         return
 
     ## If the assumptions (i.e., calls to simsym.assume) imply the condition
@@ -586,7 +586,7 @@ def print_cond(msg, cond):
     ## path condition, instead of taking the assume_list across all paths.
     c = cond
 
-    if args.check_conds and simsym.check(simsym.symnot(c))[0] == z3.unsat:
+    if args.check_conds and simsym.check(simsym.symnot(c)).is_unsat:
         s = 'always'
     else:
         if args.print_conds:

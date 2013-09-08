@@ -1324,8 +1324,7 @@ class SymbolicApplyResult(object):
         """
 
         if z3_model is None:
-            sat, z3_model = check(self.path_condition)
-            assert sat == z3.sat
+            z3_model = check(self.path_condition).z3_model
 
         return Model(self.__var_constructors, z3_model)
 
@@ -1416,18 +1415,36 @@ def symbolic_apply(fn, *args):
 
 #    graph.show()
 
+class CheckResult(object):
+    def __init__(self, z3_result, extra=None):
+        self.z3_result = z3_result
+        self.result = str(z3_result)
+        self.is_sat = (z3_result == z3.sat)
+        self.is_unsat = (z3_result == z3.unsat)
+        self.is_unknown = (z3_result == z3.unknown)
+        self.__extra = extra
+
+    @property
+    def z3_model(self):
+        if self.is_sat:
+            return self.__extra
+        raise ValueError("%s result has no model" % self.result)
+
+    @property
+    def reason(self):
+        if self.is_unknown:
+            return self.__extra
+        raise ValueError("%s result has no unknown reason" % self.result)
+
 def check(e):
     solver = z3.Solver()
     solver.add(unwrap(e))
     c = solver.check()
     if c == z3.sat:
-        m = solver.model()
-    else:
-        if c == z3.unknown:
-            m = solver.reason_unknown()
-        else:
-            m = None
-    return (c, m)
+        return CheckResult(c, solver.model())
+    elif c == z3.unknown:
+        return CheckResult(c, solver.reason_unknown())
+    return CheckResult(c)
 
 class Model(object):
     """A Model interprets symbolic expressions into concrete values.

@@ -72,6 +72,8 @@ def test(base, *calls):
             post_states[-1].append(snapshot)
             op_states[idx].append((prestate, snapshot))
             prestate = snapshot
+            # Clean up
+            simsym.anon_info = ''
         all_s.append(s)
         all_r.append(r)
 

@@ -63,11 +63,14 @@ class TestGenerator(object):
         """
         self.__result = result
 
-    def on_model(self, model):
+    def on_model(self, model, constraint):
         """Handle a concrete assignment for the current code path.
 
         model is the simsym.Model object giving the concrete
         assignment.
+
+        constraint is the simsym.SBool giving the path condition and
+        enumeration constraint that let to this model.
 
         This method may be called more than once for a single code
         path.  Each call's model will differ in the value of at least

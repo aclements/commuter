@@ -447,7 +447,7 @@ class TestWriter(object):
             )
             self.model_data_testinfo_list.append(testinfo)
 
-            assignments = self.__on_model(result, check.z3_model)
+            assignments = self.__on_model(result, check.z3_model, e)
             if assignments is None:
                 break
             if args.verbose_testgen:
@@ -501,7 +501,7 @@ class TestWriter(object):
         if self.testgen:
             self.testgen.end_path()
 
-    def __on_model(self, result, model):
+    def __on_model(self, result, model, constraint):
         self.nmodel += 1
         res = None
 
@@ -515,7 +515,7 @@ class TestWriter(object):
         if self.testgen:
             smodel = result.get_model(model)
             smodel.track_assignments(True)
-            self.testgen.on_model(smodel)
+            self.testgen.on_model(smodel, constraint)
             res = smodel.assignments()
 
         self.npathmodel += 1

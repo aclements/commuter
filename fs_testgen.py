@@ -540,8 +540,8 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
       emit('// ^ See %s' % existing)
       return existing
 
-  def on_model(self, model):
-    super(FsTestGenerator, self).on_model(model)
+  def on_model(self, model, constraint):
+    super(FsTestGenerator, self).on_model(model, constraint)
 
     name = "%s_%s_%d" % ("_".join(self.callset_names), self.pathid,
                          self.modelno)

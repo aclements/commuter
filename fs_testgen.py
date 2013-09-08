@@ -154,26 +154,15 @@ class FsState(object):
              'if (fd >= 0 && r < 0) setup_error("dup2");',
              'close(fd);')
 
-    emit('char* va __attribute__((unused));')
     for va, vainfo in vamap.items():
-      emit('va = (void*) %#xUL;' % va)
-      prot = 'PROT_READ'
-      if vainfo.writable:
-        prot += ' | PROT_WRITE'
       if vainfo.anon:
-        emit('r = (intptr_t)mmap(va, 4096, %s, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);' % prot,
-             'if (r == -1) setup_error("mmap");')
-        if vainfo.writable:
-          emit('*va = %d;' % self.datavals[vainfo.anondata].first_byte)
-        else:
-          emit('*(volatile int*)va;')
+        emit('init_map_anon(%#x, %d, %d);' %
+             (va, vainfo.writable.val,
+              self.datavals[vainfo.anondata].first_byte))
       else:
         inode = self.inums[vainfo.inum]
-        emit('fd = open("%s", O_RDWR);' % inode.fname,
-             'if (fd < 0) setup_error("open");',
-             'r = (intptr_t)mmap(va, 4096, %s, MAP_SHARED | MAP_FIXED, fd, %#xUL);' % (prot, inode.offsets[vainfo.off]),
-             'if (r == -1) setup_error("mmap");',
-             'close(fd);')
+        emit('init_map_file(%#x, %d, "%s", %#x);' %
+             (va, vainfo.writable.val, inode.fname, inode.offsets[vainfo.off]))
 
   def setup_proc_finalize(self):
     for reader_fd in self.pipes.values():
@@ -484,7 +473,31 @@ class FsTestGenerator(testgen.TestGenerator):
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <stdbool.h>
 #include "fstest.h"
+
+__attribute__((__unused__)) static void
+init_map_anon(uintptr_t va, bool writable, char value)
+{
+  char *r = mmap((void*)va, 4096, PROT_READ | (writable ? PROT_WRITE : 0),
+                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+  if (r == MAP_FAILED) setup_error("mmap");
+  if (writable)
+    *r = value;
+  else
+    *(volatile char*)r;
+}
+
+__attribute__((__unused__)) static void
+init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
+{
+  int fd = open(fname, O_RDWR);
+  if (fd < 0) setup_error("open");
+  void *r = mmap((void*)va, 4096, PROT_READ | (writable ? PROT_WRITE : 0),
+                 MAP_SHARED | MAP_FIXED, fd, offset);
+  if (r == MAP_FAILED) setup_error("mmap");
+  close(fd);
+}
 """)
 
     # Generate datavals

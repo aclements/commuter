@@ -38,9 +38,16 @@ def gen_name(template=None):
         return name
     return template
 
-MODEL_FETCH = object()
+class Constant(object):
+    def __init__(self, name):
+        self.__name = name
 
-REALM_IGNORE = object()
+    def __repr__(self):
+        return __name__ + "." + self.__name
+
+MODEL_FETCH = Constant("MODEL_FETCH")
+
+REALM_IGNORE = Constant("REALM_IGNORE")
 
 class Symbolic(object):
     """Base class of symbolic types.  Symbolic types come in two

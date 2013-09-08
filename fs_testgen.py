@@ -2,6 +2,7 @@ import testgen
 import simsym
 import collections
 import fs as fs_module
+import z3util
 
 all_filenames = ['__f%d' % x for x in range(0, 6)]
 
@@ -42,8 +43,10 @@ class Inode(object):
       fs_module.SOffset, lambda off: off * DATAVAL_BYTES)
 
 class FsState(object):
-  def __init__(self, fs):
+  def __init__(self, fs, sar, constraint):
     self.fs = fs
+    self.sar = sar
+    self.constraint = constraint
     # Map from uninterpreted path names to concrete file names
     self.filenames = testgen.Interpreter(fs_module.SFn, all_filenames)
     # Map from SInum to concrete Inode object
@@ -141,7 +144,7 @@ class FsState(object):
       self.emit('close(%d);' % reader_fd,
                 'close(%d);' % writer_fd)
 
-  def setup_proc(self, fdmap, vamap):
+  def setup_proc(self, pid, fdmap, vamap, pipe_end_fds):
     emit = self.emit
     emit('int fd __attribute__((unused));',
          'int r __attribute__((unused));')
@@ -159,6 +162,43 @@ class FsState(object):
              'r = dup2(fd, %d);' % fd,
              'if (fd >= 0 && r < 0) setup_error("dup2");',
              'close(fd);')
+
+    # There may be other FDs open to pipes that never came up in the
+    # test, but that matter to keep the pipe open.  Check for this
+    # possibility for every pipe end.
+    for (_, pipewriter), (pipeid, pidcounts) in pipe_end_fds.items():
+      # How many of this end are already set up in this process?
+      knowncount = pidcounts[pid]
+      # Try to find > knowncount distinct instances of this end in
+      # this process.
+      conds = []
+      distinct = []
+      sym_fd_map = self.fs.getproc(pid).fd_map
+      for i in range(knowncount + 1):
+        ofdnum = fs_module.SFdNum.var()
+        ofd = sym_fd_map._map[ofdnum]
+        conds.extend([sym_fd_map._valid[ofdnum], ofd.ispipe,
+                      ofd.pipeid == pipeid, ofd.pipewriter == pipewriter])
+        distinct.append(ofdnum)
+      if len(distinct) > 1:
+        conds.append(simsym.distinct(*distinct))
+
+      # XXX I've tried to *prove* that the path condition implies
+      # there *must* be more FDs for this pipe end, so the decision
+      # will stand regardless of choices made by model completion, but
+      # I just can't get it to work:
+      #  prove(simsym.implies(self.constraint,
+      #                       simsym.exists(ofdnums, simsym.symand(conds))))
+
+      result = simsym.check(simsym.symand([self.constraint] + conds))
+      if result.is_unknown:
+        print 'Warning: Unable to check pipe FD existence:', result.reason
+      elif result.is_sat:
+        # Open up another pipe end
+        pipe_setup_fd = self.pipes[pipeid]
+        if pipewriter: pipe_setup_fd += 1
+        emit('r = dup(%d);' % pipe_setup_fd,
+             'if (r < 0) setup_error("dup");')
 
     for va, vainfo in vamap.items():
       if vainfo.anon:
@@ -189,6 +229,22 @@ class FsState(object):
     (fdmap0, vamap0) = self.build_proc(False)
     (fdmap1, vamap1) = self.build_proc(True)
 
+    # Compute known pipe end FDs.  This map is system-wide because,
+    # for example, process 1 may be holding open a pipe that's only
+    # used by testing in process 0.
+    pipe_end_fds = collections.defaultdict(list)
+    for pid, fdmap in [(False, fdmap0), (True, fdmap1)]:
+      for fd, (symfd, inode) in fdmap.items():
+        if symfd.ispipe:
+          key = (z3util.HashableAst(symfd.pipeid.someval), symfd.pipewriter.val)
+          if key not in pipe_end_fds:
+            # Make sure both ends are in the map, even if we never
+            # come across an example of the other end
+            pipe_end_fds[key] = (symfd.pipeid, {True: 0, False: 0})
+            okey = (key[0], not key[1])
+            pipe_end_fds[okey] = (symfd.pipeid, {True: 0, False: 0})
+          pipe_end_fds[key][1][pid] += 1
+
     setup = {'common': testgen.CodeWriter(),
              'proc0': testgen.CodeWriter(),
              'proc1': testgen.CodeWriter(),
@@ -197,8 +253,10 @@ class FsState(object):
 
     try:
       # setup_proc reads nothing; extends inums, datavals, pipes
-      self.emit = setup['proc0']; self.setup_proc(fdmap0, vamap0)
-      self.emit = setup['proc1']; self.setup_proc(fdmap1, vamap1),
+      self.emit = setup['proc0']
+      self.setup_proc(False, fdmap0, vamap0, pipe_end_fds)
+      self.emit = setup['proc1']
+      self.setup_proc(True, fdmap1, vamap1, pipe_end_fds),
       # setup_inodes reads inums, pipes; extends datavals
       self.emit = setup['common']; self.setup_inodes()
       # setup_filenames reads nothing; extends nothing
@@ -525,6 +583,7 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
     super(FsTestGenerator, self).begin_path(result)
     self.pathid = result.pathid
     self.modelno = 0
+    self.sar = result
 
   def func(self, emit, ret, fname, body):
     key = (ret, str(body))
@@ -555,7 +614,7 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
 /*
  * calls: %s
  */""" % " ".join(self.callset_names))
-      fs = FsState(model['Fs'])
+      fs = FsState(model['Fs'], self.sar, constraint)
       pids = []
       fns = {}
       for callidx, callname in enumerate(self.callset_names):

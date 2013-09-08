@@ -100,7 +100,13 @@ class FsState(object):
          'int r __attribute__((unused));',
          'char c __attribute__((unused));')
     for syminum, inode in self.inums.items():
+      # Pre-expand the file pages radix array
       emit('fd = open("%s", O_CREAT | O_TRUNC | O_RDWR, 0666);' % inode.fname,
+           'if (fd < 0) setup_error("open");',
+           'write(fd, "x", 1);',
+           'close(fd);')
+
+      emit('fd = open("%s", O_TRUNC | O_RDWR);' % inode.fname,
            'if (fd < 0) setup_error("open");')
 
       syminode = self.fs.i_map[syminum]

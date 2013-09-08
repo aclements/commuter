@@ -304,7 +304,7 @@ class Fs(simsym.tstruct(
         if time is not False:
             simsym.assume(time >= self.i_map[inum].atime)
             self.i_map[inum].atime = time
-        return {'r': 1, 'data': self.i_map[inum].data[off]}
+        return {'r': DATAVAL_BYTES, 'data': self.i_map[inum].data[off]}
 
     @model.methodwrap(fd=SFdNum, pid=SPid)
     def read(self, fd, pid):
@@ -338,7 +338,7 @@ class Fs(simsym.tstruct(
                     return {'r': 0}
             d = pipe.data[0]
             pipe.data.shift()
-            return {'r': 1, 'data': d}
+            return {'r': DATAVAL_BYTES, 'data': d}
         off = self.getproc(pid).fd_map[fd].off
         r = self.iread(self.getproc(pid).fd_map[fd].inum, off)
         if 'data' in r:
@@ -372,7 +372,7 @@ class Fs(simsym.tstruct(
             simsym.assume(time >= self.i_map[inum].ctime)
             self.i_map[inum].mtime = time
             self.i_map[inum].ctime = time
-        return {'r': 1}
+        return {'r': DATAVAL_BYTES}
 
     @model.methodwrap(fd=SFdNum, databyte=SDataVal, pid=SPid)
     def write(self, fd, databyte, pid):
@@ -402,7 +402,7 @@ class Fs(simsym.tstruct(
                 return {'r': -1, 'errno': errno.EPIPE}
 
             pipe.data.append(databyte)
-            return {'r': 1}
+            return {'r': DATAVAL_BYTES}
         off = self.getproc(pid).fd_map[fd].off
         self.getproc(pid).fd_map[fd].off = off + 1
         return self.iwrite(self.getproc(pid).fd_map[fd].inum, off, databyte)
@@ -544,7 +544,7 @@ class Fs(simsym.tstruct(
         if res['r'] == 0:
             # This means there was no page here
             return {'r': -1, 'signal': signal.SIGBUS}
-        elif res['r'] == 1:
+        elif res['r'] == DATAVAL_BYTES:
             return {'r:data': res['data'], 'signal': 0}
         else:
             raise RuntimeError('Unexpected result from iread: %r' % res)
@@ -567,7 +567,7 @@ class Fs(simsym.tstruct(
         res = self.iwrite(myproc.va_map[va].inum,
                           myproc.va_map[va].off,
                           databyte, False)
-        if res['r'] == 1:
+        if res['r'] == DATAVAL_BYTES:
             return {'r': 0, 'signal': 0}
         else:
             raise RuntimeError('Unexpected result from iwrite: %r' % res)

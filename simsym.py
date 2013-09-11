@@ -466,23 +466,33 @@ class SBool(SExpr, SymbolicConst):
             elif canTrue == z3.unsat and canFalse == z3.sat:
                 cursched.append(SchedNode("branch_det", self, False))
             else:
-                # Both are possible; take both paths
+                # Both are possible (or at least one is unknown)
                 newsched = list(cursched)
                 if canTrue == z3.sat:
                     cursched.append(SchedNode("branch_nondet", self, True))
-                else:
+                elif canTrue == z3.unknown:
                     cursched.append(
                         SchedNode("exception", True,
                                   UncheckableConstraintError(
                                       self._v, canTrueReason)))
+                else:
+                    assert canTrue == z3.unsat and canFalse == z3.unknown
+                    # There's actually only one way to go
+                    newsched = cursched
+
                 if canFalse == z3.sat:
                     newsched.append(SchedNode("branch_nondet", self, False))
-                else:
+                elif canFalse == z3.unknown:
                     newsched.append(
                         SchedNode("exception", False,
                                   UncheckableConstraintError(
                                       z3.Not(self._v), canFalseReason)))
-                scheduler.queue_schedule(newsched)
+                else:
+                    assert canFalse == z3.unsat and canTrue == z3.unknown
+                    newsched = cursched
+
+                if newsched is not cursched:
+                    scheduler.queue_schedule(newsched)
         else:
             # We're replaying; check that replay hasn't diverged
             node = cursched[path_state.schedidx]

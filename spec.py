@@ -163,7 +163,8 @@ class IsomorphicMatch(object):
         else:
             raise ValueError("Unknown realm type %r" % realm)
 
-    def __same_cond(self):
+    def condition(self):
+        """Return the isomorphism condition."""
         conds = list(self.__conds)
 
         for rep_map in self.__distinct_realms.values():
@@ -172,9 +173,6 @@ class IsomorphicMatch(object):
                 conds.append(simsym.distinct(*representatives))
 
         return simsym.symand(conds)
-
-    def notsame_cond(self):
-        return simsym.symnot(self.__same_cond())
 
 def is_idempotent(result):
     """Return whether the calls in test_result can be idempotent.
@@ -226,7 +224,7 @@ def is_idempotent(result):
                 return res
     return res
 
-def idempotent_projs(result):
+def idempotent_projs(result, iso_constraint=True):
     """Returns the projections for which each call in result is idempotent.
 
     This returns a list of idempotence sets, where the entries in the
@@ -242,6 +240,11 @@ def idempotent_projs(result):
 
     For projections, this considers all nodes of the state structure,
     recursively.
+
+    result must be the SymbolicApplyResult for the path to consider.
+    If this is applied to a particular test case, iso_constraint must
+    be the isomorphism constraint produced when generating that test
+    case.
     """
 
     # It seems Z3 often can't solve our idempotence checks.  Oh well.
@@ -249,7 +252,7 @@ def idempotent_projs(result):
     root = __import__(args.module).model_class
     pc = result.path_condition
     def xcheck(cond):
-        check = simsym.check(simsym.symand([pc, cond]))
+        check = simsym.check(simsym.symand([pc, iso_constraint, cond]))
         if check.is_unknown:
             print '  Idempotence unknown:', check.reason
             print '    ' + str(cond)
@@ -328,10 +331,11 @@ class TestWriter(object):
         #   pathinfo -> {'id': pathname,
         #                'diverge': '' | 'state' | 'results' | 'results state',
         #                'idempotent': [bool],
-        #                'idempotent_projs': [[string]],
         #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
-        #   testinfo -> {'id': testname, 'assignments': {expr: val}}
+        #   testinfo -> {'id': testname,
+        #                'assignments': {expr: val},
+        #                'idempotent_projs': [[string]]}
         #   testname -> pathname '_' testnum
         self.model_data = {'tests':{}}
 
@@ -363,10 +367,6 @@ class TestWriter(object):
             ('diverge', ' '.join(result.value.diverge)),
             ('idempotent', is_idempotent(result)),
         ])
-
-        if args.idempotent_projs:
-            self.model_data_callset[result.pathid]['idempotent_projs'] \
-                = idempotent_projs(result)
 
         # Filter out non-commutative results
         if result.value.diverge != ():
@@ -490,8 +490,14 @@ class TestWriter(object):
                         same.add(realm, aexpr, val, result)
                     elif args.verbose_testgen:
                         print 'Ignoring assignment:', (aexpr, val)
+            isocond = same.condition()
 
-            notsame = same.notsame_cond()
+            # Compute idempotent projections for this test
+            if args.idempotent_projs:
+                testinfo['idempotent_projs'] = idempotent_projs(result, isocond)
+
+            # Construct constraint for next test
+            notsame = simsym.symnot(isocond)
             if args.verbose_testgen:
                 print 'Negation', self.nmodel, ':', notsame
             e = simsym.symand([e, notsame])

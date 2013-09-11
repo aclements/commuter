@@ -11,6 +11,7 @@ import pprint
 import json
 import progress
 import testgen
+import traceback
 
 # A test module must have the following two attributes:
 #
@@ -279,6 +280,7 @@ class TestWriter(object):
         #   root     -> {'tests': {callsetname: {pathid: pathinfo}}}
         #   callsetname -> '_'-joined call names
         #   pathinfo -> {'id': pathname,
+        #                'exception': string,
         #                'diverge': '' | 'state' | 'results' | 'results state',
         #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
@@ -299,7 +301,7 @@ class TestWriter(object):
             = self.model_data_callset
 
         self.callset = callset
-        self.npath = self.ncompath = self.nmodel = 0
+        self.npath = self.ncompath = self.nmodel = self.nerror = 0
 
         if self.testgen:
             self.testgen.begin_call_set(callset)
@@ -310,11 +312,18 @@ class TestWriter(object):
     def on_result(self, result):
         self.npath += 1
 
-        self.model_data_callset[result.pathid] = collections.OrderedDict([
+        pathinfo = collections.OrderedDict([
             ('id', ('_'.join(c.__name__ for c in self.callset) +
-                    '_' + result.pathid)),
-            ('diverge', ' '.join(result.value.diverge)),
-        ])
+                    '_' + result.pathid))])
+        self.model_data_callset[result.pathid] = pathinfo
+
+        if result.type == 'exception':
+            pathinfo['exception'] = '\n'.join(
+                traceback.format_exception_only(*result.exc_info[:2]))
+            self.nerror += 1
+            return
+
+        pathinfo['diverge'] = ' '.join(result.value.diverge)
 
         # Filter out non-commutative results
         if result.value.diverge != ():
@@ -359,8 +368,7 @@ class TestWriter(object):
             self.testgen.begin_path(result)
 
         self.model_data_testinfo_list = []
-        self.model_data_callset[result.pathid]['tests'] \
-            = self.model_data_testinfo_list
+        pathinfo['tests'] = self.model_data_testinfo_list
 
         self.npathmodel = 0
         self.last_assignments = None
@@ -646,7 +654,8 @@ def do_callset(base, callset, test_writer):
     test_writer.begin_call_set(callset)
 
     reporter = progress.ProgressReporter(
-        '  {0.npath} paths ({0.ncompath} commutative), {0.nmodel} testcases',
+        '  {0.npath} paths ({0.ncompath} commutative), {0.nmodel} testcases,' +
+        ' {0.nerror} errors',
         test_writer)
 
     condlists = collections.defaultdict(list)
@@ -654,10 +663,11 @@ def do_callset(base, callset, test_writer):
     diverged = set()
     all_internals = []
     for sar in simsym.symbolic_apply(test, base, *callset):
-        is_commutative = (sar.value.diverge == ())
-        diverged.update(sar.value.diverge)
-        condlists[is_commutative].append(sar.path_condition)
-        all_internals.extend(sar.internals)
+        if sar.type == 'value':
+            is_commutative = (sar.value.diverge == ())
+            diverged.update(sar.value.diverge)
+            condlists[is_commutative].append(sar.path_condition)
+            all_internals.extend(sar.internals)
         test_writer.on_result(sar)
         if not test_writer.keep_going():
             terminated = True

@@ -1229,9 +1229,12 @@ def assume(e):
         raise UncheckableConstraintError(unwrap(e), reason)
 
 class SymbolicApplyResult(object):
-    """The result of a symbolic application."""
+    """The result of a symbolic application.
 
-    def __init__(self, value, env):
+    This can be a returned value or an exception."""
+
+    def __init__(self, typ, value, env):
+        self.__typ = typ
         self.__value = value
         self.__var_constructors = env.var_constructors
         self.__const_types = env.const_types
@@ -1244,8 +1247,35 @@ class SymbolicApplyResult(object):
             = self.get_path_condition_list(with_assume=True, with_det=True)
 
     @property
+    def type(self):
+        """The type of this result, as a string.
+
+        This is either "value" or "exception".
+        """
+        return self.__typ
+
+    @property
     def value(self):
-        """The value returned by the application (which may be Symbolic)."""
+        """The value returned by the application (which may be Symbolic).
+
+        Accessing this property throws an exception for non-value
+        results.
+        """
+        if self.__typ != "value":
+            raise ValueError("Cannot retrieve value of %s-type result" %
+                             self.__typ)
+        return self.__value
+
+    @property
+    def exc_info(self):
+        """The exc_info for the exception thrown by this application.
+
+        Accessing this property throws an exception for non-exception
+        results.
+        """
+        if self.__typ != "exception":
+            raise ValueError("Cannot retrieve exception of %s-type result" %
+                             self.__typ)
         return self.__value
 
     def get_path_condition_list(self, with_assume, with_det):
@@ -1293,6 +1323,9 @@ class SymbolicApplyResult(object):
                 length += 1
             elif node.typ in ("branch_det", "assumption"):
                 continue
+            elif node.typ == "exception" and node is self.__schedule[-1]:
+                bitstring = (bitstring << 1) | node.expr
+                length += 1
             else:
                 raise ValueError("Can't encode schedule node %r" % node)
         # Pad the bitstring to a multiple of four
@@ -1374,7 +1407,7 @@ def symbolic_apply(fn, *args):
 
     This yields a series of SymbolicApplyResult objects; one for each
     distinct code path.  If a code path leads to an uncheckable
-    constraint, this prints a warning and terminates that path.
+    constraint, this returns an exception-type result.
     """
 
     if Env.current() != Env.global_env:
@@ -1394,16 +1427,16 @@ def symbolic_apply(fn, *args):
         sar = None
         try:
             rv = fn(*args)
-            sar = SymbolicApplyResult(rv, Env.current())
+            sar = SymbolicApplyResult("value", rv, Env.current())
             graph.add_sched(path_state.sched, str(rv))
         except UnsatisfiablePath:
             graph.add_sched(path_state.sched, "Unsatisfiable path", "blue")
+            raise
         except UncheckableConstraintError as e:
-            # XXX Maybe we should yield a result for this so the
-            # caller can better account for it?
             import traceback
             traceback.print_exc()
-            print >>sys.stderr, "Ignoring path with uncheckable constraint"
+            print >>sys.stderr, "Suppressing exception"
+            sar = SymbolicApplyResult("exception", sys.exc_info(), Env.current())
             graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
         except Exception as e:
             graph.add_sched(path_state.sched, "Exception: " + str(e), "red")

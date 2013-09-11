@@ -407,8 +407,8 @@ class SInt(SArith, SymbolicConst):
 
 class UncheckableConstraintError(RuntimeError):
     def __init__(self, expr, reason):
-        RuntimeError.__init__(
-            self, '%s: %s' % (reason, z3.simplify(expr)))
+        RuntimeError.__init__(self, reason)
+        self.expr = expr
 
 class UnsatisfiablePath(RuntimeError):
     pass

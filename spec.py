@@ -238,8 +238,7 @@ def idempotent_projs(result):
     A call is considered idempotent for a projection P if there is
     some permutation in which P(state) is equal before and after the
     call and some permutation in which P(state) is distinct before and
-    after the operation.  Note that this excludes nullipotent
-    projections.
+    after the call.  Note that this excludes nullipotent projections.
 
     For projections, this considers all nodes of the state structure,
     recursively.
@@ -264,6 +263,9 @@ def idempotent_projs(result):
             """Walk Symbolic type typ.  proj(state) must retrieve a projected
             value of type typ from state.  label must be a tuple that
             can be joined to describe the current projection.
+
+            Returns a list of projection expressions as strings that
+            are idempotent for this call.
             """
 
             # Build idempotence test for this projection
@@ -279,32 +281,31 @@ def idempotent_projs(result):
                                        simsym.symor(did_not_change)])
 
             check = xcheck(idem_expr)
+            res = []
             if check.is_sat:
                 # This projection is idempotent
-                # XXX We might still want to descend.  More detailed
-                # leaf information can be useful.
-                return [''.join(label)]
+                res.append(''.join(label))
+                # We continue to descend because the more detailed
+                # projection information is often useful in
+                # understanding why a call is idempotent.
 
-            # Try breaking down the projection further
+            # Break down the projection further
             if issubclass(typ, simsym.SStructBase):
                 # Are any fields idempotent?
-                idem_projs = []
                 for fname, ftyp in typ._fields.items():
-                    idem_projs.extend(walk(ftyp,
-                                           lambda state, fname=fname:
-                                           getattr(proj(state), fname),
-                                           label + ('.' + fname,)))
-                return idem_projs
+                    res.extend(walk(ftyp,
+                                    lambda state, fname=fname:
+                                    getattr(proj(state), fname),
+                                    label + ('.' + fname,)))
             elif issubclass(typ, simsym.SMapBase):
                 # Is there some map value that is idempotent?  Because
                 # of how we construct the final query, this requires
                 # it to have the same index in all permutations.
                 idx = typ._indexType.var()
-                return walk(typ._valueType,
-                            lambda state: proj(state)[idx],
-                            label + ('[?]',))
-            else:
-                return []
+                res.extend(walk(typ._valueType,
+                                lambda state: proj(state)[idx],
+                                label + ('[?]',)))
+            return res
 
         idem_projs = walk(root, lambda x:x, ('state',))
         res.append(idem_projs)

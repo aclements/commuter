@@ -1396,8 +1396,12 @@ def symbolic_apply(fn, *args):
         except UnsatisfiablePath:
             graph.add_sched(path_state.sched, "Unsatisfiable path", "blue")
         except UncheckableConstraintError as e:
+            # XXX Maybe we should yield a result for this so the
+            # caller can better account for it?
+            import traceback
+            traceback.print_exc()
+            print >>sys.stderr, "Ignoring path with uncheckable constraint"
             graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
-            print str(e)
         except Exception as e:
             graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
             if len(e.args) == 1:

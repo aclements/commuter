@@ -174,56 +174,6 @@ class IsomorphicMatch(object):
 
         return simsym.symand(conds)
 
-def is_idempotent(result):
-    """Return whether the calls in test_result can be idempotent.
-
-    This returns a sequence of booleans, where the nth boolean
-    indicates if the nth call in every permutation of the callset can
-    have no effect on the state.  The "can" is important: if the state
-    isn't sufficiently constrained, then it's possible for it to be
-    both idempotent and non-idempotent given different assignments of
-    unconstrained values.
-
-    If the returned sequence is all 'True', then the call set is
-    additionally nullipotent.
-    """
-
-    res = [True] * (len(result.value.post_states[0]) - 1)
-    for perm_states in result.value.post_states:
-        for snum, (s1, s2) in enumerate(zip(perm_states, perm_states[1:])):
-            # Is there any satisfying assignment that lets these two
-            # states be equivalent?  Note that this may carefully pick
-            # internal variables (e.g., time) to make idempotence
-            # possible, while other equally valid assignments would
-            # not be idempotent.
-            check = simsym.check(
-                simsym.symand([result.path_condition, s1 == s2]))
-            if check.is_unknown:
-                print '  Idempotence unknown:', check.reason
-                return None
-            idem = check.is_sat
-
-            res[snum] = res[snum] and idem
-
-            if False:
-                # Also check if it's non-idempotent.  Note that it's often
-                # easy to pick internal variables (time, especially) that
-                # will cause an operation to be non-idempotent, so we
-                # quantify over all internal variables.
-                check = simsym.check(
-                    simsym.forall(result.internals,
-                                  simsym.symand([result.path_condition,
-                                                 s1 != s2])))
-                notidem = check.is_sat
-                # XXX This doesn't seem to hold either way (sat/unsat
-                # or unsat/sat), though they're very rarely sat/sat.
-                assert not (idem and notidem)
-
-            # Short-circuit
-            if not any(res):
-                return res
-    return res
-
 def idempotent_projs(result, iso_constraint=True):
     """Returns the projections for which each call in result is idempotent.
 
@@ -330,7 +280,6 @@ class TestWriter(object):
         #   callsetname -> '_'-joined call names
         #   pathinfo -> {'id': pathname,
         #                'diverge': '' | 'state' | 'results' | 'results state',
-        #                'idempotent': [bool],
         #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname,
@@ -365,7 +314,6 @@ class TestWriter(object):
             ('id', ('_'.join(c.__name__ for c in self.callset) +
                     '_' + result.pathid)),
             ('diverge', ' '.join(result.value.diverge)),
-            ('idempotent', is_idempotent(result)),
         ])
 
         # Filter out non-commutative results

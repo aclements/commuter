@@ -605,8 +605,8 @@ def parse_functions(functions, ncomb, module):
     """Parse a functions string, returning a list of callsets."""
 
     base = module.model_class
-    priorities = {a: getattr(base, a).model_function_pri for a in dir(base)
-                  if hasattr(getattr(base, a), 'model_function_pri')}
+    callnames = {name for name in dir(base)
+                 if getattr(getattr(base, name), 'is_model_function', False)}
     if functions is None:
         functions = '*'
     chars = list(functions)
@@ -637,11 +637,11 @@ def parse_functions(functions, ncomb, module):
                 raise ValueError('Open brace with no close brace')
             return res
         if consume('*'):
-            return [[c] for c in priorities]
+            return [[c] for c in callnames]
         callname = ''
         while chars and chars[0] not in '{},/*':
             callname += chars.pop(0)
-        if callname not in priorities:
+        if callname not in callnames:
             raise ValueError('Unknown call %r' % callname)
         return [[callname]]
 
@@ -664,9 +664,7 @@ def parse_functions(functions, ncomb, module):
     ncallsets.extend(itertools.combinations_with_replacement(singles, ncomb))
 
     # Canonicalize order of each callset and then all callsets
-    ncallsets = [sorted(callset, key=priorities.get) for callset in ncallsets]
-    ncallsets = sorted(ncallsets,
-                       key=lambda callset: map(priorities.get, callset))
+    ncallsets = sorted(sorted(callset) for callset in ncallsets)
     return ncallsets
 
 def main(spec_args):

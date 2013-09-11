@@ -472,14 +472,14 @@ class SBool(SExpr, SymbolicConst):
                     cursched.append(SchedNode("branch_nondet", self, True))
                 else:
                     cursched.append(
-                        SchedNode("exception", None,
+                        SchedNode("exception", True,
                                   UncheckableConstraintError(
                                       self._v, canTrueReason)))
                 if canFalse == z3.sat:
                     newsched.append(SchedNode("branch_nondet", self, False))
                 else:
                     newsched.append(
-                        SchedNode("exception", None,
+                        SchedNode("exception", False,
                                   UncheckableConstraintError(
                                       z3.Not(self._v), canFalseReason)))
                 scheduler.queue_schedule(newsched)
@@ -1076,8 +1076,11 @@ class SchedNode(object):
       record these, we would have to invoke the solver on every branch
       just to find out if we should consult the schedule.
 
-    - "exception" for an exception.  val must be the exception to
-      raise at this point in the schedule.
+    - "exception" for an UncheckableConstraintError.  expr must be
+      True or False to indicate whether this was the true or false
+      branch that was uncheckable.  val must be the exception to raise
+      at this point in the schedule.  If an exception node appears in
+      a schedule, it must be the last node.
 
     - "assumption" for an assumption.  val must be True.
 

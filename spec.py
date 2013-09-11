@@ -255,7 +255,7 @@ def idempotent_projs(result, iso_constraint=True):
         check = simsym.check(simsym.symand([pc, iso_constraint, cond]))
         if check.is_unknown:
             print '  Idempotence unknown:', check.reason
-            print '    ' + str(cond)
+#            print '    ' + str(cond)
         return check
 
     res = []

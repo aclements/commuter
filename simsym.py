@@ -818,6 +818,9 @@ def symeq(a, b):
         return symand([symeq(aa, bb) for (aa, bb) in zip(a, b)])
     return a == b
 
+def symif(pred, cons, alt):
+    return wrap(z3.If(unwrap(pred), unwrap(cons), unwrap(alt)))
+
 def distinct(*exprlist):
     return wrap(z3.Distinct(*map(unwrap, exprlist)))
 

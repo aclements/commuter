@@ -34,6 +34,17 @@ class SFd(simsym.tstruct(ispipe = simsym.SBool,
     def _declare_assumptions(self, assume):
         super(SFd, self)._declare_assumptions(assume)
         assume(self.off >= 0)
+
+    def __eq__(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        return simsym.symand(
+            [self.ispipe == o.ispipe,
+             simsym.symif(self.ispipe,
+                          simsym.symand([self.pipeid == o.pipeid,
+                                         self.pipewriter == o.pipewriter]),
+                          simsym.symand([self.inum == o.inum,
+                                         self.off == o.off]))])
 SFdNum = simsym.tsynonym("SFdNum", simsym.SInt)
 SFdMap = symtypes.tdict(SFdNum, SFd)
 class SVMA(simsym.tstruct(anon = simsym.SBool,
@@ -46,6 +57,15 @@ class SVMA(simsym.tstruct(anon = simsym.SBool,
         super(SVMA, self)._declare_assumptions(assume)
         assume(self.off >= 0)
         assume(self.off % PAGE_DATAVALS == 0)
+
+    def __eq__(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        return simsym.symand(
+            [self.anon == o.anon, self.writable == o.writable,
+             simsym.symif(self.anon, self.anondata == o.anondata,
+                          simsym.symand([self.off == o.off,
+                                         self.inum == o.inum]))])
 SVaMap = symtypes.tdict(SVa, SVMA)
 SProc = symtypes.tstruct(fd_map = SFdMap,
                          va_map = SVaMap)

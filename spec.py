@@ -178,11 +178,14 @@ class IsomorphicMatch(object):
 def idempotent_projs(result, iso_constraint=True):
     """Returns the projections for which each call in result is idempotent.
 
-    This returns a list of idempotence sets, where the entries in the
-    list correspond to the calls in result's call set (in the order
-    before permutation).  Each idempotence set is a list of
-    projections for which that call is idempotent.  This list will be
-    empty if the call is not idempotent for any projection.
+    This returns two values.  The first is a list of idempotence sets,
+    where the entries in the list correspond to the calls in result's
+    call set (in the order before permutation).  Each idempotence set
+    is a list of projections for which that call is idempotent.  The
+    idempotence set will be empty if the call is not idempotent for
+    any projection.  The second returned value is a count of the
+    number of projections that this failed to resolve the idempotence
+    of.
 
     A call is considered idempotent for a projection P if there is
     some permutation in which P(state) is equal before and after the
@@ -202,11 +205,14 @@ def idempotent_projs(result, iso_constraint=True):
 
     root = __import__(args.module).model_class
     pc = result.path_condition
+    unknown_count = [0]
     def xcheck(cond):
         check = simsym.check(simsym.symand([pc, iso_constraint, cond]))
         if check.is_unknown:
-            print '  Idempotence unknown:', check.reason
-#            print '    ' + str(cond)
+            if unknown_count[0] == 0:
+                print '  Idempotence unknown:', check.reason
+#                print '    ' + str(cond)
+            unknown_count[0] += 1
         return check
 
     res = []
@@ -263,7 +269,7 @@ def idempotent_projs(result, iso_constraint=True):
 
         idem_projs = walk(root, lambda x:x, ('state',))
         res.append(idem_projs)
-    return res
+    return res, unknown_count[0]
 
 class TestWriter(object):
     def __init__(self, trace_file, model_file, test_file, testgen):
@@ -286,7 +292,8 @@ class TestWriter(object):
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname,
         #                'assignments': {expr: val},
-        #                'idempotent_projs': [[string]]}
+        #                'idempotent_projs': [[string]],
+        #                'idempotent_errors': int}  # if non-zero
         #   testname -> pathname '_' testnum
         self.model_data = {'tests':{}}
 
@@ -450,7 +457,10 @@ class TestWriter(object):
 
             # Compute idempotent projections for this test
             if args.idempotent_projs:
-                testinfo['idempotent_projs'] = idempotent_projs(result, isocond)
+                projs, proj_errors = idempotent_projs(result, isocond)
+                testinfo['idempotent_projs'] = projs
+                if proj_errors:
+                    testinfo['idempotent_errors'] = proj_errors
 
             # Construct constraint for next test
             notsame = simsym.symnot(isocond)

@@ -748,6 +748,9 @@ class SStructBase(Symbolic):
 
     def __eq__(self, o):
         # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?
+        # XXX Structural equality is almost always not what we want.
+        # Maybe this should be offered as a method, but make the
+        # default __eq__ raise an exception?
         if not isinstance(o, type(self)):
             return NotImplemented
         return compound_eq(self._getter(), o._getter())

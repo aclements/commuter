@@ -54,7 +54,10 @@ class Delta(object):
     def __init__(self, callset, a, b, field):
         self.callset = callset
         aval, bval = getattr(a, field), getattr(b, field)
-        self.pct = 100 * float(bval - aval) / aval
+        if aval != 0:
+            self.pct = 100 * float(bval - aval) / aval
+        else:
+            self.pct = 0
         for field in FIELDS:
             setattr(self, "diff" + field,
                     getattr(b, field) - getattr(a, field))

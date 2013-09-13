@@ -293,7 +293,7 @@ class TestWriter(object):
         #   testinfo -> {'id': testname,
         #                'assignments': {expr: val},
         #                'idempotent_projs': [[string]],
-        #                'idempotent_errors': int}  # if non-zero
+        #                'idempotence_unknown': int}  # if non-zero
         #   testname -> pathname '_' testnum
         self.model_data = {'tests':{}}
 
@@ -460,7 +460,7 @@ class TestWriter(object):
                 projs, proj_errors = idempotent_projs(result, isocond)
                 testinfo['idempotent_projs'] = projs
                 if proj_errors:
-                    testinfo['idempotent_errors'] = proj_errors
+                    testinfo['idempotence_unknown'] = proj_errors
 
             # Construct constraint for next test
             notsame = simsym.symnot(isocond)

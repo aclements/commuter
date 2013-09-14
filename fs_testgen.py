@@ -518,7 +518,6 @@ class FsTestGenerator(testgen.TestGenerator):
     super(FsTestGenerator, self).__init__(test_file_name)
     self.emit = testgen.CodeWriter(open(test_file_name, 'w'))
     self.fstests = []
-    self.pathid = self.modelno = None
     self.__funcs = {}
     self.__pending_funcs = {}
 
@@ -581,8 +580,6 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
 
   def begin_path(self, result):
     super(FsTestGenerator, self).begin_path(result)
-    self.pathid = result.pathid
-    self.modelno = 0
     self.sar = result
 
   def func(self, emit, ret, fname, body):
@@ -599,11 +596,8 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
       emit('// ^ See %s' % existing)
       return existing
 
-  def on_model(self, model, constraint):
-    super(FsTestGenerator, self).on_model(model, constraint)
-
-    name = "%s_%s_%d" % ("_".join(self.callset_names), self.pathid,
-                         self.modelno)
+  def on_model(self, testid, model, constraint):
+    super(FsTestGenerator, self).on_model(testid, model, constraint)
 
     emit = testgen.CodeWriter()
     self.__pending_funcs.clear()
@@ -623,7 +617,7 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
         args = self.get_call_args(callidx)
         res = self.get_result(callidx)
         fns['test_%d' % callidx] \
-          = self.func(emit, 'int', 'test_%s_%d' % (name, callidx),
+          = self.func(emit, 'int', 'test_%s_%d' % (testid, callidx),
                       fs.gen_code(callname, args, res))
         if hasattr(args, 'pid'):
           pids.append(args.pid.val)
@@ -634,23 +628,23 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
       setup = fs.build_dir()
       for phase in ('common', 'proc0', 'proc1', 'final', 'procfinal'):
         fns['setup_' + phase] \
-          = self.func(emit, 'void', 'setup_%s_%s' % (name, phase),
+          = self.func(emit, 'void', 'setup_%s_%s' % (testid, phase),
                       setup[phase])
     except SkipTest as e:
-      print "Skipping test %s: %s" % (name, e)
+      print "Skipping test %s: %s" % (testid, e)
       return
 
     # Commit to this code
     self.__funcs.update(self.__pending_funcs)
     self.emit(emit)
 
-    strargs = {'name' : name,
+    strargs = {'testid' : testid,
                'pid0' : pids[0], 'pid1' : pids[1],
                'name0' : self.callset_names[0],
                'name1' : self.callset_names[1]}
     strargs.update(fns)
     self.fstests.append("""\
-  { "fs-%(name)s",
+  { "fs-%(testid)s",
     &%(setup_common)s,
     { { &%(setup_proc0)s }, { &%(setup_proc1)s } },
     &%(setup_procfinal)s,
@@ -658,12 +652,6 @@ init_map_file(uintptr_t va, bool writable, const char *fname, off_t offset)
     { { &%(test_0)s, %(pid0)d, "%(name0)s" },
       { &%(test_1)s, %(pid1)d, "%(name1)s" } },
     &cleanup }""" % strargs)
-
-    self.modelno += 1
-
-  def end_path(self):
-    super(FsTestGenerator, self).end_path()
-    self.pathid = self.modelno = None
 
   def finish(self):
     super(FsTestGenerator, self).finish()

@@ -405,13 +405,12 @@ class TestWriter(object):
                 print "Model:"
                 print check.model
 
-            testinfo = collections.OrderedDict(
-                id=('_'.join(c.__name__ for c in self.callset) +
-                    '_' + result.pathid + '_' + str(self.npathmodel)),
-            )
+            testid = ('_'.join(c.__name__ for c in self.callset) +
+                      '_' + result.pathid + '_' + str(self.npathmodel))
+            testinfo = collections.OrderedDict(id=testid)
             self.model_data_testinfo_list.append(testinfo)
 
-            assignments = self.__on_model(result, check.z3_model, e)
+            assignments = self.__on_model(result, check.z3_model, e, testid)
             if assignments is None:
                 break
             if args.verbose_testgen:
@@ -474,7 +473,7 @@ class TestWriter(object):
         if self.testgen:
             self.testgen.end_path()
 
-    def __on_model(self, result, model, constraint):
+    def __on_model(self, result, model, constraint, testid):
         self.nmodel += 1
         res = None
 
@@ -488,7 +487,7 @@ class TestWriter(object):
         if self.testgen:
             smodel = result.get_model(model)
             smodel.track_assignments(True)
-            self.testgen.on_model(smodel, constraint)
+            self.testgen.on_model(testid, smodel, constraint)
             res = smodel.assignments()
 
         self.npathmodel += 1

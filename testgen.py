@@ -63,8 +63,11 @@ class TestGenerator(object):
         """
         self.__result = result
 
-    def on_model(self, model, constraint):
+    def on_model(self, testid, model, constraint):
         """Handle a concrete assignment for the current code path.
+
+        testid is the string uniquely identifying this test.  It is a
+        valid identifier.
 
         model is the simsym.Model object giving the concrete
         assignment.

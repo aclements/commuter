@@ -24,7 +24,7 @@ import traceback
 #   If this attribute is not present, tests cannot be generated.
 
 TestResult = collections.namedtuple(
-    'TestResult', 'diverge results post_states op_states')
+    'TestResult', 'diverge results op_states')
 
 def test(base, *calls):
     # XXX This codifies "regular" commutativity, not strong
@@ -45,16 +45,12 @@ def test(base, *calls):
 
     all_s = []
     all_r = []
-    # post_states[perm_index][step_index + 1] is the state after step
-    # step_index in permutation perm_index.
-    post_states = []
     # op_states[op_index][perm_index] is a pair of the states before
     # and after operation op_index in permutation perm_index.
     op_states = [[] for _ in calls]
 
     for callseq in itertools.permutations(range(0, len(calls))):
         prestate = init
-        post_states.append([prestate])
         s = init.copy()
         r = [None] * len(callseq)
         seqname = ''.join(map(lambda i: callnames[i], callseq))
@@ -70,7 +66,6 @@ def test(base, *calls):
             # Invoke the call
             r[idx] = calls[idx](s, **cargs)
             snapshot = s.copy()
-            post_states[-1].append(snapshot)
             op_states[idx].append((prestate, snapshot))
             prestate = snapshot
             # Clean up
@@ -84,7 +79,7 @@ def test(base, *calls):
     if simsym.symor([all_s[0] != s for s in all_s[1:]]):
         diverge += ('state',)
 
-    return TestResult(diverge, all_r, post_states, op_states)
+    return TestResult(diverge, all_r, op_states)
 
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.

@@ -27,59 +27,117 @@ TestResult = collections.namedtuple(
     'TestResult', 'diverge results op_states')
 
 def test(base, *calls):
-    # XXX This codifies "regular" commutativity, not strong
-    # commutativity.  They're equivalent for pairs, which is all we
-    # use in the paper, but we should fix this.
+    """Test for SIM commutativity of calls
 
-    init = base.var(base.__name__)
-
-    callnames = [chr(idx + ord('a')) for idx in range(len(calls))]
+    base must be a class type for the system state.  calls must be the
+    unbound methods of base to test for SIM commutativity.  Returns a
+    TestResult.  This function must be executed symbolically.
+    """
 
     # Create arguments for each call.  We reuse these arguments in
     # each permutation, so each call receives the same arguments each
     # time we test it.
     args = []
-    for callname, call in zip(callnames, calls):
-        arg_name = '%s.%s' % (callname, call.__name__)
+    for callidx, call in enumerate(calls):
+        arg_name = '%s.%s' % (callseq_name([callidx]), call.__name__)
         args.append(call.arg_struct_type.var(arg_name))
 
-    all_s = []
-    all_r = []
     # op_states[op_index] is a list of pairs of before and after
     # states for operation op_index.
     op_states = [[] for _ in calls]
 
-    for callseq in itertools.permutations(range(0, len(calls))):
-        prestate = init
-        s = init.copy()
-        r = [None] * len(callseq)
-        seqname = ''.join(map(lambda i: callnames[i], callseq))
-        for idx in callseq:
-            # Include the sequence and call name in all anonymous
-            # variable names
-            simsym.anon_info = '_seq' + seqname + '_call' + callnames[idx]
+    # Mapping from frozenset of call indexes to a pair of (callseq,
+    # state after callseq).  Prepare with initial state.
+    init = base.var(base.__name__)
+    perm_states = {frozenset([]): ([], init)}
+
+    # Mapping from callidx to pair of (callseq ending in callidx,
+    # result of last call in callseq).
+    call_results = {}
+
+    # List of divergences.  Each is a triple of
+    #   ('state' | 'result', seq1, seq2)
+    # If this is state divergence, seq1 and seq2 will be permutations
+    # of each other.  If this is result divergence, seq1 and seq2 will
+    # end in the same call.
+    diverge = []
+
+    # Explore every permutation of calls, requiring that the state
+    # following every permutation of every subset of callseq be the
+    # same.  This uses a depth-first walk of every n-step path from
+    # one corner to the opposite corner of an n-dimensional cube,
+    # where n is the number of calls.  Each edge represents a call
+    # (the edge's direction determines which call) and each vertex a
+    # state.  Where these paths rejoin, the states must be equal.
+    # This way, we make the minimal number of calls and state
+    # comparisons possible.
+    def rec(callseq):
+        base_state = perm_states[frozenset(callseq)][1]
+
+        # Extend callseq in every way that doesn't duplicate a call
+        # already in callseq
+        for callidx in range(len(calls)):
+            if callidx in callseq:
+                continue
+            if diverge:
+                return
+            ncallseq = callseq + (callidx,)
+            seqname = callseq_name(callseq)
+            # Include the sequence in all anonymous variable names
+            simsym.anon_info = '_seq' + seqname
+
             # Build the Python arguments dictionary and copy each
             # argument, just in case the call mutates it
-            arg_struct = args[idx]
+            arg_struct = args[callidx]
             cargs = {arg: getattr(arg_struct, arg).copy()
                      for arg in arg_struct._fields}
             # Invoke the call
-            r[idx] = calls[idx](s, **cargs)
-            snapshot = s.copy()
-            op_states[idx].append((prestate, snapshot))
-            prestate = snapshot
-            # Clean up
-            simsym.anon_info = ''
-        all_s.append(s)
-        all_r.append(r)
+            nstate = base_state.copy()
+            res = calls[callidx](nstate, **cargs)
 
-    diverge = ()
-    if simsym.symor([all_r[0] != r for r in all_r[1:]]):
-        diverge += ('results',)
-    if simsym.symor([all_s[0] != s for s in all_s[1:]]):
-        diverge += ('state',)
+            # Record or check result
+            call_result = call_results.get(callidx)
+            if call_result is None:
+                # This is the first time we've made this call.  Record
+                # its result.
+                call_results[callidx] = (ncallseq, res)
+            else:
+                # We've called this call before.  Check that its
+                # result agrees.
+                if call_result[1] != res:
+                    diverge.append(('result', call_result[0], ncallseq))
 
-    return TestResult(diverge, all_r, op_states)
+            # Record or check state
+            op_states[callidx].append((base_state, nstate))
+            perm_state = perm_states.get(frozenset(ncallseq))
+            if perm_state is None:
+                # This is the first permutation of these calls we've
+                # executed.  Record the state and recurse.
+                perm_states[frozenset(ncallseq)] = (ncallseq, nstate)
+                rec(ncallseq)
+            else:
+                # We've executed some other permutation of these calls
+                # already.  Check that the state agrees.  Recursing
+                # from here would be redundant.
+                if perm_state[1] != nstate:
+                    diverge.append(('state', perm_state[0], ncallseq))
+    try:
+        rec(())
+    finally:
+        simsym.anon_info = ''
+
+    return TestResult(diverge,
+                      [call_results[callidx][1]
+                       for callidx in range(len(calls))],
+                      op_states)
+
+def callseq_name(callseq):
+    return ''.join(chr(idx + ord('a')) for idx in callseq)
+
+def str_diverge(diverge):
+    return ', '.join(
+        '%s/%s %s' % (callseq_name(seq1), callseq_name(seq2), typ)
+        for (typ, seq1, seq2) in diverge)
 
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.
@@ -282,7 +340,7 @@ class TestWriter(object):
         #   callsetname -> '_'-joined call names
         #   pathinfo -> {'id': pathname,
         #                'exception': string,
-        #                'diverge': '' | 'state' | 'results' | 'results state',
+        #                'diverge': '' | string,
         #                'tests': [testinfo]}
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname,
@@ -325,10 +383,10 @@ class TestWriter(object):
             self.nerror += 1
             return
 
-        pathinfo['diverge'] = ' '.join(result.value.diverge)
+        pathinfo['diverge'] = str_diverge(result.value.diverge)
 
         # Filter out non-commutative results
-        if result.value.diverge != ():
+        if len(result.value.diverge):
             return
 
         self.ncompath += 1
@@ -668,7 +726,7 @@ def do_callset(base, callset, test_writer):
     all_internals = []
     for sar in simsym.symbolic_apply(test, base, *callset):
         if sar.type == 'value':
-            is_commutative = (sar.value.diverge == ())
+            is_commutative = (len(sar.value.diverge) == 0)
             diverged.update(sar.value.diverge)
             condlists[is_commutative].append(sar.path_condition)
             all_internals.extend(sar.internals)
@@ -701,7 +759,7 @@ def do_callset(base, callset, test_writer):
 
     if False in condlists:
         diverge = simsym.symor(condlists[False])
-        print_cond('cannot commute; %s can diverge' % ', '.join(diverged),
+        print_cond('can not commute; %s' % str_diverge(diverged),
                    simsym.symand([diverge, cannot_commute]))
 
 if __name__ == "__main__":

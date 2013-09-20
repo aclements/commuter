@@ -36,13 +36,13 @@ class TestGenerator(object):
         """A list of string names of the methods in the current call set."""
         return [c.__name__ for c in self.__callset]
 
-    def get_result(self, callno, permno=0):
+    def get_result(self, callno):
         """Return the result for the callno'th call.
 
         The result must be a dictionary.  Any values that are symbolic
         will be automatically bound to the model.
         """
-        res = self.__result.value.results[permno][callno]
+        res = self.__result.value.results[callno]
         return {k: v.bind(self.__model) if isinstance(v, simsym.Symbolic) else v
                 for k, v in res.iteritems()}
 

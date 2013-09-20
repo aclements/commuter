@@ -45,8 +45,8 @@ def test(base, *calls):
 
     all_s = []
     all_r = []
-    # op_states[op_index][perm_index] is a pair of the states before
-    # and after operation op_index in permutation perm_index.
+    # op_states[op_index] is a list of pairs of before and after
+    # states for operation op_index.
     op_states = [[] for _ in calls]
 
     for callseq in itertools.permutations(range(0, len(calls))):

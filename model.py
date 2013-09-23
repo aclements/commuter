@@ -19,3 +19,10 @@ def methodwrap(**arg_types):
         m.is_model_function = True
         return m
     return decorator
+
+cur_thread_idx = None
+
+def cur_thread():
+    if cur_thread_idx is None:
+        raise ValueError('cur_thread called outside spec.test')
+    return cur_thread_idx

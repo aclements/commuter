@@ -12,6 +12,7 @@ import json
 import progress
 import testgen
 import traceback
+import model
 
 # A test module must have the following two attributes:
 #
@@ -93,7 +94,11 @@ def test(base, *calls):
                      for arg in arg_struct._fields}
             # Invoke the call
             nstate = base_state.copy()
-            res = calls[callidx](nstate, **cargs)
+            model.cur_thread_idx = callidx
+            try:
+                res = calls[callidx](nstate, **cargs)
+            finally:
+                model.cur_thread_idx = None
 
             # Record or check result
             call_result = call_results.get(callidx)

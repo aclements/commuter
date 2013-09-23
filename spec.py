@@ -152,6 +152,8 @@ def expr_vars(e):
 
     res = z3util.AstSet()
     def rec(e):
+        if not z3.is_ast(e):
+            return
         if z3.is_const(e) and e.decl().kind() == z3.Z3_OP_UNINTERPRETED:
             res.add(e)
             return

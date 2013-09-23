@@ -1176,6 +1176,9 @@ class PathState(object):
         return "\n".join(out)
 
 def simplify(expr, try_harder=False):
+    expr = unwrap(expr)
+    if not z3.is_ast(expr):
+        return expr
     core_simplifier = 'ctx-simplify'
     if try_harder:
         ## ctx-solver-simplify is very slow; use the
@@ -1188,7 +1191,7 @@ def simplify(expr, try_harder=False):
                           'ctx-simplify',
                           core_simplifier,
                           ))
-    subgoals = t(unwrap(expr))
+    subgoals = t(expr)
     if len(subgoals[0]) == 0:
         s = wrap(z3.BoolVal(True))
     else:

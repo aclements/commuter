@@ -13,6 +13,7 @@ import progress
 import testgen
 import traceback
 import model
+import importlib
 
 # A test module must have the following two attributes:
 #
@@ -704,7 +705,7 @@ def main(spec_args):
     args = spec_args
 
     z3printer._PP.max_lines = float('inf')
-    m = __import__(args.module)
+    m = importlib.import_module(args.module)
     testgen = m.model_testgen if hasattr(m, 'model_testgen') else None
     if testgen is None and args.test_file:
         parser.error("No test case generator for this module")

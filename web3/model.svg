@@ -130,7 +130,7 @@
    style="fill:#204a87"
    id="tspan3353"> rename</tspan>(<tspan
    style="fill:#4e9a06"
-   id="tspan3301">self</tspan> ,src, dst):</tspan><tspan
+   id="tspan3301">self</tspan>, src, dst):</tspan><tspan
          sodipodi:role="line"
          x="0.54868829"
          y="40.780167"

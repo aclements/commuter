@@ -1,0 +1,13 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" >
+<svg xmlns="http://www.w3.org/2000/svg">
+<metadata></metadata>
+<defs>
+<font id="myicon" horiz-adv-x="1200" >
+<font-face units-per-em="1200" ascent="960" descent="-240" />
+<missing-glyph horiz-adv-x="500" />
+<glyph unicode=" " />
+<glyph unicode="&#xa0;" />
+<glyph unicode="&#xf000;" d="m 1200,1000 0,-100 -100,0 0,-700 -400,0 200,-300 -100,0 -200,300 -200,-300 -100,0 200,300 -400,0 0,700 -100,0 0,100 z M 200,300 l 800,0 0,600 -800,0 z M 941.59375,772.25 717.125,435.53125 l -207.28125,103.625 -174.5,-174.5 -70.6875,70.6875 225.46875,225.5 192.75,-96.375 L 858.40625,827.75 z" />
+</font>
+</defs></svg>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Commuter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="language" content="en" />
+    <link rel="shortcut icon" href="favicon.ico" />
+
+    <link href="css/bootstrap.min.css" rel="stylesheet" media="screen"></link>
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="../../assets/js/html5shiv.js"></script>
+      <script src="../../assets/js/respond.min.js"></script>
+    <![endif]-->
+
+    <link href="css/site.css" rel="stylesheet" media="screen"></link>
+  </head>
+
+  <body data-spy="scroll">
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="#">
+          <img src="img/logo.svg" /> <span>Commuter</span>
+        </a>
+      </div>
+
+      <div class="collapse navbar-collapse navbar-ex1-collapse">
+        <ul class="nav navbar-nav">
+          <li class="active"><a href="#about">About</a></li>
+          <li><a href="#pubs">Publications</a></li>
+          <li><a href="#download">Download</a></li>
+          <li><a href="#demo">Demo</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="container" style="max-width: 768px">
+      <section id="about">
+        <div class="text-center page-header">
+          <h1>
+            <img src="img/logo.svg" style="margin-right: 20px" />
+            Commuter
+          </h1>
+        </div>
+
+        <div class="row" style="margin-bottom: 20px">
+          <!-- The text here is rather constrained and the images look
+               off-center if it wraps too early, so we hyphenate and
+               force-justify the text. -->
+          <div class="col-sm-4">
+            <p class="text-center"><img src="img/model.png" /></p>
+            <p><strong>Model</strong> your soft&shy;ware
+            in&shy;ter&shy;face using a sym&shy;bolic
+            vari&shy;ant of Python.</p>
+          </div>
+          <div class="col-sm-4">
+            <p class="text-center"><img src="img/test.png" /></p>
+            <p><strong>Test</strong> your code
+            au&shy;to&shy;mat&shy;i&shy;cally to find cases of
+            un&shy;nec&shy;es&shy;sary, non-<wbr />scal&shy;able cache
+            line shar&shy;ing.</p>
+          </div>
+          <div class="col-sm-4">
+            <p class="text-center"><img src="img/improve.png" /></p>
+            <p><strong>Improve</strong> your soft&shy;ware's
+            scal&shy;a&shy;bil&shy;ity by
+            elim&shy;i&shy;nat&shy;ing
+            un&shy;nec&shy;es&shy;sary shar&shy;ing.</p>
+          </div>
+        </div>
+
+        <p>Sometimes it's bad to share with others. On modern massive
+        multicores, shared cache lines can severely limit your
+        software's ability to scale. But sharing is often necessary to
+        make software do what it does.</p>
+
+        <p>Commuter is an automated scalability testing tool that
+        hunts down unnecessary sharing in your code. Unlike
+        traditional scalability testing, Commuter doesn't require
+        handcrafted workloads or even multicore hardware.  Starting
+        with a high-level software interface model written in Python
+        &ndash; not some esoteric specification language &ndash;
+        Commuter automatically generates thousands of test cases for
+        your interface and tests your implementation to root out the
+        exact causes and locations of unnecessary,
+        scalability-limiting sharing.</p>
+      </section>
+
+      <section id="pubs">
+        <h1>Publications</h1>
+
+        <p>At the heart of Commuter is the <em>scalable commutativity
+        rule</em>: whenever interface operations commute, they have a
+        conflict-free implementation. This is how Commuter knows the
+        difference between necessary and unnecessary sharing. You can
+        find all of the details in our SOSP 2013 paper below,
+        including a full formal treatment of the rule, a detailed
+        explanation of Commuter, and how we applied the rule and
+        Commuter to build a POSIX file system and virtual memory
+        system.</p>
+
+        <div id="expand-template" style="display: none">
+          <a href="#" style="float: right" title="Show more">
+            <span class="glyphicon glyphicon-chevron-down"></span>
+          </a>
+          ...
+        </div>
+
+        <div id="collapse-template" style="display: none">
+          <a href="#" style="float: right" title="Show less">
+            <span class="glyphicon glyphicon-chevron-up"></span>
+          </a>
+        </div>
+
+        <div class="pub-links">
+          <a title="PDF" href="clements-commutativity-sosp13.pdf"
+             ><span class="glyphicon glyphicon-file"></span></a>
+          <!--
+          <a title="Slides" href="XXX"
+             ><span class="myicon myicon-slides"></span></a>
+          -->
+          <a title="WWW" href="."
+             ><span class="glyphicon glyphicon-globe"></span></a>
+        </div>
+        <div class="pub-info">
+          <div><strong>The Scalable Commutativity Rule: Designing
+          Scalable Software for Multicore Processors</strong><br
+          /><small>Austin T. Clements, M. Frans Kaashoek, Nickolai
+          Zeldovich, Robert T. Morris, and Eddie Kohler.
+          <abbr title="Proceedings of the 24th ACM Symposium on Operating Systems Principles, Farmington, PA, November 2013">SOSP
+          2013.</abbr></small></div>
+          <div class="abstract">
+            <p>What fundamental opportunities for scalability are
+            latent in <em>interfaces</em>, such as system call APIs?
+            Can scalability opportunities be identified even before
+            any implementation exists, simply by considering interface
+            specifications?  To answer these questions this paper
+            introduces the following rule: <em>Whenever interface
+            operations commute, they can be implemented in a way that
+            scales</em>.  This rule aids developers in building more
+            scalable software starting from interface design and
+            carrying on through implementation, testing, and
+            evaluation.</p>
+
+            <p>To help developers apply the rule, a new tool named
+            Commuter accepts high-level interface models and generates
+            tests of operations that commute and hence could scale.
+            Using these tests, Commuter can evaluate the scalability
+            of an implementation.  We apply Commuter to 18 POSIX calls
+            and use the results to guide the implementation of a new
+            research operating system kernel called sv6.  Linux scales
+            for 68% of the 13,664 tests generated by Commuter for
+            these calls, and Commuter finds many problems that have
+            been observed to limit application scalability.  sv6
+            scales for 99% of the tests.</p>
+          </div>
+        </div>
+
+        <div class="pub-links">
+          <a title="PDF" href="http://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf"
+             ><span class="glyphicon glyphicon-file"></span></a>
+          <a title="BibTeX" href="#eurosys13-bibtex" data-toggle="modal"
+             ><span class="glyphicon glyphicon-bold"></span></a>
+          <a title="Slides" href="XXX"
+             data-toggle="popover" data-html="true" data-title=""
+             data-placement="top"
+             data-content="&lt;a href=&quot;http://pdos.csail.mit.edu/multicore/radixvm/radixvm-eurosys13-slides.pdf&quot;&gt;PDF&lt;/a&gt; &lt;a href=&quot;http://pdos.csail.mit.edu/multicore/radixvm/radixvm-eurosys13-slides/&quot;&gt;HTML&lt;/a&gt;"
+             onclick="return false;"
+             ><span class="myicon myicon-slides"></span></a>
+          <a title="WWW" href="http://pdos.csail.mit.edu/multicore/radixvm"
+             ><span class="glyphicon glyphicon-globe"></span></a>
+        </div>
+        <div class="modal fade modal-bibtex" id="eurosys13-bibtex" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-body">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+<pre>
+@inproceedings{radixvm:eurosys13,
+  title = {{RadixVM}: Scalable address spaces for multithreaded applications},
+  author = {Austin T. Clements and M. Frans Kaashoek and Nickolai Zeldovich},
+  booktitle = {Proceedings of the ACM EuroSys Conference (EuroSys 2013)},
+  year = {2013},
+  month = {April},
+  address = {Prague, Czech Republic},
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pub-info">
+          <div><strong>RadixVM: Scalable Address Spaces for
+          Multithreaded Applications </strong><br /><small>Austin
+          T. Clements, M. Frans Kaashoek, and Nickolai
+          Zeldovich.  <abbr title="Proceedings of the ACM EuroSys Conference (EuroSys 2013), Prague, Czech Republic, April 2013.">EuroSys
+          2013.</abbr></small></div>
+
+          <div class="abstract">
+            <p>RadixVM is a new virtual memory system design that
+            enables fully concurrent operations on shared address
+            spaces for multithreaded processes on cache-coherent
+            multicore computers. Today, most operating systems
+            serialize operations such as mmap and munmap, which forces
+            application developers to split their multithreaded
+            applications into multiprocess applications, hoard memory
+            to avoid the overhead of returning it, and so on. RadixVM
+            removes this burden from application developers by
+            ensuring that address space operations on non-overlapping
+            memory regions scale perfectly. It does so by combining
+            three techniques: 1) it organizes metadata in a radix tree
+            instead of a balanced tree to avoid unnecessary cache line
+            movement; 2) it uses a novel memory-efficient distributed
+            reference counting scheme; and 3) it uses a new scheme to
+            target remote TLB shootdowns and to often avoid them
+            altogether. Experiments on an 80 core machine show that
+            RadixVM achieves perfect scalability for non-overlapping
+            regions: if several threads mmap or munmap pages in
+            parallel, they can run completely independently and induce
+            no cache coherence traffic.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="download">
+        <h1>Download</h1>
+        <p>Coming soon.</p>
+      </section>
+
+      <section id="demo">
+        <h1>Demo</h1>
+        <p>Coming soon.</p>
+      </section>
+
+      <section id="contact">
+        <h1>Contact</h1>
+        <p>Questions?  Comments?  Email
+        <script>
+          (function () {
+            var e = 'commuter' + '!\x40#'[1] + 'pdos.csail.mit.edu';
+            document.write('\x3ca href="mailto:' + e + '"\x3e' + e + '\x3c/a\x3e.');
+          })();
+        </script></p>
+      </section>
+    </div>
+
+    <script src="js/jquery-1.10.2.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+    <script src="js/jquery.ellipsize.js"></script>
+    <script>
+      $(document).ready(function() {
+        $('.abstract').ellipsize('apply', 
+          {expand: $('#expand-template').contents(),
+           collapse: $('#collapse-template').contents()});
+
+        $('[data-toggle=popover]').popover();
+      });
+    </script>
+  </body>
+</html>

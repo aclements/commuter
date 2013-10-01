@@ -1,0 +1,66 @@
+/* Clear navbar */
+body { padding-top: 50px; }
+/* Fix # links with fixed navbar */
+section { margin-top: -50px; padding-top: 50px; }
+/* Shrink brand image in navbar */
+.navbar-brand img { height: 1em; vertical-align: top; }
+
+/* Large page header text */
+.page-header h1 { font-size: 60px; letter-spacing: -1px; }
+@media (max-width: 767px) {
+    .page-header h1 { font-size: 36px; }
+    .page-header img { max-height: 2em }
+}
+
+/* Publication block */
+.pub-info {
+    margin-bottom: 10px;
+}
+.pub-links {
+    float: right;
+}
+.pub-links .popover-title {
+    display: none;
+}
+
+/* BibTeX modals */
+@media (min-width: 768px) {
+    /* Account for 10px left/right padding */
+    .modal-bibtex .modal-dialog { width: 748px; }
+}
+.modal-bibtex pre {
+    padding: 0px;
+    background: none;
+    border: none;
+}
+
+/* Collapsed abstract */
+.abstract {
+    max-height: 2.857em; /* 2 * body.line-height */
+    overflow: hidden;
+    position: relative;
+}
+
+/* Misc */
+p { text-align: justify; }
+
+/* My icon font */
+@font-face {
+    font-family: 'myicon';
+    src: url('../fonts/myicon.woff') format('woff'), url('../fonts/myicons.ttf') format('truetype'), url('../fonts/myicons.svg#myicon') format('svg');
+}
+
+.myicon {
+  position: relative;
+  top: 1px;
+  display: inline-block;
+  font-family: 'myicon';
+  -webkit-font-smoothing: antialiased;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+}
+
+.myicon-slides:before {
+    content: "\f000";
+}

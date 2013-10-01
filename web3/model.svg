@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200"
+   height="100"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.3.1 r9886"
+   sodipodi:docname="model.svg">
+  <defs
+     id="defs4">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient3882">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="0"
+         id="stop3884" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0;"
+         offset="1"
+         id="stop3886" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient3882"
+       id="linearGradient3888"
+       x1="236.89146"
+       y1="35.206459"
+       x2="213.51001"
+       y2="35.206459"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-37.057816,0.80972576)" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient3882"
+       id="linearGradient3892"
+       gradientUnits="userSpaceOnUse"
+       x1="236.89146"
+       y1="35.206459"
+       x2="213.51001"
+       y2="35.206459"
+       gradientTransform="translate(-138.16432,-121.18523)" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient3882"
+       id="linearGradient4130"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-238.37004,-121.18523)"
+       x1="236.89146"
+       y1="35.206459"
+       x2="213.51001"
+       y2="35.206459" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="2.8284271"
+     inkscape:cx="131.68762"
+     inkscape:cy="49.715678"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1342"
+     inkscape:window-height="746"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-0.06528988,0.37777424)">
+    <text
+       xml:space="preserve"
+       style="font-size:9px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Liberation Mono;-inkscape-font-specification:Liberation Mono"
+       x="0.54868829"
+       y="7.0301647"
+       id="text3267"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="7.0301647"
+         id="tspan3355"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3357">class</tspan><tspan
+   style="fill:#204a87"
+   id="tspan3347"> POSIX</tspan>(tstruct(root=SymDir, inodes=SymIMap, ...)):</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="18.280165"
+         id="tspan3271"><tspan
+   style="fill:#75507b"
+   id="tspan3351">  @symargs</tspan>(src=SymFilename, dst=SymFilename)</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="29.530165"
+         id="tspan3273"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3295">  def</tspan><tspan
+   style="fill:#204a87"
+   id="tspan3353"> rename</tspan>(<tspan
+   style="fill:#4e9a06"
+   id="tspan3301">self</tspan> ,src, dst):</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="40.780167"
+         id="tspan3275"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3303">    if not</tspan><tspan
+   style="fill:#4e9a06"
+   id="tspan3315"> self</tspan>.root.contains(src):</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="52.030167"
+         id="tspan3277"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3317">      return</tspan> (-1, errno.ENOENT)</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="63.280167"
+         id="tspan3279"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3323">    if</tspan> src == dst:</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="74.530167"
+         id="tspan3283"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3329">      return</tspan> 0</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="85.780167"
+         id="tspan3287"><tspan
+   style="font-weight:bold;fill:#4e9a06"
+   id="tspan3335">    if</tspan><tspan
+   style="fill:#4e9a06"
+   id="tspan3341"> self</tspan>.root.contains(dst):</tspan><tspan
+         sodipodi:role="line"
+         x="0.54868829"
+         y="97.030167"
+         id="tspan3289"><tspan
+   style="fill:#4e9a06"
+   id="tspan3343">      self</tspan>.inodes[<tspan
+   style="fill:#4e9a06"
+   id="tspan3345">self</tspan>.root[dst]].nlink -= 1</tspan></text>
+    <rect
+       style="color:#000000;fill:url(#linearGradient3888);fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:90.90908813;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       id="rect3104"
+       width="27.577164"
+       height="137.17871"
+       x="176.48843"
+       y="-14.188396" />
+    <rect
+       transform="matrix(0,1,-1,0,0,0)"
+       y="-204.77269"
+       x="75.381927"
+       height="205.76807"
+       width="27.577164"
+       id="rect3890"
+       style="color:#000000;fill:url(#linearGradient3892);fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:90.90908813;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       rx="0"
+       ry="0" />
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+#!/usr/bin/python
+
+import sys
+import argparse
+import struct
+
+parser = argparse.ArgumentParser(
+    description='Convert PNGs into a PNG-type ICO file.'
+)
+parser.add_argument('-o', metavar='ico', required=True,
+                    help='output ICO file name')
+parser.add_argument('png', nargs='+', type=argparse.FileType('rb'),
+                    help='input PNG file names')
+args = parser.parse_args()
+
+# Load input images
+images = []
+for image_file in args.png:
+    data = image_file.read()
+    if not (data.startswith('\x89PNG\x0d\x0a\x1a\x0a') and
+            data[12:].startswith('IHDR') and
+            len(data) >= 29):
+        parser.error('not a valid png file: %s' % image_file.name)
+    w, h, bpp = struct.unpack('!IIB', data[16:16+9])
+    if w > 256 or h > 256:
+        parser.error('png exceeds 256x256 size limit: %s' % image_file.name)
+    images.append((data, w, h, bpp))
+
+# Build icon data
+hdata = struct.pack('<HHH', 0, 1, len(images))
+idata = bytearray()
+pos = len(hdata) + len(images) * 16
+
+for data, w, h, bpp in images:
+    if w == 256:
+        w = 0
+    if h == 256:
+        h = 0
+    hdata += struct.pack('<BBBBHHII', w, h, 0, 0, 1, bpp, len(data), pos)
+    pos += len(data)
+
+    idata.extend(data)
+
+# Output icon
+if args.o == '-':
+    ofile = sys.stdout
+else:
+    ofile = open(args.o, 'wb')
+ofile.write(hdata + idata)
+ofile.close()

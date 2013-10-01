@@ -1,0 +1,115 @@
+#!/usr/bin/python
+
+import sys
+import numpy
+import collections
+import math
+
+Edge = collections.namedtuple('Edge', 'start end diridx')
+Poly = collections.namedtuple('Poly', 'verts diridx')
+
+def gen_edges(arity=3):
+    """Return a list of Edges for a state lattice over arity operations."""
+    edges = []
+
+    # Construct directions
+    stepWidth = 2.0 / arity
+    dirs = [numpy.array([1, y]) * stepWidth
+            for y in numpy.linspace(-1, 1, arity)]
+
+    # Traverse edges
+    reached = {frozenset([]): numpy.array([-1, 0])}
+    def rec(path):
+        start = reached[frozenset(path)]
+
+        for diridx, ndir in enumerate(dirs):
+            if diridx in path:
+                continue
+            npath = path + (diridx,)
+            end = reached.get(frozenset(npath))
+            if end is None:
+                end = start + ndir
+                reached[frozenset(npath)] = end
+                rec(npath)
+            edges.append(Edge(start, end, diridx))
+    rec(())
+
+    return edges
+
+def angle(vec):
+    """Return the angle of vec, where angle(+X) == 0."""
+    return math.atan2(vec[1], vec[0])
+
+def ang_vec(angle):
+    """Return a unit vector pointing at the given angle."""
+    return numpy.array([math.cos(angle), math.sin(angle)])
+
+def gen_polys(edges, w):
+    """Yield a sequence of Polys that add weight w to edges."""
+
+    def get_flare_vecs(edge, edge_list):
+        for i, (ang, ledge) in enumerate(edge_list):
+            if ledge is edge:
+                # Compute clockwise and counter-clockwise neighboring
+                # angles
+                ncw = edge_list[i-1][0] - (2 * math.pi if i == 0 else 0)
+                nccw = edge_list[(i+1)%len(edge_list)][0] \
+                       + (2 * math.pi if i == len(edge_list) - 1 else 0)
+                # Compute flare angles
+                cw, ccw = (ang + ncw) / 2, (ang + nccw) / 2
+                # Project flare angles until they reach a distance w
+                # from edge
+                magcw = w / math.sin(ang - cw)
+                magccw = w / math.sin(ccw - ang)
+                return magcw * ang_vec(cw), magccw * ang_vec(ccw)
+
+    # Collect edges by point
+    points = collections.defaultdict(list)
+    for edge in edges:
+        start, end = edge.start, edge.end
+        points[tuple(start)].append((angle(end - start), edge))
+        points[tuple(end)].append((angle(start - end), edge))
+    for edge_list in points.values():
+        edge_list.sort()
+
+    # Match edges to neighbors and compute flares and polys
+    for edge in edges:
+        start, end, diridx = edge
+        scw, sccw = get_flare_vecs(edge, points[tuple(start)])
+        ecw, eccw = get_flare_vecs(edge, points[tuple(end)])
+        yield Poly([start + scw, start, start + sccw,
+                    end + ecw, end, end + eccw], diridx)
+
+def edges_to_SVG(edges, colors):
+    print '<svg width="400px" height="400px" viewBox="-1 -1 2 2" xmlns="http://www.w3.org/2000/svg" version="1.1">'
+    for (start, end, diridx) in edges:
+        print '<path d="M %g %g L %g %g" stroke="%s" stroke-width="0.05" />' % \
+            (start[0], start[1], end[0], end[1], colors[diridx])
+    print '</svg>'
+
+def polys_to_SVG(polys, colors):
+    polys = list(polys)
+    l, r, t, b = 0, 0, 0, 0
+    for (verts, diridx) in polys:
+        for v in verts:
+            l, r = min(l, v[0]), max(r, v[0])
+            t, b = min(t, v[1]), max(b, v[1])
+
+    view_box = "%f %f %f %f" % (l, t, r - l, b - t)
+    height = 200 * (b - t) / (r - l)
+    print '<svg width="200px" height="%dpx" viewBox="%s" xmlns="http://www.w3.org/2000/svg" version="1.1">' % (height, view_box)
+#    print '<rect x="-5" y="-5" width="10" height="10" fill="black"/>'
+
+    for (verts, diridx) in polys:
+        d = ['M %f %f' % tuple(verts[0])]
+        for v in verts[1:]:
+            d.append('L %f %f' % tuple(v))
+        print '<path d="%s Z" fill="%s" />' % (' '.join(d), colors[diridx])
+    print '</svg>'
+
+if __name__ == "__main__":
+    colors = ["#77D0F0", "#4C89B1", "#214373"]
+    polys_to_SVG(gen_polys(gen_edges(), 0.04), colors)
+
+    #colors = ["#121B2A", "#214373", "#5A9FD8", "#77D0F0", "#CAF6F7"]
+    #polys_to_SVG(gen_polys(gen_edges(4), 0.03), colors[1:])

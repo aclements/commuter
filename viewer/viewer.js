@@ -17,10 +17,78 @@ var CALL_SEQ = [
     'mmap', 'munmap', 'mprotect', 'memread', 'memwrite'];
 
 //
+// Reactive rendezvous
+//
+
+function Rendezvous(value) {
+    this.value = value;
+    this.reactives = [];
+}
+
+Rendezvous.prototype.get = function(reactive) {
+    if (reactive._re_version === undefined)
+        reactive._re_version = 0;
+    this.reactives.push({version:reactive._re_version, obj:reactive});
+    return this.value;
+};
+
+Rendezvous.prototype.set = function(value) {
+    if (value === this.value)
+        return;
+    this.value = value;
+    var re = this.reactives;
+    this.reactives = [];
+    for (var i = 0; i < re.length; i++) {
+        if (re[i].obj._re_version === re[i].version) {
+            ++re[i].obj._re_version;
+            re[i].obj.refresh();
+        }
+    }
+};
+
+//
 // Mscan database
 //
 
-function databaseFromJSON(json) {
+function Database() {
+    this.outputRv = new Rendezvous(Enumerable.empty());
+    this.sources = [];
+    this.data = [];
+    this.byid = {};
+}
+
+Database.prototype.loadMscan = function(uri) {
+    if (this.sources.indexOf(uri) != -1)
+        return;
+    this.sources.push(uri);
+
+    // XXX Error handling, load indicator, clean up
+    var dbthis = this;
+    $.getJSON(uri).
+        done(function(json) {
+            dbthis.add(Database.mscanFromJSON(json));
+        });
+};
+
+Database.prototype.add = function(recs) {
+    // Full outer join recs with this.data on 'id'
+    for (var i = 0; i < recs.length; i++) {
+        var rec = recs[i];
+        var pre = this.byid[rec.id];
+        if (pre === undefined) {
+            this.data.push(rec);
+            this.byid[rec.id] = rec;
+        } else {
+            for (var f in rec)
+                if (rec.hasOwnProperty(f))
+                    pre[f] = rec[f];
+        }
+    }
+
+    this.outputRv.set(Enumerable.from(this.data));
+};
+
+Database.mscanFromJSON = function(json) {
     // Reverse table-ification
     function untablify(table) {
         var fields = table['!fields'];
@@ -94,50 +162,16 @@ function databaseFromJSON(json) {
     }
 
     return rename(getStacks(untablify(json.testcases), json.stacks));
-}
-
-//
-// Reactive rendezvous
-//
-
-function Rendezvous(value) {
-    this.value = value;
-    this.reactives = [];
-}
-
-Rendezvous.prototype.get = function(reactive) {
-    if (reactive._re_version === undefined)
-        reactive._re_version = 0;
-    this.reactives.push({version:reactive._re_version, obj:reactive});
-    return this.value;
-};
-
-Rendezvous.prototype.set = function(value) {
-    if (value === this.value)
-        return;
-    this.value = value;
-    var re = this.reactives;
-    this.reactives = [];
-    for (var i = 0; i < re.length; i++) {
-        if (re[i].obj._re_version === re[i].version) {
-            ++re[i].obj._re_version;
-            re[i].obj.refresh();
-        }
-    }
 };
 
 //
 // Query canvas
 //
 
-function QueryCanvas(parent) {
-    this.inputRv = this.curRv = new Rendezvous(Enumerable.empty());
+function QueryCanvas(parent, inputRv) {
+    this.inputRv = this.curRv = inputRv;
     this.container = $('<div>').appendTo(parent);
 }
-
-QueryCanvas.prototype.setInput = function(input) {
-    this.inputRv.set(input);
-};
 
 QueryCanvas.prototype.heatmap = function(pred, facets) {
     var hm = new Heatmap(this.curRv, pred, facets);
@@ -620,25 +654,14 @@ Table.prototype._addInfo = function(tr, ncols, data) {
 // Setup
 //
 
-var database;
+var database = new Database();
 
 $(document).ready(function() {
-    var qc = new QueryCanvas($('#container'));
+    var qc = new QueryCanvas($('#container'), database.outputRv);
     qc.heatmap(function(tc) { return tc.shared.length; },
                function(tc) { return tc.runid; });
     qc.table();
 
-    database = [];
-
-    // XXX Error handling, load indicator, clean up
-    // $.getJSON('data/linux.json').
-    //     done(function(json) {
-    //         database = database.concat(databaseFromJSON(json));
-    //         qc.setInput(Enumerable.from(database).orderBy('$.test'));
-    //     });
-    $.getJSON('data/sv6.json').
-        done(function(json) {
-            database = database.concat(databaseFromJSON(json));
-            qc.setInput(Enumerable.from(database).orderBy('$.id'));
-        });
+    database.loadMscan('data/sv6.json');
+    //database.loadMscan('data/linux.json');
 });

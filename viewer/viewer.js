@@ -526,6 +526,7 @@ function Table(inputRv, detailFn) {
     this.elt = $('<div>').addClass('datatable-wrapper');
     this.table = $('<table>').addClass('datatable').appendTo(this.elt);
     this.outputRv = new Rendezvous();
+    this.limit = 10;
     this.refresh();
 }
 
@@ -585,7 +586,6 @@ Table.fmtCell = function(row, colname) {
 
 Table.prototype.refresh = function() {
     var input = this.inputRv.get(this);
-    this.limit = 10;
     this._render(input);
     this.outputRv.set(input);
 };
@@ -727,8 +727,6 @@ $(document).ready(function() {
                function(tc) { return tc.runid; });
     qc.table(function(tc) {
         // Lazy load detail databases
-        // XXX If the table itself was expanded, refreshing will
-        // shrink it back to the default.
         // XXX Need to save state in heatmap, too
         if (!database.loadMscan('data/sv6-details.json') ||
             !database.loadMscan('data/linux-details.json'))

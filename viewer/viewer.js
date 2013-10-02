@@ -76,18 +76,23 @@ function Database() {
     this.outputRv = new Rendezvous(Enumerable.empty());
     this.sources = [];
     this.data = [];
+    this.loading = {};
     this.byid = {};
 }
 
 Database.prototype.loadMscan = function(uri) {
     if (this.sources.indexOf(uri) != -1)
-        // XXX Should return false if we're still loading this URI
-        return true;
+        return !this.loading[uri];
+
     this.sources.push(uri);
+    this.loading[uri] = true;
 
     // XXX Error handling, load indicator, clean up
     var dbthis = this;
     $.getJSON(uri).
+        always(function() {
+            dbthis.loading[uri] = false;
+        }).
         done(function(json) {
             console.log('Loaded', uri);
             dbthis.add(Database.mscanFromJSON(json));
@@ -97,6 +102,7 @@ Database.prototype.loadMscan = function(uri) {
 
 Database.prototype.add = function(recs) {
     // Full outer join recs with this.data on 'id'
+    // XXX Always join in load order without overwrites
     for (var i = 0; i < recs.length; i++) {
         var rec = recs[i];
         var pre = this.byid[rec.id];

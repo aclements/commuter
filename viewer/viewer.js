@@ -21,31 +21,79 @@ var CALL_SEQ = [
 //
 
 function databaseFromJSON(json) {
-    var stackkeys = ['stack', 'stack1', 'stack2'];
-    for (var ti = 0; ti < json.testcases.length; ti++) {
-        var testcase = json.testcases[ti];
+    // Reverse table-ification
+    function untablify(table) {
+        var fields = table['!fields'];
+        var data = table['!data'];
+        if (fields === undefined || data === undefined)
+            return table;
 
-        // "Decompress" test case stacks
-        for (var si = 0; si < testcase.shared.length; si++) {
-            for (var ki = 0; ki < stackkeys.length; ki++) {
-                var k = stackkeys[ki];
-                var shared = testcase.shared[si];
-                if (shared[k] === undefined)
-                    continue;
-                shared[k] = json.stacks[shared[k]];
+        var out = [];
+        var prev = {};
+        var weight = [];
+        for (var i = 0; i < data.length; i++) {
+            var deltamask = data[i][0];
+
+            // Get or compute weight of deltamask
+            var dw = weight[deltamask];
+            if (dw === undefined) {
+                dw = 0;
+                for (var j = 0; j < fields.length; j++)
+                    if (deltamask & (1 << j))
+                        ++dw;
+                weight[deltamask] = dw;
+            }
+
+            // Get initial object
+            var obj = data[i][dw + 1] || {};
+
+            // Fill fields
+            var deltapos = 1;
+            for (var j = 0; j < fields.length; j++) {
+                if (deltamask & (1 << j))
+                    obj[fields[j]] = data[i][deltapos++];
+                else
+                    obj[fields[j]] = prev[fields[j]];
+            }
+
+            out.push(obj);
+            prev = obj;
+        }
+        return out;
+    }
+
+    // Reverse deduplication of stacks
+    var stackkeys = ['stack', 'stack1', 'stack2'];
+    function getStacks(testcases, stacks) {
+        if (stacks === undefined)
+            return testcases;
+        for (var tci = 0; tci < testcases.length; tci++) {
+            var testcase = testcases[tci];
+            for (var si = 0; si < testcase.shared.length; si++) {
+                for (var ki = 0; ki < stackkeys.length; ki++) {
+                    var k = stackkeys[ki];
+                    var shared = testcase.shared[si];
+                    if (shared[k] === undefined)
+                        continue;
+                    shared[k] = json.stacks[shared[k]];
+                }
             }
         }
-
-        // Parse test name
-        var test = testcase.name.split('-')[1];
-        var parts = test.split('_');
-        testcase.calls = parts.slice(0, -2).join('_');
-        testcase.path = parts.slice(0, -1).join('_');
-        testcase.test = test;
-        testcase.os = json.os;
-        delete testcase.name;
+        return testcases;
     }
-    return json.testcases;
+
+    // Put name components back together
+    function rename(testcases) {
+        for (var i = 0; i < testcases.length; i++) {
+            var testcase = testcases[i];
+            testcase.path = testcase.calls + '_' + testcase.pathid;
+            testcase.test = testcase.path + '_' + testcase.testno;
+            testcase.id = testcase.test + '_' + testcase.runid;
+        }
+        return testcases;
+    }
+
+    return rename(getStacks(untablify(json.testcases), json.stacks));
 }
 
 //
@@ -404,7 +452,8 @@ function Table(inputRv) {
 }
 
 Table.INCREMENT = 100;
-Table.COL_ORDER = ['calls', 'path', 'test', 'os', 'shared'];
+Table.COL_ORDER = ['calls', 'path', 'test', 'id', 'shared'];
+Table.HIDE = ['runid', 'pathid', 'testno'];
 Table.FORMATTERS = {
     shared: function(val) {
         if (!$.isArray(val))
@@ -419,6 +468,11 @@ Table.FORMATTERS = {
         return $('<td><span style="color:#888">...</span></td>').append(pathid);
     },
     test: function(val) {
+        var parts = val.split('_');
+        var testid = parts[parts.length - 1];
+        return $('<td><span style="color:#888">...</span></td>').append(testid);
+    },
+    id: function(val) {
         var parts = val.split('_');
         var testid = parts[parts.length - 1];
         return $('<td><span style="color:#888">...</span></td>').append(testid);
@@ -503,6 +557,8 @@ Table.prototype._render = function(input) {
         $.each(row, function(colname, _) {
             if (haveCols.indexOf(colname) != -1)
                 return;
+            if (Table.HIDE.indexOf(colname) != -1)
+                return;
 
             // Add column.  First, is it ordered?
             var order = Table.COL_ORDER.indexOf(colname);
@@ -569,7 +625,7 @@ var database;
 $(document).ready(function() {
     var qc = new QueryCanvas($('#container'));
     qc.heatmap(function(tc) { return tc.shared.length; },
-               function(tc) { return tc.os; });
+               function(tc) { return tc.runid; });
     qc.table();
 
     database = [];
@@ -583,6 +639,6 @@ $(document).ready(function() {
     $.getJSON('data/sv6.json').
         done(function(json) {
             database = database.concat(databaseFromJSON(json));
-            qc.setInput(Enumerable.from(database).orderBy('$.test'));
+            qc.setInput(Enumerable.from(database).orderBy('$.id'));
         });
 });

@@ -1,18 +1,19 @@
 #!/usr/bin/python
 
+# XXX Linux and sv6 databases are mostly redundant.  Maybe have a
+# "template" database that gives test information in order and then
+# give results in equivalent order?
+
 import sys
 import argparse
 import json
 import itertools
 import collections
 
-# XXX Separate stacks and shared into a separate, lazily loaded
-# database
-
 def reformat_tests(testcases, add):
     """Convert testcases into format expected by viewer."""
 
-    for testcase in mscan['testcases']:
+    for testcase in testcases:
         # Split name
         suite, name = testcase.pop('name').split('-', 1)
         calls, pathid, testno = name.rsplit('_', 2)
@@ -32,6 +33,8 @@ def reformat_tests(testcases, add):
         # Add identifying fields
         testcase.update(add)
 
+    return testcases
+
 def dedup_stacks(testcases):
     stacks = {}
     rstacks = {}
@@ -49,11 +52,20 @@ def dedup_stacks(testcases):
                     rstacks[rstackskey] = name
                 shared[skey] = rstacks[rstackskey]
 
-        # # XXX Testing
-        # testcase['nshared'] = len(testcase['shared'])
-        # del testcase['shared']
-
     return stacks
+
+def split_details(testcases):
+    general, details = [], []
+    for testcase in testcases:
+        shared = testcase.pop('shared')
+        details.append({'calls': testcase['calls'],
+                        'pathid': testcase['pathid'],
+                        'testno': testcase['testno'],
+                        'runid': testcase['runid'],
+                        'shared': shared})
+        testcase['nshared'] = len(shared)
+        general.append(testcase)
+    return general, details
 
 def tablify(dicts, fields):
     data = []
@@ -77,15 +89,34 @@ def tablify(dicts, fields):
         prev = dlst
     return {'!fields': fields, '!data': data}
 
+def json_write(data, fp):
+    json.dump(data, fp, separators=(',',':'))
+
 parser = argparse.ArgumentParser()
+parser.add_argument('-o', '--out', type=argparse.FileType('w'),
+                    default=sys.stdout, help='Output file')
+parser.add_argument('--details', type=argparse.FileType('w'),
+                    help='Separate sharing details output file')
 parser.add_argument('mscan', type=file, help='mscan file')
 parser.add_argument('runid', help='Run identifier')
 args = parser.parse_args()
 
+COMMON = ('runid', 'calls', 'pathid', 'testno')
+FORMAT = {'separators': (',',':')}
+
 mscan = json.load(args.mscan)
-reformat_tests(mscan['testcases'], {'runid': args.runid})
-mscan['stacks'] = dedup_stacks(mscan['testcases'])
-mscan['testcases'] = tablify(
-    mscan['testcases'], ('runid', 'calls', 'pathid', 'testno', 'shared'))
-json.dump(mscan, sys.stdout, separators=(',',':'))
-#json.dump(mscan, sys.stdout, indent=2)
+testcases = reformat_tests(mscan['testcases'], {'runid': args.runid})
+stacks = dedup_stacks(testcases)
+if args.details:
+    # Split sharing data
+    general, details = split_details(testcases)
+    detail_db = {'testcases': tablify(details, COMMON + ('shared',)),
+                 'stacks': stacks}
+    json.dump(detail_db, args.details, **FORMAT)
+    general_db = {'testcases': tablify(general, COMMON + ('nshared',))}
+    json.dump(general_db, args.out, **FORMAT)
+else:
+    # Single database
+    db = {'testcases': tablify(testcases, COMMON + ('shared',)),
+          'stacks': stacks}
+    json.dump(db, args.out, **FORMAT)

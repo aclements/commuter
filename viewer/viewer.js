@@ -2,7 +2,7 @@
 
 // XXX Maybe provide control over what's displayed in a table detail?
 
-// XXX Reduce initial database more, lazily load other data.
+// XXX Load details database on demand
 
 // XXX Sorting by test case number is currently lexicographic, but
 // should be numeric.  Maybe we should also sort calls by CALL_SEQ.
@@ -150,18 +150,22 @@ Database.mscanFromJSON = function(json) {
         return testcases;
     }
 
-    // Put name components back together
-    function rename(testcases) {
+    // Put name components back together and handle 'nshared'
+    function reformat(testcases) {
         for (var i = 0; i < testcases.length; i++) {
             var testcase = testcases[i];
             testcase.path = testcase.calls + '_' + testcase.pathid;
             testcase.test = testcase.path + '_' + testcase.testno;
             testcase.id = testcase.test + '_' + testcase.runid;
+            if (testcase.nshared !== undefined) {
+                testcase.shared = new Array(testcase.nshared);
+                delete testcase.nshared;
+            }
         }
         return testcases;
     }
 
-    return rename(getStacks(untablify(json.testcases), json.stacks));
+    return reformat(getStacks(untablify(json.testcases), json.stacks));
 };
 
 //

@@ -4,9 +4,6 @@
 
 // XXX Load details database on demand
 
-// XXX Sorting by test case number is currently lexicographic, but
-// should be numeric.  Maybe we should also sort calls by CALL_SEQ.
-
 // XXX In the table, just scan up to the limit to collect columns
 // first and then scan again to build the table.
 
@@ -47,6 +44,38 @@ Rendezvous.prototype.set = function(value) {
 };
 
 //
+// Utilities
+//
+
+// Compare two calls
+function compareCalls(call1, call2) {
+    var i1 = CALL_SEQ.indexOf(call1), i2 = CALL_SEQ.indexOf(call2);
+    if (i1 === -1) i1 = CALL_SEQ.length;
+    if (i2 === -1) i2 = CALL_SEQ.length;
+    if (i1 === i2)
+        return call1 < call2 ? -1 : (call1 > call2 ? 1 : 0);
+    return i1 - i2;
+}
+
+// Split callSeq into array of calls in canonical order
+function splitCallSeq(callSeq) {
+    var parts = callSeq.split('_');
+    parts.sort(compareCalls);
+    return parts;
+}
+
+// Compare two call sequences
+function compareCallSeqs(cs1, cs2) {
+    if (cs1 === cs2)
+        return 0;
+    var s1 = splitCallSeq(cs1), s2 = splitCallSeq(cs2);
+    for (var i = 0; i < Math.min(s1.length, s2.length); i++)
+        if (s1[i] !== s2[i])
+            return compareCalls(s1[i], s2[i]);
+    return s1.length - s2.length;
+}
+
+//
 // Mscan database
 //
 
@@ -84,6 +113,15 @@ Database.prototype.add = function(recs) {
                     pre[f] = rec[f];
         }
     }
+
+    // Sort data
+    function cmp(a, b) {
+        return a < b ? -1 : (a > b ? 1 : 0);
+    }
+    this.data.sort(function(a, b) {
+        return compareCallSeqs(a.calls, b.calls) || cmp(a.pathid, b.pathid) ||
+            cmp(a.testno, b.testno) || cmp(a.runid, b.runid);
+    });
 
     this.outputRv.set(Enumerable.from(this.data));
 };

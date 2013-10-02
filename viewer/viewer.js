@@ -2,8 +2,6 @@
 
 // XXX Maybe provide control over what's displayed in a table detail?
 
-// XXX Load details database on demand
-
 // XXX In the table, just scan up to the limit to collect columns
 // first and then scan again to build the table.
 
@@ -88,15 +86,18 @@ function Database() {
 
 Database.prototype.loadMscan = function(uri) {
     if (this.sources.indexOf(uri) != -1)
-        return;
+        // XXX Should return false if we're still loading this URI
+        return true;
     this.sources.push(uri);
 
     // XXX Error handling, load indicator, clean up
     var dbthis = this;
     $.getJSON(uri).
         done(function(json) {
+            console.log('Loaded', uri);
             dbthis.add(Database.mscanFromJSON(json));
         });
+    return false;
 };
 
 Database.prototype.add = function(recs) {
@@ -222,8 +223,8 @@ QueryCanvas.prototype.heatmap = function(pred, facets) {
     return this;
 };
 
-QueryCanvas.prototype.table = function() {
-    var t = new Table(this.curRv);
+QueryCanvas.prototype.table = function(detailFn) {
+    var t = new Table(this.curRv, detailFn);
     this.container.append(t.elt.css('margin-bottom', '10px'));
     this.curRv = t.outputRv;
     return this;
@@ -518,8 +519,9 @@ Heatmap.prototype._render = function(facet, hover) {
 // Table UI
 //
 
-function Table(inputRv) {
+function Table(inputRv, detailFn) {
     this.inputRv = inputRv;
+    this.detailFn = detailFn || function () {};
 
     this.elt = $('<div>').addClass('datatable-wrapper');
     this.table = $('<table>').addClass('datatable').appendTo(this.elt);
@@ -591,6 +593,16 @@ Table.prototype.refresh = function() {
 Table.prototype._render = function(input) {
     var tthis = this;
     var table = this.table;
+
+    // Save expanded rows
+    var expanded = {};
+    $('tr', table).each(function () {
+        var info = $(this).data('table-info');
+        if (info && info.is(':visible'))
+            expanded[$(this).data('table-rec').id] = true;
+    });
+
+    // Clear table
     table.empty();
 
     var th = $('<tr>').appendTo($('<thead>').appendTo(table));
@@ -614,6 +626,7 @@ Table.prototype._render = function(input) {
         }
 
         var tr = $('<tr>').addClass('datatable-row').appendTo(table);
+        tr.data('table-rec', row);
         trs.push(tr);
 
         // XXX Descend into objects
@@ -673,23 +686,33 @@ Table.prototype._render = function(input) {
         // Make row clickable
         tr.click(function() {
             if (!tr.data('table-info'))
-                tthis._addInfo(tr, haveCols.length, row);
+                tthis._addDetail(tr, haveCols.length).hide();
             tr.data('table-info').slideToggle();
         });
+
+        // Expand if previously expanded
+        if (expanded[row.id]) {
+            // XXX haveCols may still be growing
+            tthis._addDetail(tr, haveCols.length);
+        }
     });
 
     // Set column widths
     $('th', th).css({width: (100 / haveCols.length) + '%'});
 };
 
-Table.prototype._addInfo = function(tr, ncols, data) {
+Table.prototype._addDetail = function(tr, ncols) {
     var ntr = $('<tr>').addClass('datatable-info'), div;
     ntr.append($('<td>').attr({colspan: ncols}).append(div = $('<div>')));
-    div.hide();
     tr.after(ntr).data('table-info', div);
 
-    div.append($('<pre>').css({font: 'inherit', whiteSpace: 'pre-wrap'}).
-               text(JSON.stringify(data, null, '  ')));
+    var rec = tr.data('table-rec');
+    var detail = this.detailFn(rec);
+    if (detail === undefined)
+        detail = ($('<pre>').css({font: 'inherit', whiteSpace: 'pre-wrap'}).
+                  text(JSON.stringify(rec, null, '  ')));
+    div.append(detail);
+    return div;
 };
 
 //
@@ -702,8 +725,16 @@ $(document).ready(function() {
     var qc = new QueryCanvas($('#container'), database.outputRv);
     qc.heatmap(function(tc) { return tc.shared.length; },
                function(tc) { return tc.runid; });
-    qc.table();
+    qc.table(function(tc) {
+        // Lazy load detail databases
+        // XXX If the table itself was expanded, refreshing will
+        // shrink it back to the default.
+        // XXX Need to save state in heatmap, too
+        if (!database.loadMscan('data/sv6-details.json') ||
+            !database.loadMscan('data/linux-details.json'))
+            return $('<span>').text('Loading details...');
+    });
 
     database.loadMscan('data/sv6.json');
-    //database.loadMscan('data/linux.json');
+    database.loadMscan('data/linux.json');
 });

@@ -1,10 +1,5 @@
 // XXX Show test code for test cases.
 
-// XXX Maybe provide control over what's displayed in a table detail?
-
-// XXX In the table, just scan up to the limit to collect columns
-// first and then scan again to build the table.
-
 // Default order for calls
 var CALL_SEQ = [
     'open', 'link', 'unlink', 'rename', 'stat',
@@ -623,16 +618,42 @@ Table.prototype._render = function(input) {
     // Clear table
     table.empty();
 
-    var th = $('<tr>').appendTo($('<thead>').appendTo(table));
+    // Collect columns
+    var cols = [], colSet = {};
+    input.take(tthis.limit).forEach(function(rec) {
+        // XXX Descend into object fields
+        $.each(rec, function(colname) {
+            if (Table.HIDE.indexOf(colname) === -1 && !colSet[colname]) {
+                colSet[colname] = true;
+                cols.push(colname);
+            }
+        });
+    });
 
-    var haveCols = [];
-    var trs = [];
+    // Sort columns
+    cols.sort(function (a, b) {
+        var ai = Table.COL_ORDER.indexOf(a), bi = Table.COL_ORDER.indexOf(b);
+        if (ai === -1) ai = Table.COL_ORDER.length;
+        if (bi === -1) bi = Table.COL_ORDER.length;
+        if (ai === bi)
+            return a === b ? 0 : (a < b ? -1 : 1);
+        return ai - bi;
+    });
+
+    // Create table header
+    var th = $('<tr>').appendTo($('<thead>').appendTo(table));
+    $.each(cols, function () {
+        th.append($('<th>').text(this).css({width: (100 / cols.length) + '%'}));
+    });
+
+    // Create table rows
     var prev = {};
-    input.forEach(function(row, index) {
+    input.forEach(function(rec, index) {
         if (index == tthis.limit) {
+            // Reached limit; add table expander
             table.append(
                 $('<tr>').addClass('datatable-more').append(
-                    $('<td>').attr({colspan: haveCols.length}).
+                    $('<td>').attr({colspan: cols.length}).
                         text((input.count() - index) + ' more...')).
                     click(function() {
                         if (tthis.limit < Table.INCREMENT)
@@ -644,79 +665,31 @@ Table.prototype._render = function(input) {
         }
 
         var tr = $('<tr>').addClass('datatable-row').appendTo(table);
-        tr.data('table-rec', row);
-        trs.push(tr);
+        tr.data('table-rec', rec);
 
-        // XXX Descend into objects
-
-        // Add cells for known columns
-        $.each(haveCols, function(_, colname) {
-            if (prev[colname] === row[colname]) {
+        // Create cells
+        for (var i = 0; i < cols.length; i++) {
+            var colname = cols[i];
+            if (prev[colname] === rec[colname]) {
                 tr.append($('<td>'));
             } else {
                 prev = {};
-                tr.append(Table.fmtCell(row, colname));
+                tr.append(Table.fmtCell(rec, colname));
             }
-        });
-        prev = row;
-
-        // Add new columns if necessary
-        $.each(row, function(colname, _) {
-            if (haveCols.indexOf(colname) != -1)
-                return;
-            if (Table.HIDE.indexOf(colname) != -1)
-                return;
-
-            // Add column.  First, is it ordered?
-            var order = Table.COL_ORDER.indexOf(colname);
-            if (order === -1) {
-                var insertAt = haveCols.length;
-            } else {
-                // Find the insertion point
-                for (var insertAt = 0; insertAt < haveCols.length; insertAt++) {
-                    var index = Table.COL_ORDER.indexOf(haveCols[insertAt]);
-                    if (index > order || index === -1)
-                        break;
-                }
-            }
-
-            if (insertAt == haveCols.length) {
-                var add = function(container, obj) {
-                    container.append(obj);
-                };
-            } else {
-                var add = function(container, obj) {
-                    obj.insertBefore(container.children()[insertAt]);
-                };
-            }
-
-            // Add this column
-            haveCols.splice(insertAt, 0, colname);
-            add(th, $('<th>').text(colname));
-            $.each(trs, function (_, tr) {
-                add(tr, Table.NA.clone());
-            });
-
-            // Put in the cell
-            Table.fmtCell(row, colname).replaceAll(tr.children()[insertAt]);
-        });
+        }
+        prev = rec;
 
         // Make row clickable
         tr.click(function() {
             if (!tr.data('table-info'))
-                tthis._addDetail(tr, haveCols.length).hide();
+                tthis._addDetail(tr, cols.length).hide();
             tr.data('table-info').slideToggle();
         });
 
         // Expand if previously expanded
-        if (expanded[row.id]) {
-            // XXX haveCols may still be growing
-            tthis._addDetail(tr, haveCols.length);
-        }
+        if (expanded[rec.id])
+            tthis._addDetail(tr, cols.length);
     });
-
-    // Set column widths
-    $('th', th).css({width: (100 / haveCols.length) + '%'});
 };
 
 Table.prototype._addDetail = function(tr, ncols) {

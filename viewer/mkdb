@@ -1,0 +1,47 @@
+#!/usr/bin/python
+
+import sys
+import argparse
+import json
+
+# XXX Separate stacks and shared into a separate, lazily loaded
+# database
+
+def process(mscan):
+    stacks = {}
+    rstacks = {}
+    for testcase in mscan['testcases']:
+        for shared in testcase['shared']:
+            # Remove less useful fields
+            for key in ['pc', 'pc1', 'pc2']:
+                if key in shared:
+                    del shared[key]
+            del shared['rawaddr']
+
+            # Deduplicate stacks
+            for skey in ['stack', 'stack1', 'stack2']:
+                if skey not in shared:
+                    continue
+                stack = shared[skey]
+                rstackskey = tuple(stack)
+                if rstackskey not in rstacks:
+                    name = 's%d' % len(stacks)
+                    stacks[name] = stack
+                    rstacks[rstackskey] = name
+                shared[skey] = rstacks[rstackskey]
+
+        # # XXX Testing
+        # testcase['nshared'] = len(testcase['shared'])
+        # del testcase['shared']
+
+    mscan['stacks'] = stacks
+
+parser = argparse.ArgumentParser()
+parser.add_argument('mscan', type=file, help='mscan file')
+parser.add_argument('os', help='OS name')
+args = parser.parse_args()
+
+mscan = json.load(args.mscan)
+process(mscan)
+mscan['os'] = args.os
+json.dump(mscan, sys.stdout, separators=(',',':'))

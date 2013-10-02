@@ -1,0 +1,35 @@
+table.datatable {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+}
+
+table.datatable > thead > tr > th {
+    text-align: left;
+}
+
+/* Format datatable data rows */
+tr.datatable-row > td, table.datatable > thead > tr > th {
+    padding: .2em;
+    padding-right: .5em;
+}
+tr.datatable-row:hover {
+    background: #ddf;
+    cursor: pointer;
+}
+
+/* For datatable-info rows, move padding to inner div. */
+tr.datatable-info > td {
+    padding: 0px;
+    padding-left: 1em;
+}
+tr.datatable-info > td > div {
+    padding: .2em;
+    padding-right: .5em;
+}
+
+tr.datatable-more {
+    text-align: center;
+    font-weight: bold;
+    cursor: pointer;
+}

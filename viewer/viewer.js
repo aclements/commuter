@@ -331,12 +331,16 @@ Heatmap.prototype.refresh = function() {
             };
         }).memoize();
 
-    // Create canvases and do initial renders
+    // Create canvases, update selection, and do initial renders
+    var foundSelection = false;
     this._maxLabel = 0;
     facets.forEach(function (facet) {
+        // Create canvas
         var div = $('<div>').css({display: 'inline-block'}).
             appendTo(hmthis.elt);
         var canvas = $('<canvas>').appendTo(div);
+
+        // Activate canvas
         canvas.mousemove(function (ev) {
             var offset = canvas.offset();
             var x = ev.pageX - offset.left, y = ev.pageY - offset.top;
@@ -356,36 +360,32 @@ Heatmap.prototype.refresh = function() {
             if (oldFacet && hmthis.selection.facet !== oldFacet)
                 hmthis._render(oldFacet, {});
 
-            // Update output
-            if (!hmthis.selection.facet) {
-                // Select everything by default
-                hmthis.outputRv.set(input);
-            } else {
-                // XXX Only matched test cases, or all test cases for
-                // this cell?  Since we don't display anything useful
-                // for non-shared test cases right now, we only return
-                // matched test cases.
-                hmthis.outputRv.set(facet.cells.selectMany(function(cell) {
-                    if (cell.x === hmthis.selection.x &&
-                        cell.y === hmthis.selection.y)
-                        return cell.testcases.where(hmthis.pred);
-                    return [];
-                }));
-            }
+            // Update output for new selection
+            hmthis._setOutput(input);
         });
 
+        // Label canvas
         var label = $('<div>').css({textAlign: 'center'}).text(facet.label).
             appendTo(div);
 
+        // Keep selection across refreshes if possible
+        if (!foundSelection && hmthis.selection.facet &&
+            hmthis.selection.facet.label === facet.label) {
+            foundSelection = true;
+            hmthis.selection.facet = facet;
+        }
+
+        // Set up facet object
         facet.calls = calls;
         facet.canvas = canvas[0];
         facet.labelDiv = label;
         hmthis._render(facet, {});
     });
+    if (!foundSelection)
+        this.selection = {};
 
-    // By default, pass all input through to output
-    // XXX Keep selection over refresh
-    this.outputRv.set(input);
+    // Set up output
+    this._setOutput(input);
 };
 
 Heatmap.prototype._coordToCell = function(facet, x, y) {
@@ -397,7 +397,6 @@ Heatmap.prototype._coordToCell = function(facet, x, y) {
 };
 
 Heatmap.prototype._render = function(facet, hover) {
-    // XXX Label with facet.label;
     var CW = Heatmap.CW, CH = Heatmap.CH, PAD = Heatmap.PAD;
 
     var hmthis = this;
@@ -512,6 +511,25 @@ Heatmap.prototype._render = function(facet, hover) {
 
     // Mouse cursor
     $(facet.canvas).css({cursor: hover.facet === facet ? 'pointer' : 'auto'});
+};
+
+Heatmap.prototype._setOutput = function(input) {
+    // Refresh output based on selection
+    if (!this.selection.facet) {
+        // Select everything by default
+        this.outputRv.set(input);
+        return;
+    }
+    // XXX Only matched test cases, or all test cases for
+    // this cell?  Since we don't display anything useful
+    // for non-shared test cases right now, we only return
+    // matched test cases.
+    var hmthis = this;
+    this.outputRv.set(this.selection.facet.cells.selectMany(function(cell) {
+        if (cell.x === hmthis.selection.x && cell.y === hmthis.selection.y)
+            return cell.testcases.where(hmthis.pred);
+        return [];
+    }));
 };
 
 
@@ -727,7 +745,6 @@ $(document).ready(function() {
                function(tc) { return tc.runid; });
     qc.table(function(tc) {
         // Lazy load detail databases
-        // XXX Need to save state in heatmap, too
         if (!database.loadMscan('data/sv6-details.json') ||
             !database.loadMscan('data/linux-details.json'))
             return $('<span>').text('Loading details...');

@@ -111,6 +111,7 @@ function bindSelectionEvents(canvas, coordToSel, selectionRv, hoverRv) {
         var offset = canvas.offset();
         var x = ev.pageX - offset.left, y = ev.pageY - offset.top;
         rv.set(coordToSel(x, y));
+        return false;
     }
     canvas.click(setRv.bind(null, selectionRv));
     if (hoverRv) {
@@ -367,7 +368,10 @@ function Heatmap(inputRv, pred, facets, container) {
 
     this.elt = $('<div>').css({textAlign: 'center'});
     this.outputRv = new Rendezvous();
-    this.selectionRv = new Rendezvous({});
+    this.selectionRv = new Rendezvous();
+    this.elt.click(function () {
+        this.selectionRv.set(null);
+    }.bind(this));
     this.refresh();
 }
 
@@ -652,6 +656,7 @@ function Heatbar(inputRv, pred, container) {
     this.hoverRv = new Rendezvous(null);
     bindSelectionEvents(this.canvas, this._coordToSel.bind(this),
                         this.selectionRv, this.hoverRv);
+    this.elt.click(this.selectionRv.set.bind(this.selectionRv, null));
     this.outputRv = new Rendezvous();
     this.refresh();
 }

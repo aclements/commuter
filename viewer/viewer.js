@@ -1,3 +1,11 @@
+/* Viewer for Commuter output data
+ *
+ * Requires jQuery, linq.js, and viewer.css.
+ *
+ * Copyright 2013 Austin Clements
+ * Released under the MIT license.  See LICENSE.
+ */
+
 // XXX Show test code for test cases.
 
 // XXX Clean up mixed 'self'/'xthis'

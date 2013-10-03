@@ -992,9 +992,7 @@ $(document).ready(function() {
     qc.heatbar(Predicate.conflicted);
     qc.table(function(tc) {
         // Lazy load detail databases
-        // XXX Load just the one this test case needs
-        if (!database.loadMscan('data/sv6-details.json') ||
-            !database.loadMscan('data/Linux-details.json'))
+        if (!database.loadMscan('data/' + tc.runid + '-details.json'))
             return $('<span>').text('Loading details...');
     });
 

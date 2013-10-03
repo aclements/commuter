@@ -705,7 +705,7 @@ Heatbar.prototype.refresh = function() {
     var factor = stats.total === 0 ? 0 : (width / stats.total);
     this.canvas.width = width + 2;
     this.canvas.height = H + 2;
-    this.mid = 1 + (stats.total - stats.matched) * factor;
+    this.mid = (stats.total - stats.matched) * factor;
 
     this._render();
 

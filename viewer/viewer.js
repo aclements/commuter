@@ -7,7 +7,7 @@
 // XXX Vertical headers for operators?
 
 // Default order for calls
-var CALL_SEQ = [
+var CALL_ORDER = [
     'open', 'link', 'unlink', 'rename', 'stat',
     'fstat', 'lseek', 'close', 'pipe', 'read', 'write', 'pread', 'pwrite',
     'mmap', 'munmap', 'mprotect', 'memread', 'memwrite'];
@@ -48,9 +48,9 @@ Rendezvous.prototype.set = function(value) {
 
 // Compare two calls
 function compareCalls(call1, call2) {
-    var i1 = CALL_SEQ.indexOf(call1), i2 = CALL_SEQ.indexOf(call2);
-    if (i1 === -1) i1 = CALL_SEQ.length;
-    if (i2 === -1) i2 = CALL_SEQ.length;
+    var i1 = CALL_ORDER.indexOf(call1), i2 = CALL_ORDER.indexOf(call2);
+    if (i1 === -1) i1 = CALL_ORDER.length;
+    if (i2 === -1) i2 = CALL_ORDER.length;
     if (i1 === i2)
         return call1 < call2 ? -1 : (call1 > call2 ? 1 : 0);
     return i1 - i2;
@@ -73,7 +73,7 @@ function compareCallSeqs(cs1, cs2) {
             var s = splitCallSeq(cs);
             r = '';
             for (var i = 0; i < s.length; i++) {
-                var idx = CALL_SEQ.indexOf(s[i]);
+                var idx = CALL_ORDER.indexOf(s[i]);
                 if (idx === -1)
                     r += s[i];
                 else
@@ -438,7 +438,7 @@ Heatmap.prototype.refresh = function() {
     this.elt.empty();
     var input = this.inputRv.get(this.refresh.bind(this));
 
-    // Get all calls, ordered by CALL_SEQ, then alphabetically.
+    // Get all calls, ordered by CALL_ORDER, then alphabetically.
     // XXX Maybe this shouldn't be symmetric.  For example, if my
     // input is for just one call set X_Y, then I shouldn't list both
     // X and Y on both the rows and columns.
@@ -446,7 +446,7 @@ Heatmap.prototype.refresh = function() {
         selectMany(function (testcase) { return testcase.calls.split('_'); }).
         distinct().
         orderBy(function (name) {
-            var idx = CALL_SEQ.indexOf(name);
+            var idx = CALL_ORDER.indexOf(name);
             if (idx >= 0)
                 return '\x00' + String.fromCharCode(idx);
             return name;

@@ -342,6 +342,14 @@ QueryCanvas.prototype.heatmap = function(pred, facets) {
     return this;
 };
 
+QueryCanvas.prototype.heatbar = function(pred) {
+    this._header('Heatbar');
+    var op = new Heatbar(this.curRv, pred, this.container);
+    this.container.append(op.elt);
+    this.curRv = op.outputRv;
+    return this;
+};
+
 QueryCanvas.prototype.table = function(detailFn) {
     this._header('Table');
     var t = new Table(this.curRv, detailFn);
@@ -601,8 +609,6 @@ Heatmap.prototype._render = function(facet) {
     }
 
     // Cell labels
-    // XXX Maybe this should only be shown on hover?  Could show
-    // both total and matched.
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = (Heatmap.CH * 0.5) + 'px sans-serif';
@@ -636,6 +642,132 @@ Heatmap.prototype._setOutput = function(input) {
             return cell.testcases.where(hmthis.pred);
         return [];
     }));
+};
+
+//
+// Heat bar
+//
+
+function Heatbar(inputRv, pred, container) {
+    this.inputRv = inputRv;
+    this.pred = pred;
+    this.fontSettings = fontSettings(container);
+
+    this.elt = $('<div>').addClass('viewer-heatbar');
+    this.llabel = $('<span>').appendTo(this.elt);
+    this.canvas = $('<canvas>').appendTo(this.elt)[0];
+    this.rlabel = $('<span>').appendTo(this.elt);
+    this.blabel = $('<div>').appendTo(this.elt);
+    this.selectionRv = new Rendezvous(null);
+    this.hoverRv = new Rendezvous(null);
+    bindSelectionEvents(this.canvas, this._coordToSel.bind(this),
+                        this.selectionRv, this.hoverRv);
+    this.outputRv = new Rendezvous();
+    this.refresh();
+}
+
+Heatbar.prototype.refresh = function() {
+    var self = this;
+    var input = this.inputRv.get(this.refresh.bind(this));
+
+    // Get statistics
+    var stats = input.aggregate({total: 0, matched: 0},
+                                function (sum, rec) {
+                                    ++sum.total;
+                                    if (self.pred(rec))
+                                        ++sum.matched;
+                                    return sum;
+                                });
+    this.stats = stats;
+
+    // Set labels
+    this.llabel.text(stats.total - stats.matched);
+    this.rlabel.text(stats.matched);
+    this.blabel.text(stats.total + ' total');
+
+    // Size canvas
+    var R = 10, MAX_W = 384, H = 25;
+    var width = MAX_W * (1 - (R / (stats.total + R)));
+    var factor = width / stats.total;
+    this.canvas.width = width + 2;
+    this.canvas.height = H + 2;
+    this.mid = 1 + (stats.total - stats.matched) * factor;
+
+    this._render();
+
+    this._setOutput(input);
+};
+
+Heatbar.prototype._coordToSel = function(x, y) {
+    return (x >= this.mid + 1);
+};
+
+Heatbar.prototype._setOutput = function(input) {
+    var sel = this.selectionRv.get(this._setOutput.bind(this, input));
+    if (sel === null)
+        this.outputRv.set(input);
+    else if (sel)
+        this.outputRv.set(input.where(this.pred));
+    else
+        this.outputRv.set(input.where(
+            function (rec) { return !this.pred(rec) }.bind(this)));
+};
+
+Heatbar.prototype._render = function() {
+    var rerender = this._render.bind(this);
+    var stats = this.stats;
+    var width = this.canvas.width - 2, height = this.canvas.height - 2;
+    var ctx = this.canvas.getContext('2d');
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+    ctx.translate(1, 1);
+
+    // Regions
+    var mid = this.mid;
+    ctx.fillStyle = Heatmap.color(0);
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = Heatmap.color(1);
+    ctx.fillRect(mid, 0, width - mid, height);
+
+    function strokeRegion(rgn) {
+        if (rgn === false)
+            ctx.strokeRect(0, 0, mid, height);
+        else if (rgn === true)
+            ctx.strokeRect(mid, 0, width - mid, height);
+    }
+
+    // Hover and selection
+    ctx.save();
+    setSelectionStyle(ctx, 'hover');
+    strokeRegion(this.hoverRv.get(rerender));
+    setSelectionStyle(ctx);
+    strokeRegion(this.selectionRv.get(rerender));
+    ctx.restore();
+
+    // Percentage labels
+    function pct(val, x) {
+        val = Math.round(val * 100);
+        if (val == 0)
+            return;
+        val += '%';
+        var tw = ctx.measureText(val).width;
+        if (x - tw / 2 <= 0) {
+            ctx.textAlign = 'left';
+            ctx.fillText(val, 0, height / 2);
+        } else if (x + tw / 2 >= width - 1) {
+            ctx.textAlign = 'right';
+            ctx.fillText(val, width - 1, height / 2);
+        } else {
+            ctx.textAlign = 'center';
+            ctx.fillText(val, x, height / 2);
+        }
+    }
+    this.fontSettings.apply(ctx);
+    ctx.textBaseline = 'middle';
+    pct(1 - (stats.matched / stats.total), mid / 2);
+    pct(stats.matched / stats.total, (width + mid) / 2);
+
+    ctx.restore();
 };
 
 //
@@ -826,6 +958,7 @@ $(document).ready(function() {
     var qc = new QueryCanvas($('#container'), database.outputRv);
     qc.heatmap(function(tc) { return tc.shared.length; },
                function(tc) { return tc.runid; });
+    qc.heatbar(function(tc) { return tc.shared.length; });
     qc.table(function(tc) {
         // Lazy load detail databases
         // XXX Load just the one this test case needs

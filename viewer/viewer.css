@@ -20,6 +20,15 @@
     font-size: 80%;
 }
 
+.viewer-heatbar {
+    text-align: center;
+}
+
+.viewer-heatbar canvas {
+    vertical-align: middle;
+    margin: 0.5em;
+}
+
 table.datatable {
     border-collapse: collapse;
     width: 100%;

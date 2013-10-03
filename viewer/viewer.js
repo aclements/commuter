@@ -531,10 +531,12 @@ Heatmap.prototype._setOutput = function(input) {
         this.outputRv.set(input);
         return;
     }
-    // XXX Only matched test cases, or all test cases for
-    // this cell?  Since we don't display anything useful
-    // for non-shared test cases right now, we only return
-    // matched test cases.
+    // XXX Only matched test cases, or all test cases for this cell?
+    // Since we don't display anything useful for non-shared test
+    // cases right now, we only return matched test cases.  Maybe
+    // return the whole cell, but have another operator that shows a
+    // split bar with matched/unmatched/total statistics, where
+    // clicking a region filters to it.
     var hmthis = this;
     this.outputRv.set(this.selection.facet.cells.selectMany(function(cell) {
         if (cell.x === hmthis.selection.x && cell.y === hmthis.selection.y)
@@ -542,7 +544,6 @@ Heatmap.prototype._setOutput = function(input) {
         return [];
     }));
 };
-
 
 //
 // Table UI
@@ -734,6 +735,7 @@ $(document).ready(function() {
                function(tc) { return tc.runid; });
     qc.table(function(tc) {
         // Lazy load detail databases
+        // XXX Load just the one this test case needs
         if (!database.loadMscan('data/sv6-details.json') ||
             !database.loadMscan('data/linux-details.json'))
             return $('<span>').text('Loading details...');

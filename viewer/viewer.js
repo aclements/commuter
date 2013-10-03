@@ -2,6 +2,10 @@
 
 // XXX Clean up mixed 'self'/'xthis'
 
+// XXX Facet heat bar
+
+// XXX Vertical headers for operators?
+
 // Default order for calls
 var CALL_SEQ = [
     'open', 'link', 'unlink', 'rename', 'stat',

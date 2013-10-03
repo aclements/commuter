@@ -15,7 +15,12 @@
     border-top: 15px solid #eee;
     border-left: 200px solid transparent;
     border-right: 200px solid transparent;
-    margin: 10px auto 10px auto;
+    margin: 0px auto;
+}
+
+.viewer-operator {
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
 .viewer-heatbar {

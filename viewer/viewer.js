@@ -2,9 +2,6 @@
 
 // XXX Clean up mixed 'self'/'xthis'
 
-// XXX Deselecting the heat map is awkward because you have to have to
-// click in the canvas but off the map
-
 // Default order for calls
 var CALL_SEQ = [
     'open', 'link', 'unlink', 'rename', 'stat',
@@ -334,7 +331,7 @@ function QueryCanvas(parent, inputRv) {
 QueryCanvas.prototype._add = function(op) {
     if (this.inputRv !== this.curRv)
         this._arrow();
-    this.container.append(op.elt);
+    this.container.append(op.elt.addClass('viewer-operator'));
     this.curRv = op.outputRv;
     return this;
 };

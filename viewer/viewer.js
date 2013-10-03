@@ -630,16 +630,9 @@ Heatmap.prototype._setOutput = function(input) {
         this.outputRv.set(input);
         return;
     }
-    // XXX Only matched test cases, or all test cases for this cell?
-    // Since we don't display anything useful for non-shared test
-    // cases right now, we only return matched test cases.  Maybe
-    // return the whole cell, but have another operator that shows a
-    // split bar with matched/unmatched/total statistics, where
-    // clicking a region filters to it.
-    var hmthis = this;
     this.outputRv.set(sel.facet.cells.selectMany(function(cell) {
         if (cell.x === sel.x && cell.y === sel.y)
-            return cell.testcases.where(hmthis.pred);
+            return cell.testcases;
         return [];
     }));
 };

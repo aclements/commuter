@@ -36,7 +36,7 @@ tr.datatable-row > td, table.datatable > thead > tr > th {
     padding-right: .5em;
 }
 tr.datatable-row:hover {
-    background: #ddf;
+    color: #428bca;
     cursor: pointer;
 }
 

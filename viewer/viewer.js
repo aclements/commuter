@@ -330,32 +330,29 @@ function QueryCanvas(parent, inputRv) {
     this.container = $('<div>').appendTo(parent);
 }
 
-QueryCanvas.prototype._header = function(label) {
-    $('<div>').addClass('viewer-header').text(label).appendTo(this.container);
-};
-
-QueryCanvas.prototype.heatmap = function(pred, facets) {
-    this._header('Heatmap');
-    var hm = new Heatmap(this.curRv, pred, facets, this.container);
-    this.container.append(hm.elt);
-    this.curRv = hm.outputRv;
-    return this;
-};
-
-QueryCanvas.prototype.heatbar = function(pred) {
-    this._header('Heatbar');
-    var op = new Heatbar(this.curRv, pred, this.container);
+QueryCanvas.prototype._add = function(op) {
+    if (this.inputRv !== this.curRv)
+        this._arrow();
     this.container.append(op.elt);
     this.curRv = op.outputRv;
     return this;
 };
 
+QueryCanvas.prototype._arrow = function() {
+    this.container.
+        append($('<div>').addClass('viewer-arrow'));
+};
+
+QueryCanvas.prototype.heatmap = function(pred, facets) {
+    return this._add(new Heatmap(this.curRv, pred, facets, this.container));
+};
+
+QueryCanvas.prototype.heatbar = function(pred) {
+    return this._add(new Heatbar(this.curRv, pred, this.container));
+};
+
 QueryCanvas.prototype.table = function(detailFn) {
-    this._header('Table');
-    var t = new Table(this.curRv, detailFn);
-    this.container.append(t.elt);
-    this.curRv = t.outputRv;
-    return this;
+    return this._add(new Table(this.curRv, detailFn));
 };
 
 //

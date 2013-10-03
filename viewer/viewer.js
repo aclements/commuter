@@ -83,6 +83,15 @@ function compareCallSeqs(cs1, cs2) {
 }
 compareCallSeqs.cache = {};
 
+function fontSettings(elt) {
+    elt = $(elt);
+    return {font: elt.css('font'), fillStyle: elt.css('color'),
+            apply: function(ctx) {
+                ctx.font = this.font;
+                ctx.fillStyle = this.fillStyle;
+            }};
+}
+
 //
 // Mscan database
 //
@@ -322,8 +331,7 @@ function Heatmap(inputRv, pred, facets, container) {
     this.inputRv = inputRv;
     this.pred = pred;
     this.facets = facets || function () { return ''; };
-    this.font = $(container).css('font');
-    this.textColor = $(container).css('color');
+    this.fontSettings = fontSettings(container);
 
     this.elt = $('<div>').css({textAlign: 'center'});
     this.selection = {};
@@ -490,7 +498,7 @@ Heatmap.prototype._render = function(facet, hover) {
 
     // Measure labels
     if (this._maxLabel === 0) {
-        ctx.font = this.font;
+        this.fontSettings.apply(ctx);
         for (var i = 0; i < calls.length; i++)
             this._maxLabel = Math.max(this._maxLabel,
                                       ctx.measureText(calls[i]).width);
@@ -503,7 +511,7 @@ Heatmap.prototype._render = function(facet, hover) {
     facet.startY = startY;
     facet.canvas.width = startX + CW * calls.length + 5;
     facet.canvas.height = startY + CH * calls.length + 5;
-    ctx.font = this.font;
+    this.fontSettings.apply(ctx);
 
     // Tweak facet label layout
     facet.labelDiv.css({paddingLeft: startX, width: CW * calls.length});
@@ -517,7 +525,7 @@ Heatmap.prototype._render = function(facet, hover) {
         if (i === hover.x)
             ctx.fillStyle = '#428bca';
         else
-            ctx.fillStyle = this.textColor;
+            ctx.fillStyle = this.fontSettings.fillStyle;
         ctx.fillText(calls[calls.length - i - 1],
                      -maxLabel, startX + i * CW + 0.5 * CW);
     }
@@ -527,7 +535,7 @@ Heatmap.prototype._render = function(facet, hover) {
         if (i === hover.y)
             ctx.fillStyle = '#428bca';
         else
-            ctx.fillStyle = this.textColor;
+            ctx.fillStyle = this.fontSettings.fillStyle;
         ctx.fillText(calls[i], startX - PAD, startY + i * CH + 0.5 * CH);
     }
     ctx.restore();
@@ -583,11 +591,10 @@ Heatmap.prototype._render = function(facet, hover) {
     // Cell labels
     // XXX Maybe this should only be shown on hover?  Could show
     // both total and matched.
-    ctx.fillStyle = 'black';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = (Heatmap.CH * 0.5) + 'px sans-serif';
-    ctx.fillStyle = this.textColor;
+    ctx.fillStyle = this.fontSettings.fillStyle;
     for (var i = 0; i < clabels.length; i++) {
         var cl = clabels[i];
         ctx.fillText(cl.label, (cl.x + 0.5) * CW, (cl.y + 0.5) * CH);

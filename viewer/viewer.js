@@ -788,7 +788,7 @@ function Table(inputRv, detailFn) {
     this.elt = $('<div>').addClass('datatable-wrapper');
     this.table = $('<table>').addClass('datatable').appendTo(this.elt);
     this.outputRv = new Rendezvous();
-    this.limit = 10;
+    this.limit = new Rendezvous(10);
     this.refresh();
 }
 
@@ -853,8 +853,10 @@ Table.prototype.refresh = function() {
 };
 
 Table.prototype._render = function(input) {
+    var rerender = this._render.bind(this, input);
     var tthis = this;
     var table = this.table;
+    var limit = this.limit.get(rerender);
 
     // Save expanded rows
     var expanded = {};
@@ -869,7 +871,7 @@ Table.prototype._render = function(input) {
 
     // Collect columns
     var cols = [], colSet = {};
-    input.take(tthis.limit).forEach(function(rec) {
+    input.take(limit).forEach(function(rec) {
         // XXX Descend into object fields
         $.each(rec, function(colname) {
             if (Table.HIDE.indexOf(colname) === -1 && !colSet[colname]) {
@@ -898,17 +900,17 @@ Table.prototype._render = function(input) {
     // Create table rows
     var prev = {};
     input.forEach(function(rec, index) {
-        if (index == tthis.limit) {
+        if (index == limit) {
             // Reached limit; add table expander
             table.append(
                 $('<tr>').addClass('datatable-more').append(
                     $('<td>').attr({colspan: cols.length}).
                         text((input.count() - index) + ' more...')).
                     click(function() {
-                        if (tthis.limit < Table.INCREMENT)
-                            tthis.limit = 0;
-                        tthis.limit += Table.INCREMENT;
-                        tthis._render(input);
+                        if (limit < Table.INCREMENT)
+                            limit = 0;
+                        limit += Table.INCREMENT;
+                        tthis.limit.set(limit);
                     }));
             return false;
         }

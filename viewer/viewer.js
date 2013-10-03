@@ -87,15 +87,25 @@ Database.prototype.loadMscan = function(uri) {
     this.sources.push(uri);
     this.loading[uri] = true;
 
-    // XXX Error handling, load indicator, clean up
+    if (!this.loadDiv)
+        this.loadDiv = $('<div>').addClass('viewer-loading').appendTo($('body'));
+    var uriDiv = $('<div>').text('Loading ' + uri + '...').
+        appendTo(this.loadDiv);
+
     var dbthis = this;
     $.getJSON(uri).
         always(function() {
             dbthis.loading[uri] = false;
+            uriDiv.remove();
         }).
         done(function(json) {
             console.log('Loaded', uri);
             dbthis.add(Database.mscanFromJSON(json));
+        }).
+        fail(function(xhr, status, errorThrown) {
+            // XXX More visible error?  Needs to be dismissable.
+            console.log('Failed to load ' + uri + ': ' + status + ', ' +
+                        errorThrown);
         });
     return false;
 };

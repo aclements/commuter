@@ -110,8 +110,15 @@ function bindSelectionEvents(canvas, coordToSel, selectionRv, hoverRv) {
         rv.set(coordToSel(x, y));
         return false;
     }
+    function setCursor() {
+        if (hoverRv.get(setCursor) !== null)
+            canvas.css('cursor', 'pointer');
+        else
+            canvas.css('cursor', 'auto');
+    }
     canvas.click(setRv.bind(null, selectionRv));
     if (hoverRv) {
+        setCursor();
         canvas.mousemove(setRv.bind(null, hoverRv));
         canvas.mouseout(function() { hoverRv.set(null); });
     }

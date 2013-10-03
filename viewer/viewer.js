@@ -6,6 +6,8 @@
  * Released under the MIT license.  See LICENSE.
  */
 
+"use strict";
+
 // XXX Show test code for test cases.
 
 // XXX Clean up mixed 'self'/'xthis'
@@ -354,12 +356,12 @@ QueryCanvas.prototype._add = function(op) {
     this.container.append(op.elt.addClass('viewer-operator'));
     this.curRv = op.outputRv;
     // Reset selection if parent selection changes
+    function monitorSelection() {
+        parentSelRv.get(monitorSelection);
+        op.resetSelection();
+    }
     if (this.curSelRv && op.resetSelection) {
         var parentSelRv = this.curSelRv;
-        function monitorSelection() {
-            parentSelRv.get(monitorSelection);
-            op.resetSelection();
-        }
         monitorSelection();
     }
     if (op.selectionRv)
@@ -418,6 +420,7 @@ Heatmap.color = function(frac) {
         var p = v * (1 - s);
         var q = v * (1 - f * s);
         var t = v * (1 - (1 - f) * s);
+        var r, g, b;
         switch (i % 6) {
         case 0: r = v, g = t, b = p; break;
         case 1: r = q, g = v, b = p; break;
@@ -985,7 +988,7 @@ Table.prototype._addDetail = function(tr, ncols) {
 // Standard predicates
 //
 
-Predicate = {};
+var Predicate = {};
 
 Predicate.conflicted = function(tc) {
     return tc.shared.length != 0;

@@ -300,7 +300,7 @@ QueryCanvas.prototype._header = function(label) {
 
 QueryCanvas.prototype.heatmap = function(pred, facets) {
     this._header('Heatmap');
-    var hm = new Heatmap(this.curRv, pred, facets);
+    var hm = new Heatmap(this.curRv, pred, facets, this.container);
     this.container.append(hm.elt);
     this.curRv = hm.outputRv;
     return this;
@@ -340,7 +340,7 @@ function inter(a, b, v) {
     return a * (1 - v) + b * v;
 }
 
-function Heatmap(inputRv, pred, facets) {
+function Heatmap(inputRv, pred, facets, container) {
     this.inputRv = inputRv;
     this.pred = pred;
     this.facets = facets || function () { return ''; };
@@ -351,6 +351,8 @@ function Heatmap(inputRv, pred, facets) {
                        inter(1,       0.8, 0.5 + frac / 2),
                        inter(0.91,    1,   0.5 + frac / 2));
     };
+    this.font = $(container).css('font');
+    this.textColor = $(container).css('color');
 
     this.elt = $('<div>').css({textAlign: 'center'});
     this.selection = {};
@@ -359,7 +361,6 @@ function Heatmap(inputRv, pred, facets) {
 }
 
 // Heatmap constants
-Heatmap.FONT = '14px sans-serif';
 Heatmap.CW = 16;
 Heatmap.CH = 16;
 Heatmap.PAD = Heatmap.CW / 2;
@@ -489,7 +490,7 @@ Heatmap.prototype._render = function(facet, hover) {
 
     // Measure labels
     if (this._maxLabel === 0) {
-        ctx.font = Heatmap.FONT;
+        ctx.font = this.font;
         for (var i = 0; i < calls.length; i++)
             this._maxLabel = Math.max(this._maxLabel,
                                       ctx.measureText(calls[i]).width);
@@ -502,7 +503,7 @@ Heatmap.prototype._render = function(facet, hover) {
     facet.startY = startY;
     facet.canvas.width = startX + CW * calls.length + 5;
     facet.canvas.height = startY + CH * calls.length + 5;
-    ctx.font = Heatmap.FONT;
+    ctx.font = this.font;
 
     // Tweak facet label layout
     facet.labelDiv.css({paddingLeft: startX, width: CW * calls.length});
@@ -516,7 +517,7 @@ Heatmap.prototype._render = function(facet, hover) {
         if (i === hover.x)
             ctx.fillStyle = '#428bca';
         else
-            ctx.fillStyle = 'black';
+            ctx.fillStyle = this.textColor;
         ctx.fillText(calls[calls.length - i - 1],
                      -maxLabel, startX + i * CW + 0.5 * CW);
     }
@@ -526,7 +527,7 @@ Heatmap.prototype._render = function(facet, hover) {
         if (i === hover.y)
             ctx.fillStyle = '#428bca';
         else
-            ctx.fillStyle = 'black';
+            ctx.fillStyle = this.textColor;
         ctx.fillText(calls[i], startX - PAD, startY + i * CH + 0.5 * CH);
     }
     ctx.restore();
@@ -585,7 +586,8 @@ Heatmap.prototype._render = function(facet, hover) {
     ctx.fillStyle = 'black';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '7pt sans-serif';
+    ctx.font = (Heatmap.CH * 0.5) + 'px sans-serif';
+    ctx.fillStyle = this.textColor;
     for (var i = 0; i < clabels.length; i++) {
         var cl = clabels[i];
         ctx.fillText(cl.label, (cl.x + 0.5) * CW, (cl.y + 0.5) * CH);

@@ -365,10 +365,9 @@ function Heatmap(inputRv, pred, facets, container) {
 
     this.elt = $('<div>').css({textAlign: 'center'});
     this.outputRv = new Rendezvous();
-    this.selectionRv = new Rendezvous();
-    this.elt.click(function () {
-        this.selectionRv.set(null);
-    }.bind(this));
+    this.selectionRv = new Rendezvous(null);
+    this.hoverRv = new Rendezvous(null);
+    this.elt.click(this.selectionRv.set.bind(this.selectionRv, null));
     this.refresh();
 }
 
@@ -411,11 +410,6 @@ Heatmap.prototype.refresh = function() {
     var hmthis = this;
     this.elt.empty();
     var input = this.inputRv.get(this.refresh.bind(this));
-
-    // Create a new global selection
-    var oldSelection = this.selectionRv.value;
-    this.selectionRv = new Rendezvous(null);
-    this.hoverRv = new Rendezvous(null);
 
     // Get all calls, ordered by CALL_SEQ, then alphabetically.
     // XXX Maybe this shouldn't be symmetric.  For example, if my
@@ -481,12 +475,9 @@ Heatmap.prototype.refresh = function() {
             appendTo(div);
 
         // Keep selection across refreshes if possible
-        if (oldSelection && oldSelection.facet &&
-            oldSelection.facet.label === facet.label) {
-            oldSelection.facet = facet;
-            hmthis.selectionRv.set(oldSelection);
-            oldSelection = null;
-        }
+        if (hmthis.selectionRv.value &&
+            hmthis.selectionRv.value.facet.label === facet.label)
+            hmthis.selectionRv.value.facet = facet;
 
         // Set up facet object
         facet.calls = calls;

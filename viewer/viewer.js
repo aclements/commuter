@@ -74,13 +74,15 @@ function compareCallSeqs(cs1, cs2) {
 
 function Database() {
     this.outputRv = new Rendezvous(Enumerable.empty());
-    this.sources = [];
     this.data = [];
+    this.sources = [];
     this.loading = {};
     this.byid = {};
+    this.templates = {};
+    this.pending = [];
 }
 
-Database.prototype.loadMscan = function(uri) {
+Database.prototype._load = function(uri, cb) {
     if (this.sources.indexOf(uri) != -1)
         return !this.loading[uri];
 
@@ -100,7 +102,7 @@ Database.prototype.loadMscan = function(uri) {
         }).
         done(function(json) {
             console.log('Loaded', uri);
-            dbthis.add(Database.mscanFromJSON(json));
+            cb(json);
         }).
         fail(function(xhr, status, errorThrown) {
             // XXX More visible error?  Needs to be dismissable.
@@ -110,7 +112,31 @@ Database.prototype.loadMscan = function(uri) {
     return false;
 };
 
-Database.prototype.add = function(recs) {
+Database.prototype.loadMscan = function(uri) {
+    var dbthis = this;
+    return this._load(uri, function(json) {
+        dbthis.pending.push({uri:uri, json:json});
+        dbthis._processPending();
+    });
+};
+
+Database.prototype._processPending = function() {
+    var stillPending = [];
+    for (var i = 0; i < this.pending.length; i++) {
+        var p = this.pending[i];
+        var testcases = this._tryDecompress(p.uri, p.json.testcases);
+        if (testcases === null) {
+            stillPending.push(p);
+            continue;
+        }
+        testcases = this._expandStacks(testcases, p.json.stacks);
+        testcases = this._addComputed(testcases);
+        this._add(testcases);
+    }
+    this.pending = stillPending;
+};
+
+Database.prototype._add = function(recs) {
     // Full outer join recs with this.data on 'id'
     // XXX Always join in load order without overwrites
     for (var i = 0; i < recs.length; i++) {
@@ -120,13 +146,12 @@ Database.prototype.add = function(recs) {
             this.data.push(rec);
             this.byid[rec.id] = rec;
         } else {
-            for (var f in rec)
-                if (rec.hasOwnProperty(f))
-                    pre[f] = rec[f];
+            $.extend(pre, rec);
         }
     }
 
     // Sort data
+    // XXX This is remarkably slow
     function cmp(a, b) {
         return a < b ? -1 : (a > b ? 1 : 0);
     }
@@ -138,18 +163,46 @@ Database.prototype.add = function(recs) {
     this.outputRv.set(Enumerable.from(this.data));
 };
 
-Database.mscanFromJSON = function(json) {
-    // Reverse table-ification
-    function untablify(table) {
-        var fields = table['!fields'];
-        var data = table['!data'];
-        if (fields === undefined || data === undefined)
-            return table;
+// Decompress json, which was loaded from uri.
+//
+// Returns null if this had to start an asynchronous template load.
+Database.prototype._tryDecompress = function(uri, json) {
+    if ('!template' in json) {
+        // Template compression
+        var tpath = uri.substring(0, uri.lastIndexOf('/')+1) + json['!template'];
+        var template = this.templates[tpath];
+        if (template === undefined) {
+            // Load template and try again
+            var dbthis = this;
+            this._load(tpath, function(tjson) {
+                dbthis.templates[tpath] = tjson;
+                dbthis._processPending();
+            });
+            return null;
+        }
 
+        // Expand template
+        template = this._tryDecompress(tpath, template);
+        if (template === null)
+            return null;
+        var data = this._tryDecompress(uri, json['!data']);
         var out = [];
-        var prev = {};
-        var weight = [];
+        for (var i = 0; i < template.length; i++)
+            out.push($.extend({}, template[i], data[i]));
+        return out;
+    } else if ('!fields' in json) {
+        // Table compression
+        var fields = json['!fields'];
+        var data = json['!data'];
+        var out = [], prev = {}, weight = [];
         for (var i = 0; i < data.length; i++) {
+            if (typeof data[i] === 'number') {
+                // Run of data[i] copies of prev
+                for (var j = 0; j < data[i]; j++)
+                    out.push($.extend({}, prev));
+                continue;
+            }
+
             var deltamask = data[i][0];
 
             // Get or compute weight of deltamask
@@ -178,45 +231,45 @@ Database.mscanFromJSON = function(json) {
             prev = obj;
         }
         return out;
+    } else {
+        return json;
     }
-
-    // Reverse deduplication of stacks
-    var stackkeys = ['stack', 'stack1', 'stack2'];
-    function getStacks(testcases, stacks) {
-        if (stacks === undefined)
-            return testcases;
-        for (var tci = 0; tci < testcases.length; tci++) {
-            var testcase = testcases[tci];
-            for (var si = 0; si < testcase.shared.length; si++) {
-                for (var ki = 0; ki < stackkeys.length; ki++) {
-                    var k = stackkeys[ki];
-                    var shared = testcase.shared[si];
-                    if (shared[k] === undefined)
-                        continue;
-                    shared[k] = json.stacks[shared[k]];
-                }
-            }
-        }
-        return testcases;
-    }
-
-    // Put name components back together and handle 'nshared'
-    function reformat(testcases) {
-        for (var i = 0; i < testcases.length; i++) {
-            var testcase = testcases[i];
-            testcase.path = testcase.calls + '_' + testcase.pathid;
-            testcase.test = testcase.path + '_' + testcase.testno;
-            testcase.id = testcase.test + '_' + testcase.runid;
-            if (testcase.nshared !== undefined) {
-                testcase.shared = new Array(testcase.nshared);
-                delete testcase.nshared;
-            }
-        }
-        return testcases;
-    }
-
-    return reformat(getStacks(untablify(json.testcases), json.stacks));
 };
+
+// Reverse deduplication of stacks in testcases
+Database.prototype._expandStacks = function(testcases, stacks) {
+    if (stacks === undefined)
+        return testcases;
+    var stackkeys = ['stack', 'stack1', 'stack2'];
+    for (var tci = 0; tci < testcases.length; tci++) {
+        var testcase = testcases[tci];
+        for (var si = 0; si < testcase.shared.length; si++) {
+            for (var ki = 0; ki < stackkeys.length; ki++) {
+                var k = stackkeys[ki];
+                var shared = testcase.shared[si];
+                if (shared[k] === undefined)
+                    continue;
+                shared[k] = stacks[shared[k]];
+            }
+        }
+    }
+    return testcases;
+}
+
+// Add computed fields to testcases
+Database.prototype._addComputed = function(testcases) {
+    for (var i = 0; i < testcases.length; i++) {
+        var testcase = testcases[i];
+        testcase.path = testcase.calls + '_' + testcase.pathid;
+        testcase.test = testcase.path + '_' + testcase.testno;
+        testcase.id = testcase.test + '_' + testcase.runid;
+        if (testcase.nshared !== undefined) {
+            testcase.shared = new Array(testcase.nshared);
+            delete testcase.nshared;
+        }
+    }
+    return testcases;
+}
 
 //
 // Query canvas
@@ -737,10 +790,10 @@ $(document).ready(function() {
         // Lazy load detail databases
         // XXX Load just the one this test case needs
         if (!database.loadMscan('data/sv6-details.json') ||
-            !database.loadMscan('data/linux-details.json'))
+            !database.loadMscan('data/Linux-details.json'))
             return $('<span>').text('Loading details...');
     });
 
     database.loadMscan('data/sv6.json');
-    database.loadMscan('data/linux.json');
+    database.loadMscan('data/Linux.json');
 });

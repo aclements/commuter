@@ -5,12 +5,13 @@
 # give results in equivalent order?
 
 import sys
+import os
 import argparse
 import json
 import itertools
 import collections
 
-def reformat_tests(testcases, add):
+def reformat_tests(testcases, runid):
     """Convert testcases into format expected by viewer."""
 
     for testcase in testcases:
@@ -31,7 +32,7 @@ def reformat_tests(testcases, add):
             del shared['rawaddr']
 
         # Add identifying fields
-        testcase.update(add)
+        testcase['runid'] = runid
 
     return testcases
 
@@ -58,14 +59,25 @@ def split_details(testcases):
     general, details = [], []
     for testcase in testcases:
         shared = testcase.pop('shared')
-        details.append({'calls': testcase['calls'],
-                        'pathid': testcase['pathid'],
-                        'testno': testcase['testno'],
-                        'runid': testcase['runid'],
+        details.append({'runid': testcase['runid'],
                         'shared': shared})
         testcase['nshared'] = len(shared)
         general.append(testcase)
     return general, details
+
+def split_template(data, fields):
+    template = []
+    for rec in data:
+        template.append({f: rec.pop(f) for f in fields})
+
+    # Write template
+    tid = abs(hash(str(template)))
+    template_path = 'template-%x.json' % tid
+    json.dump(tablify(template, fields),
+              file(os.path.join(args.out, template_path), 'w'), **FORMAT)
+
+    # Return template-compressed data
+    return {'!template': template_path, '!data': data}
 
 def tablify(dicts, fields):
     data = []
@@ -75,6 +87,14 @@ def tablify(dicts, fields):
         dlst = []
         for f in fields:
             dlst.append(d.pop(f))
+
+        # Run compress
+        if prev == dlst:
+            if isinstance(data[-1], int):
+                data[-1] += 1
+            else:
+                data.append(1)
+            continue
 
         # Delta compress against prev
         deltamask = 0
@@ -93,30 +113,33 @@ def json_write(data, fp):
     json.dump(data, fp, separators=(',',':'))
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-o', '--out', type=argparse.FileType('w'),
-                    default=sys.stdout, help='Output file')
-parser.add_argument('--details', type=argparse.FileType('w'),
-                    help='Separate sharing details output file')
+parser.add_argument('-o', '--out', default='data', help='Output directory')
+parser.add_argument('--details', action='store_true',
+                    help='Separate sharing details')
 parser.add_argument('mscan', type=file, help='mscan file')
-parser.add_argument('runid', help='Run identifier')
+parser.add_argument('runid', help='Run identifier (and base file name)')
 args = parser.parse_args()
 
-COMMON = ('runid', 'calls', 'pathid', 'testno')
 FORMAT = {'separators': (',',':')}
 
 mscan = json.load(args.mscan)
-testcases = reformat_tests(mscan['testcases'], {'runid': args.runid})
+testcases = reformat_tests(mscan['testcases'], args.runid)
 stacks = dedup_stacks(testcases)
+data = split_template(testcases, ('calls', 'pathid', 'testno'))
+
 if args.details:
     # Split sharing data
-    general, details = split_details(testcases)
-    detail_db = {'testcases': tablify(details, COMMON + ('shared',)),
-                 'stacks': stacks}
-    json.dump(detail_db, args.details, **FORMAT)
-    general_db = {'testcases': tablify(general, COMMON + ('nshared',))}
-    json.dump(general_db, args.out, **FORMAT)
+    main, details = split_details(data['!data'])
+    data['!data'] = tablify(details, ('runid', 'shared'))
+    json.dump({'testcases': data, 'stacks': stacks},
+              file(os.path.join(args.out, '%s-details.json' % args.runid), 'w'),
+              **FORMAT)
+    data['!data'] = tablify(main, ('runid', 'nshared'))
+    json.dump({'testcases': data},
+              file(os.path.join(args.out, '%s.json' % args.runid), 'w'),
+              **FORMAT)
 else:
-    # Single database
-    db = {'testcases': tablify(testcases, COMMON + ('shared',)),
-          'stacks': stacks}
-    json.dump(db, args.out, **FORMAT)
+    data['!data'] = tablify(data['!data'], ('runid', 'shared'))
+    json.dump({'testcases': data, 'stacks': stacks},
+              file(os.path.join(args.out, '%s.json' % args.runid), 'w'),
+              **FORMAT)

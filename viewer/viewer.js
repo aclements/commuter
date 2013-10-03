@@ -1,5 +1,11 @@
 // XXX Show test code for test cases.
 
+// XXX Clean up mixed 'self'/'xthis'
+
+// XXX Deselecting the heat map is awkward, both because you have to
+// have to click in the canvas but off the map and because you have to
+// click in the same canvas that currently has a selection.
+
 // Default order for calls
 var CALL_SEQ = [
     'open', 'link', 'unlink', 'rename', 'stat',
@@ -324,6 +330,69 @@ QueryCanvas.prototype.table = function(detailFn) {
 };
 
 //
+// Canvas selection utility
+//
+
+function CanvasSelection(canvas) {
+    this.canvas = canvas;
+    this.onchange = onchange;
+
+    this.regions = [];
+    this.hoverRv = new Rendezvous(this.hover);
+    this.selectionRv = new Rendezvous(this.selection);
+
+    var self = this;
+    canvas.mousemove(function(ev) {
+        self.hoverRv.set(self._getMouseRegion(ev));
+    });
+    canvas.mouseout(function() {
+        self.hoverRv.set(null);
+    });
+    canvas.click(function(ev) {
+        self.selectionRv.set(self._getMouseRegion(ev));
+    });
+}
+
+CanvasSelection.prototype._getMouseRegion = function(ev) {
+    var offset = this.canvas.offset();
+    var x = ev.pageX - offset.left, y = ev.pageY - offset.top;
+    for (var i = 0; i < this.regions.length; i++) {
+        var r = this.regions[i];
+        if (x >= r.mx && y >= r.my && x < r.mx + r.mw && y < r.my + r.mh)
+            return r;
+    }
+    return null;
+};
+
+CanvasSelection.prototype.add = function(rgn, initial) {
+    this.regions.push(rgn);
+    if (initial)
+        this.selectionRv.set(rgn);
+};
+
+CanvasSelection.prototype.render = function(ctx, refresh) {
+    ctx.save();
+    ctx.lineWidth = 2;
+
+    var hover = this.hoverRv.get(refresh);
+    if (hover) {
+        ctx.strokeStyle = '#428bca';
+        ctx.strokeRect(hover.mx, hover.my, hover.mw, hover.mh);
+        $(ctx.canvas).css('cursor', 'pointer');
+    } else {
+        $(ctx.canvas).css('cursor', 'auto');
+    }
+
+    var sel = this.selectionRv.get(refresh);
+    if (sel) {
+        ctx.strokeStyle = 'rgb(0,0,255)';
+        ctx.strokeRect(sel.mx, sel.my, sel.mw, sel.mh);
+    }
+
+    ctx.restore();
+};
+
+//
 // Heatmap
 //
 
@@ -334,8 +403,8 @@ function Heatmap(inputRv, pred, facets, container) {
     this.fontSettings = fontSettings(container);
 
     this.elt = $('<div>').css({textAlign: 'center'});
-    this.selection = {};
     this.outputRv = new Rendezvous();
+    this.selectionRv = new Rendezvous({});
     this.refresh();
 }
 
@@ -378,6 +447,10 @@ Heatmap.prototype.refresh = function() {
     var hmthis = this;
     this.elt.empty();
     var input = this.inputRv.get(this.refresh.bind(this));
+
+    // Create a new global selection
+    var oldSelection = this.selectionRv.value;
+    this.selectionRv = new Rendezvous({});
 
     // Get all calls, ordered by CALL_SEQ, then alphabetically.
     // XXX Maybe this shouldn't be symmetric.  For example, if my
@@ -426,7 +499,7 @@ Heatmap.prototype.refresh = function() {
         }).memoize();
 
     // Create canvases, update selection, and do initial renders
-    var foundSelection = false;
+    var userSelection = false;
     this._maxLabel = 0;
     facets.forEach(function (facet) {
         // Create canvas
@@ -434,67 +507,61 @@ Heatmap.prototype.refresh = function() {
             appendTo(hmthis.elt);
         var canvas = $('<canvas>').appendTo(div);
 
-        // Activate canvas
-        canvas.mousemove(function (ev) {
-            var offset = canvas.offset();
-            var x = ev.pageX - offset.left, y = ev.pageY - offset.top;
-            hmthis._render(facet, hmthis._coordToCell(facet, x, y));
-        });
-        canvas.mouseout(function () {
-            hmthis._render(facet, {});
-        });
-        canvas.click(function (ev) {
-            // XXX Support selecting a whole call, too
-            var offset = canvas.offset();
-            var x = ev.pageX - offset.left, y = ev.pageY - offset.top;
-            var oldFacet = hmthis.selection.facet;
-            hmthis.selection = hmthis._coordToCell(facet, x, y);
-            hmthis._render(facet, hmthis.selection);
-            // Clear previous selection
-            if (oldFacet && hmthis.selection.facet !== oldFacet)
-                hmthis._render(oldFacet, {});
+        // Set up selection
+        facet.cs = new CanvasSelection(canvas);
 
-            // Update output for new selection
-            hmthis._setOutput(input);
-        });
+        // Funnel per-facet selection into global selection
+        var funnel = function() {
+            var sel = facet.cs.selectionRv.get(funnel) || {};
+            if (!userSelection)
+                return;
+            hmthis.selectionRv.set(sel);
+
+            // Clear other facet selections, avoiding self-recursion
+            userSelection = false;
+            try {
+                facets.forEach(function(facet) {
+                    if (facet !== sel.facet)
+                        facet.cs.selectionRv.set(null);
+                });
+            } finally {
+                userSelection = true;
+            }
+        };
+        funnel();
 
         // Label canvas
         var label = $('<div>').css({textAlign: 'center'}).text(facet.label).
             appendTo(div);
 
         // Keep selection across refreshes if possible
-        if (!foundSelection && hmthis.selection.facet &&
-            hmthis.selection.facet.label === facet.label) {
-            foundSelection = true;
-            hmthis.selection.facet = facet;
+        if (oldSelection && oldSelection.facet &&
+            oldSelection.facet.label === facet.label) {
+            oldSelection.facet = facet;
+            hmthis.selectionRv.set(oldSelection);
+            oldSelection = null;
         }
 
         // Set up facet object
         facet.calls = calls;
         facet.canvas = canvas[0];
         facet.labelDiv = label;
-        hmthis._render(facet, {});
+        hmthis._render(facet, true);
     });
-    if (!foundSelection)
-        this.selection = {};
+    // Enable selection funneling
+    userSelection = true;
 
     // Set up output
     this._setOutput(input);
 };
 
-Heatmap.prototype._coordToCell = function(facet, x, y) {
-    var cx = Math.floor((x - facet.startX) / Heatmap.CW);
-    var cy = Math.floor((y - facet.startY) / Heatmap.CH);
-    if (cx < 0 || cy < 0 || cy > facet.calls.length - cx - 1)
-        return {};
-    return {facet:facet, x:cx, y:cy};
-};
-
-Heatmap.prototype._render = function(facet, hover) {
+Heatmap.prototype._render = function(facet, initialRender) {
     var CW = Heatmap.CW, CH = Heatmap.CH, PAD = Heatmap.PAD;
+    var rerender = this._render.bind(this, facet);
 
     var calls = facet.calls;
     var ctx = facet.canvas.getContext('2d');
+    var hover = facet.cs.hoverRv.get(rerender) || {};
 
     // Measure labels
     if (this._maxLabel === 0) {
@@ -507,8 +574,6 @@ Heatmap.prototype._render = function(facet, hover) {
 
     // Size (and clear) canvas
     var startX = maxLabel + PAD, startY = maxLabel + PAD;
-    facet.startX = startX;
-    facet.startY = startY;
     facet.canvas.width = startX + CW * calls.length + 5;
     facet.canvas.height = startY + CH * calls.length + 5;
     this.fontSettings.apply(ctx);
@@ -562,31 +627,26 @@ Heatmap.prototype._render = function(facet, hover) {
 
     // Known cells
     var clabels = [];
+    if (initialRender)
+        var sel = this.selectionRv.value;
     facet.cells.forEach(function (cell) {
         ctx.fillStyle = Heatmap.color(cell.matched / cell.total);
         ctx.fillRect(cell.x * CW, cell.y * CH, CW, CH);
         if (cell.matched > 0)
             clabels.push({x:cell.x, y:cell.y,
                           label:cell.matched.toString()});
+        if (initialRender)
+            facet.cs.add({facet:facet, x:cell.x, y:cell.y,
+                          mx:startX + cell.x * CW, my:startY + cell.y * CH,
+                          mw:CW, mh:CH},
+                         (sel.facet === facet && sel.x === cell.x &&
+                          sel.y === cell.y));
     });
 
-    // Hover
-    if (hover.facet === facet) {
-        ctx.save();
-        ctx.strokeStyle = '#428bca';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(hover.x * CW, hover.y * CH, CW, CH);
-        ctx.restore();
-    }
+    ctx.restore();
 
-    // Selection
-    if (this.selection.facet === facet) {
-        ctx.save();
-        ctx.strokeStyle = 'rgb(0,0,255)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(this.selection.x * CW, this.selection.y * CH, CW, CH);
-        ctx.restore();
-    }
+    // Render selection
+    facet.cs.render(ctx, rerender);
 
     // Cell labels
     // XXX Maybe this should only be shown on hover?  Could show
@@ -597,18 +657,16 @@ Heatmap.prototype._render = function(facet, hover) {
     ctx.fillStyle = this.fontSettings.fillStyle;
     for (var i = 0; i < clabels.length; i++) {
         var cl = clabels[i];
-        ctx.fillText(cl.label, (cl.x + 0.5) * CW, (cl.y + 0.5) * CH);
+        ctx.fillText(cl.label, startX + (cl.x + 0.5) * CW,
+                     startY + (cl.y + 0.5) * CH);
     }
-
-    ctx.restore();
-
-    // Mouse cursor
-    $(facet.canvas).css({cursor: hover.facet === facet ? 'pointer' : 'auto'});
 };
 
 Heatmap.prototype._setOutput = function(input) {
     // Refresh output based on selection
-    if (!this.selection.facet) {
+    var sel = this.selectionRv.get(this._setOutput.bind(this, input));
+
+    if (!sel.facet) {
         // Select everything by default
         this.outputRv.set(input);
         return;
@@ -620,8 +678,8 @@ Heatmap.prototype._setOutput = function(input) {
     // split bar with matched/unmatched/total statistics, where
     // clicking a region filters to it.
     var hmthis = this;
-    this.outputRv.set(this.selection.facet.cells.selectMany(function(cell) {
-        if (cell.x === hmthis.selection.x && cell.y === hmthis.selection.y)
+    this.outputRv.set(sel.facet.cells.selectMany(function(cell) {
+        if (cell.x === sel.x && cell.y === sel.y)
             return cell.testcases.where(hmthis.pred);
         return [];
     }));

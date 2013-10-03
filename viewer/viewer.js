@@ -325,6 +325,7 @@ Database.prototype._addComputed = function(testcases) {
 
 function QueryCanvas(parent, inputRv) {
     this.inputRv = this.curRv = inputRv;
+    this.curSelRv = null;
     this.container = $('<div>').appendTo(parent);
 }
 
@@ -333,6 +334,17 @@ QueryCanvas.prototype._add = function(op) {
         this._arrow();
     this.container.append(op.elt.addClass('viewer-operator'));
     this.curRv = op.outputRv;
+    // Reset selection if parent selection changes
+    if (this.curSelRv && op.resetSelection) {
+        var parentSelRv = this.curSelRv;
+        function monitorSelection() {
+            parentSelRv.get(monitorSelection);
+            op.resetSelection();
+        }
+        monitorSelection();
+    }
+    if (op.selectionRv)
+        this.curSelRv = op.selectionRv;
     return this;
 };
 
@@ -370,6 +382,10 @@ function Heatmap(inputRv, pred, facets, container) {
     this.elt.click(this.selectionRv.set.bind(this.selectionRv, null));
     this.refresh();
 }
+
+Heatmap.prototype.resetSelection = function() {
+    this.selectionRv.set(null);
+};
 
 // Heatmap constants
 Heatmap.CW = 16;
@@ -648,6 +664,10 @@ function Heatbar(inputRv, pred, container) {
     this.outputRv = new Rendezvous();
     this.refresh();
 }
+
+Heatbar.prototype.resetSelection = function() {
+    this.selectionRv.set(null);
+};
 
 Heatbar.prototype.refresh = function() {
     var self = this;

@@ -16,6 +16,8 @@
 
 // XXX Vertical headers for operators?
 
+// XXX Show status during initial load
+
 // Default order for calls
 var CALL_ORDER = [
     'open', 'link', 'unlink', 'rename', 'stat',
@@ -348,6 +350,15 @@ function QueryCanvas(parent, inputRv) {
     this.inputRv = this.curRv = inputRv;
     this.curSelRv = null;
     this.container = $('<div>').appendTo(parent);
+
+    var self = this;
+    function showHide() {
+        if (self.inputRv.get(showHide).any())
+            self.container.show();
+        else
+            self.container.hide();
+    }
+    showHide();
 }
 
 QueryCanvas.prototype._add = function(op) {

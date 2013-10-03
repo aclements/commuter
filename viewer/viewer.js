@@ -318,39 +318,10 @@ QueryCanvas.prototype.table = function(detailFn) {
 // Heatmap
 //
 
-function hsv2css(h, s, v) {
-    var i = Math.floor(h * 6);
-    var f = h * 6 - i;
-    var p = v * (1 - s);
-    var q = v * (1 - f * s);
-    var t = v * (1 - (1 - f) * s);
-    switch (i % 6) {
-        case 0: r = v, g = t, b = p; break;
-        case 1: r = q, g = v, b = p; break;
-        case 2: r = p, g = v, b = t; break;
-        case 3: r = p, g = q, b = v; break;
-        case 4: r = t, g = p, b = v; break;
-        case 5: r = v, g = p, b = q; break;
-    }
-    return 'rgb(' + Math.floor(r * 255) + ',' + Math.floor(g * 255) + ',' +
-        Math.floor(b * 255) + ')';
-}
-
-function inter(a, b, v) {
-    return a * (1 - v) + b * v;
-}
-
 function Heatmap(inputRv, pred, facets, container) {
     this.inputRv = inputRv;
     this.pred = pred;
     this.facets = facets || function () { return ''; };
-    this.color = function (frac) {
-        if (frac == 0)
-            return hsv2css(0.34065, 1, 0.91);
-        return hsv2css(inter(0.34065, 0,   0.5 + frac / 2),
-                       inter(1,       0.8, 0.5 + frac / 2),
-                       inter(0.91,    1,   0.5 + frac / 2));
-    };
     this.font = $(container).css('font');
     this.textColor = $(container).css('color');
 
@@ -364,6 +335,36 @@ function Heatmap(inputRv, pred, facets, container) {
 Heatmap.CW = 16;
 Heatmap.CH = 16;
 Heatmap.PAD = Heatmap.CW / 2;
+
+Heatmap.color = function(frac) {
+    function hsv2css(h, s, v) {
+        var i = Math.floor(h * 6);
+        var f = h * 6 - i;
+        var p = v * (1 - s);
+        var q = v * (1 - f * s);
+        var t = v * (1 - (1 - f) * s);
+        switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+        }
+        return 'rgb(' + Math.floor(r * 255) + ',' + Math.floor(g * 255) + ',' +
+            Math.floor(b * 255) + ')';
+    }
+
+    function inter(a, b, v) {
+        return a * (1 - v) + b * v;
+    }
+
+    if (frac == 0)
+        return hsv2css(0.34065, 1, 0.91);
+    return hsv2css(inter(0.34065, 0,   0.5 + frac / 2),
+                   inter(1,       0.8, 0.5 + frac / 2),
+                   inter(0.91,    1,   0.5 + frac / 2));
+};
 
 Heatmap.prototype.refresh = function() {
     var hmthis = this;
@@ -484,7 +485,6 @@ Heatmap.prototype._coordToCell = function(facet, x, y) {
 Heatmap.prototype._render = function(facet, hover) {
     var CW = Heatmap.CW, CH = Heatmap.CH, PAD = Heatmap.PAD;
 
-    var hmthis = this;
     var calls = facet.calls;
     var ctx = facet.canvas.getContext('2d');
 
@@ -555,7 +555,7 @@ Heatmap.prototype._render = function(facet, hover) {
     // Known cells
     var clabels = [];
     facet.cells.forEach(function (cell) {
-        ctx.fillStyle = hmthis.color(cell.matched / cell.total);
+        ctx.fillStyle = Heatmap.color(cell.matched / cell.total);
         ctx.fillRect(cell.x * CW, cell.y * CH, CW, CH);
         if (cell.matched > 0)
             clabels.push({x:cell.x, y:cell.y,

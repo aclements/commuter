@@ -685,7 +685,7 @@ Heatbar.prototype.refresh = function() {
     // Size canvas
     var R = 10, MAX_W = 384, H = 25;
     var width = MAX_W * (1 - (R / (stats.total + R)));
-    var factor = width / stats.total;
+    var factor = stats.total === 0 ? 0 : (width / stats.total);
     this.canvas.width = width + 2;
     this.canvas.height = H + 2;
     this.mid = 1 + (stats.total - stats.matched) * factor;

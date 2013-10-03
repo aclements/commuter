@@ -741,7 +741,8 @@ Heatbar.prototype._render = function() {
     ctx.fillStyle = Heatmap.color(0);
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = Heatmap.color(1);
-    ctx.fillRect(mid, 0, width - mid, height);
+    if (mid < width)
+        ctx.fillRect(mid, 0, width - mid, height);
 
     function strokeRegion(rgn) {
         if (rgn === false)

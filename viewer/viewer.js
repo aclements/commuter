@@ -15,10 +15,10 @@ function Rendezvous(value) {
     this.reactives = [];
 }
 
-Rendezvous.prototype.get = function(reactive) {
-    if (reactive._re_version === undefined)
-        reactive._re_version = 0;
-    this.reactives.push({version:reactive._re_version, obj:reactive});
+Rendezvous.prototype.get = function(refresh) {
+    if (refresh._re_version === undefined)
+        refresh._re_version = 0;
+    this.reactives.push({version:refresh._re_version, refresh:refresh});
     return this.value;
 };
 
@@ -29,9 +29,9 @@ Rendezvous.prototype.set = function(value) {
     var re = this.reactives;
     this.reactives = [];
     for (var i = 0; i < re.length; i++) {
-        if (re[i].obj._re_version === re[i].version) {
-            ++re[i].obj._re_version;
-            re[i].obj.refresh();
+        if (re[i].refresh._re_version === re[i].version) {
+            ++re[i].refresh._re_version;
+            re[i].refresh();
         }
     }
 };
@@ -377,7 +377,7 @@ Heatmap.color = function(frac) {
 Heatmap.prototype.refresh = function() {
     var hmthis = this;
     this.elt.empty();
-    var input = this.inputRv.get(this);
+    var input = this.inputRv.get(this.refresh.bind(this));
 
     // Get all calls, ordered by CALL_SEQ, then alphabetically.
     // XXX Maybe this shouldn't be symmetric.  For example, if my
@@ -697,7 +697,7 @@ Table.fmtCell = function(row, colname) {
 };
 
 Table.prototype.refresh = function() {
-    var input = this.inputRv.get(this);
+    var input = this.inputRv.get(this.refresh.bind(this));
     this._render(input);
     this.outputRv.set(input);
 };

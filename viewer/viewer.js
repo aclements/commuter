@@ -792,6 +792,10 @@ function Table(inputRv, detailFn) {
     this.refresh();
 }
 
+Table.prototype.resetSelection = function() {
+    this.limit.set(10);
+};
+
 Table.INCREMENT = 100;
 Table.COL_ORDER = ['calls', 'path', 'test', 'id', 'shared'];
 Table.HIDE = ['runid', 'pathid', 'testno'];

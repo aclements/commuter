@@ -29,6 +29,11 @@
     margin: 0.5em;
 }
 
+.viewer-heatbar span {
+    vertical-align: middle;
+    display: inline-block;
+}
+
 table.datatable {
     border-collapse: collapse;
     width: 100%;

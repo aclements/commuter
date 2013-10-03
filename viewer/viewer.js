@@ -676,6 +676,10 @@ Heatbar.prototype.refresh = function() {
     // Set labels
     this.llabel.text(stats.total - stats.matched);
     this.rlabel.text(stats.matched);
+    if (this.pred.predLabels) {
+        this.llabel.text(this.llabel.text() + ' ' + this.pred.predLabels[0]);
+        this.rlabel.text(this.rlabel.text() + ' ' + this.pred.predLabels[1]);
+    }
     this.blabel.text(stats.total + ' total');
 
     // Size canvas
@@ -942,6 +946,17 @@ Table.prototype._addDetail = function(tr, ncols) {
 };
 
 //
+// Standard predicates
+//
+
+Predicate = {};
+
+Predicate.conflicted = function(tc) {
+    return tc.shared.length != 0;
+};
+Predicate.conflicted.predLabels = ['conflict-free', 'conflicted'];
+
+//
 // Setup
 //
 
@@ -949,9 +964,9 @@ var database = new Database();
 
 $(document).ready(function() {
     var qc = new QueryCanvas($('#container'), database.outputRv);
-    qc.heatmap(function(tc) { return tc.shared.length; },
+    qc.heatmap(Predicate.conflicted,
                function(tc) { return tc.runid; });
-    qc.heatbar(function(tc) { return tc.shared.length; });
+    qc.heatbar(Predicate.conflicted);
     qc.table(function(tc) {
         // Lazy load detail databases
         // XXX Load just the one this test case needs

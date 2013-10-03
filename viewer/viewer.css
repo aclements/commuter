@@ -9,6 +9,17 @@
     margin: 0.5em;
 }
 
+.viewer-header {
+    border-bottom: 1px solid #ddd;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    margin-left: -0.5em;
+    margin-right: -0.5em;
+    padding-left: 0.3em;
+    color: #aaa;
+    font-size: 80%;
+}
+
 table.datatable {
     border-collapse: collapse;
     width: 100%;

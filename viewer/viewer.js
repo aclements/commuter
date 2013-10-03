@@ -294,16 +294,22 @@ function QueryCanvas(parent, inputRv) {
     this.container = $('<div>').appendTo(parent);
 }
 
+QueryCanvas.prototype._header = function(label) {
+    $('<div>').addClass('viewer-header').text(label).appendTo(this.container);
+};
+
 QueryCanvas.prototype.heatmap = function(pred, facets) {
+    this._header('Heatmap');
     var hm = new Heatmap(this.curRv, pred, facets);
-    this.container.append(hm.elt.css('margin-bottom', '10px'));
+    this.container.append(hm.elt);
     this.curRv = hm.outputRv;
     return this;
 };
 
 QueryCanvas.prototype.table = function(detailFn) {
+    this._header('Table');
     var t = new Table(this.curRv, detailFn);
-    this.container.append(t.elt.css('margin-bottom', '10px'));
+    this.container.append(t.elt);
     this.curRv = t.outputRv;
     return this;
 };

@@ -59,14 +59,29 @@ function splitCallSeq(callSeq) {
 
 // Compare two call sequences
 function compareCallSeqs(cs1, cs2) {
-    if (cs1 === cs2)
-        return 0;
-    var s1 = splitCallSeq(cs1), s2 = splitCallSeq(cs2);
-    for (var i = 0; i < Math.min(s1.length, s2.length); i++)
-        if (s1[i] !== s2[i])
-            return compareCalls(s1[i], s2[i]);
-    return s1.length - s2.length;
+    function convert(cs) {
+        // Convert cs to a comparable string.  (This is slower than
+        // comparing them directly, but imminently cache-able.)
+        var r = compareCallSeqs.cache[cs];
+        if (r === undefined) {
+            var s = splitCallSeq(cs);
+            r = '';
+            for (var i = 0; i < s.length; i++) {
+                var idx = CALL_SEQ.indexOf(s[i]);
+                if (idx === -1)
+                    r += s[i];
+                else
+                    r += '\x00' + String.fromCharCode(idx);
+                r += '\x00';
+            }
+            compareCallSeqs.cache[cs] = r;
+        }
+        return r;
+    }
+    var s1 = convert(cs1), s2 = convert(cs2);
+    return s1 < s2 ? -1 : (s1 > s2 ? 1 : 0);
 }
+compareCallSeqs.cache = {};
 
 //
 // Mscan database
@@ -151,7 +166,6 @@ Database.prototype._add = function(recs) {
     }
 
     // Sort data
-    // XXX This is remarkably slow
     function cmp(a, b) {
         return a < b ? -1 : (a > b ? 1 : 0);
     }

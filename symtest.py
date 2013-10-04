@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from simsym import *
 from symtypes import *
 

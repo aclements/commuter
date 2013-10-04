@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import spec
 import multiprocessing
 import re

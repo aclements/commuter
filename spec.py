@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import simsym
 import z3
 import z3printer

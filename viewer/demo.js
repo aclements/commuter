@@ -1,6 +1,7 @@
-var database = new Database();
+var database;
 
 $(document).ready(function() {
+    database = new Database($('#container'));
     var qc = new QueryCanvas($('#container'), database.outputRv);
     qc.heatmap(Predicate.conflicted,
                function(tc) { return tc.runid; });

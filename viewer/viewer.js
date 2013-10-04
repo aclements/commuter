@@ -16,8 +16,6 @@
 
 // XXX Vertical headers for operators?
 
-// XXX Show status during initial load
-
 // Default order for calls
 var CALL_ORDER = [
     'open', 'link', 'unlink', 'rename', 'stat',
@@ -144,7 +142,9 @@ function bindSelectionEvents(canvas, coordToSel, selectionRv, hoverRv) {
 // Mscan database
 //
 
-function Database() {
+function Database(statusContainer) {
+    this.statusElt = $('<div>').addClass('viewer-status').
+        prependTo(statusContainer);
     this.outputRv = new Rendezvous(Enumerable.empty());
     this.data = [];
     this.sources = [];
@@ -161,26 +161,33 @@ Database.prototype._load = function(uri, cb) {
     this.sources.push(uri);
     this.loading[uri] = true;
 
-    if (!this.loadDiv)
-        this.loadDiv = $('<div>').addClass('viewer-loading').appendTo($('body'));
     var uriDiv = $('<div>').text('Loading ' + uri + '...').
-        appendTo(this.loadDiv);
+        addClass('viewer-status-info');
+    this.statusElt.append(uriDiv);
 
     var dbthis = this;
-    $.getJSON(uri).
-        always(function() {
-            dbthis.loading[uri] = false;
-            uriDiv.remove();
-        }).
-        done(function(json) {
-            console.log('Loaded', uri);
-            cb(json);
-        }).
-        fail(function(xhr, status, errorThrown) {
-            // XXX More visible error?  Needs to be dismissable.
-            console.log('Failed to load ' + uri + ': ' + status + ', ' +
-                        errorThrown);
-        });
+    // Give status a chance to display
+    setTimeout(function() {
+        $.getJSON(uri).
+            always(function() {
+                dbthis.loading[uri] = false;
+                uriDiv.remove();
+            }).
+            done(function(json) {
+                console.log('Loaded', uri);
+                cb(json);
+            }).
+            fail(function(xhr, status, errorThrown) {
+                var msg = 'Failed to load ' + uri;
+                if (errorThrown || status)
+                    msg += ': ' + (errorThrown || status);
+                var errDiv = $('<div>').text(msg).
+                    addClass('viewer-status-error').appendTo(dbthis.statusElt);
+                errDiv.append($('<div>&times;</div>').
+                              css({float: 'right', cursor: 'pointer'}).
+                              click(function(){errDiv.remove();}));
+            });
+    }, 10);
     return false;
 };
 

@@ -1,12 +1,27 @@
-.viewer-loading {
-    position: fixed;
+.viewer-status {
+    position: absolute;
+    left: 0px;
     right: 0px;
-    bottom: 0px;
-    background: white;
 }
 
-.viewer-loading > div {
-    margin: 0.5em;
+.viewer-status-info {
+    /* alert-info from Bootstrap */
+    color: #3a87ad;
+    background-color: #d9edf7;
+    border-color: #bce8f1;
+    border-radius: 4px;
+    padding: 5px;
+    margin: 5px;
+}
+
+.viewer-status-error {
+    /* alert-danger from Bootstrap */
+    color: #b94a48;
+    background-color: #f2dede;
+    border-color: #eed3d7;
+    border-radius: 4px;
+    padding: 5px;
+    margin: 5px;
 }
 
 .viewer-arrow {

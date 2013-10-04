@@ -72,5 +72,8 @@ precompress-1.x:
 	for f in $O/data/*.json; do gzip --best -c $$f > $$f.gz; done
 	cp htaccess-1.x $O/data/.htaccess
 
+deploy:
+	rsync -az --progress dist/ am.lcs:/home/am0/httpd/htdocs/commuter/
+
 clean:
 	rm -rf $O

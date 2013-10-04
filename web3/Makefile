@@ -34,6 +34,17 @@ $O/%: %
 # by replacing all directory names in $@ with '..'.
 #	ln -t $(@D) $(subst $(SPACE),/,$(patsubst %,..,$(subst /, ,$(@D))))/$^
 
+# Likewise for files from viewer
+$O/js/%.js: ../viewer/%.js
+	@mkdir -p $(@D)
+	ln -t $(@D) $^
+$O/css/%.css: ../viewer/%.css
+	@mkdir -p $(@D)
+	ln -t $(@D) $^
+$O/data/%: ../viewer/data/%
+	@mkdir -p $(@D)
+	ln -t $(@D) $^
+
 all: $O/index.html
 all: $O/img/logo.svg $O/img/model.png $O/img/test.png $O/img/improve.png
 all: $O/favicon.ico
@@ -42,6 +53,11 @@ all: $(addprefix $O/,$(wildcard css/*))
 all: $(addprefix $O/,$(wildcard img/*))
 all: $(addprefix $O/,$(wildcard js/*))
 all: $(addprefix $O/,$(wildcard fonts/*))
+
+# Viewer files
+all: $O/js/viewer.js $O/css/viewer.css $O/js/linq.min.js
+all: $(addprefix $O/data/,sv6.json sv6-details.json Linux.json Linux-details.json)
+all: $(addprefix $O/,$(subst ../viewer/,,$(wildcard ../viewer/data/template-*)))
 
 # Manual rule to convert fonts.  Requires Fontforge.
 fonts/myicon.woff fonts/myicon.ttf: fonts/myicon.svg

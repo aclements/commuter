@@ -14,6 +14,7 @@
     <![endif]-->
 
     <link href="css/site.css" rel="stylesheet" media="screen"></link>
+    <link href="css/viewer.css" rel="stylesheet"></link>
   </head>
 
   <body data-spy="scroll">
@@ -235,7 +236,10 @@
 
       <section id="demo">
         <h1>Demo</h1>
-        <p>Coming soon.</p>
+        <p>Below is an interactive browser for the test data for Linux
+        and sv6 from our SOSP '13 paper.  Click around to filter and
+        expand the data.</p>
+        <div id="demo-container" style="position:relative"></div>
       </section>
 
       <section id="contact">
@@ -261,6 +265,27 @@
            collapse: $('#collapse-template').contents()});
 
         $('[data-toggle=popover]').popover();
+      });
+    </script>
+
+    <!-- Demo Javascript -->
+    <script src="js/linq.min.js"></script>
+    <script src="js/viewer.js"></script>
+    <script>
+      $(document).ready(function() {
+          var database = new Database($('#demo-container'));
+          var qc = new QueryCanvas($('#demo-container'), database.outputRv);
+          qc.heatmap(Predicate.conflicted,
+                     function(tc) { return tc.runid; });
+          qc.heatbar(Predicate.conflicted);
+          qc.table(function(tc) {
+              // Lazy load detail databases
+              if (!database.loadMscan('data/' + tc.runid + '-details.json'))
+                  return $('\x3cspan\x3e').text('Loading details...');
+          });
+
+          database.loadMscan('data/sv6.json');
+          database.loadMscan('data/Linux.json');
       });
     </script>
   </body>

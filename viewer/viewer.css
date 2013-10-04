@@ -1,7 +1,8 @@
 .viewer-status {
-    position: absolute;
+    position: relative;
     left: 0px;
     right: 0px;
+    height: 0px;
 }
 
 .viewer-status-info {

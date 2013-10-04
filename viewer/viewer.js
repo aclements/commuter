@@ -181,11 +181,19 @@ Database.prototype._load = function(uri, cb) {
                 var msg = 'Failed to load ' + uri;
                 if (errorThrown || status)
                     msg += ': ' + (errorThrown || status);
+                var statusElt = dbthis.statusElt;
                 var errDiv = $('<div>').text(msg).
-                    addClass('viewer-status-error').appendTo(dbthis.statusElt);
+                    addClass('viewer-status-error').appendTo(statusElt);
                 errDiv.append($('<div>&times;</div>').
                               css({float: 'right', cursor: 'pointer'}).
-                              click(function(){errDiv.remove();}));
+                              click(function(){
+                                  errDiv.remove();
+                                  statusElt.css('height',
+                                                statusElt.height() - errH);
+                              }));
+                // Reserve space for error
+                var errH = errDiv.outerHeight(true);
+                statusElt.css('height', statusElt.height() + errH);
             });
     }, 10);
     return false;

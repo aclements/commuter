@@ -63,5 +63,14 @@ all: $(addprefix $O/,$(subst ../viewer/,,$(wildcard ../viewer/data/template-*)))
 fonts/myicon.woff fonts/myicon.ttf: fonts/myicon.svg
 	./convfont.pe $^
 
+# Pre-compress files for serving from amsterdam's Apache 1.x
+precompress-1.x:
+	for f in $O/css/*.css; do gzip --best -c $$f > $$f.gz; done
+	cp htaccess-1.x $O/css/.htaccess
+	for f in $O/js/*.js; do gzip --best -c $$f > $$f.gz; done
+	cp htaccess-1.x $O/js/.htaccess
+	for f in $O/data/*.json; do gzip --best -c $$f > $$f.gz; done
+	cp htaccess-1.x $O/data/.htaccess
+
 clean:
 	rm -rf $O

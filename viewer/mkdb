@@ -1,9 +1,5 @@
 #!/usr/bin/python
 
-# XXX Linux and sv6 databases are mostly redundant.  Maybe have a
-# "template" database that gives test information in order and then
-# give results in equivalent order?
-
 import sys
 import os
 import argparse

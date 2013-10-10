@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+import argparse
+import mscan
+import render
+
+parser = argparse.ArgumentParser()
+parser.add_argument('mscan', type=file, help='mscan --check-testcases output')
+parser.add_argument('outdir', help='output directory')
+args = parser.parse_args()
+
+m = mscan.mscan(args.mscan)
+bycall = m.select('_._replace(calls=_.calls.split("_")[0])').concat(m.select('_._replace(calls=_.calls.split("_")[1])'))
+for (key, sub) in bycall.group_by('_.calls'):
+    ctx = render.SVG()
+    render.test_blocks_horiz(ctx, sub, 20, 5)
+    ctx.write_to(file('bars/%s.svg' % key, 'w'))

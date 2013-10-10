@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+import mscan
+import render
+
+def nfmt(v):
+    return '{0:,}'.format(v)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-f', '--format', choices=['svg', 'tikz'], default='svg',
+                    help='output format')
+parser.add_argument('-o', '--out', type=argparse.FileType('w'),
+                    help='output file')
+parser.add_argument('-s', '--mscan', nargs=2, action='append', required=True,
+                    metavar=('SYSNAME', 'MSCAN'),
+                    help='mscan --check-testcases output (can be repeated)')
+args = parser.parse_args()
+
+calls = [
+    # Things that deal with names
+    'open', 'link', 'unlink', 'rename', 'stat',
+    # Things that deal with FDs
+    'fstat', 'lseek', 'close', 'pipe', 'read', 'write', 'pread', 'pwrite',
+    # VM
+    'mmap', 'munmap', 'mprotect', 'memread', 'memwrite']
+
+if args.format == 'svg':
+    ctx = render.SVG()
+elif args.format == 'tikz':
+    # Make 14 units work out to 11pt
+    ctx = render.TikZ('%gpt' % (11/14.0), '%gpt' % (11/14.0))
+
+for i, (sysname, fname) in enumerate(args.mscan):
+    m = mscan.mscan(file(fname))
+    table = m.table_ul(calls)
+    # In paper: 11pt => (11 * 1/72.27) * 90 => 13.7px
+    hm = render.heat_map(ctx, table.mapget('nonshared_frac'), 14, 14)
+
+    ctx.font_size = 6
+    hm.overlay(table.map(lambda ts: ts.shared if ts.shared else None))
+
+    ctx.font_size = 9
+    if i == 0:
+        hm.left_labels()
+    hm.top_labels().caption(
+        '%s (%s of %s cases scale)' %
+        (sysname, nfmt(m.nonshared), nfmt(m.total)))
+
+    if i == len(args.mscan) - 1:
+        ctx.translate(hm.width - 14, hm.height / 2)
+        hm.key(14, hm.height / 2, ctx.font_size * 1.25)
+    else:
+        ctx.translate(hm.width + 14, 0)
+
+ctx.write_to(args.out)

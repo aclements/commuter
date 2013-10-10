@@ -64,6 +64,26 @@ class Enumerable(object):
     def concat(self, *others):
         return type(self)(itertools.chain, self, *others)
 
+    def join(self, inner, outer_key_selector, inner_key_selector,
+             result_fn):
+        outer_key_selector = self.__fn(outer_key_selector)
+        inner_key_selector = self.__fn(inner_key_selector)
+        result_fn = self.__fn(result_fn)
+
+        def join_gen():
+            # Index inner
+            inner_idx = collections.defaultdict(list)
+            for irec in inner:
+                inner_idx[inner_key_selector(irec)].append(irec)
+
+            # Scan outer
+            for orec in self:
+                irecs = inner_idx.get(outer_key_selector(orec), None)
+                if irecs:
+                    for irec in irecs:
+                        yield result_fn(orec, irec)
+        return type(self)(join_gen)
+
     def str_table(self, fields_fns=None, max_width=20):
         if fields_fns is None:
             try:

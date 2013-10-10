@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import argparse
+import mscan
+import collections
+
+parser = argparse.ArgumentParser()
+parser.add_argument('mscan', type=file, help='mscan --check-testcases output')
+parser.add_argument('model', type=file, help='spec.py --model-file output')
+args = parser.parse_args()
+
+def nub(seq):
+    seen = set()
+    return [x for x in seq if x not in seen and not seen.add(x)]
+
+m = mscan.mscan(args.mscan)
+model = mscan.model_tests(args.model)
+
+Joined = collections.namedtuple(
+    'Joined', nub(mscan.TestCase._fields + mscan.TestModel._fields))
+m = m.join(model, '_.test', '_.test',
+           lambda o,i: Joined(**dict(i._asdict().items() +
+                                     o._asdict().items())))
+
+calls = [
+    # Things that deal with names
+    'open', 'link', 'unlink', 'rename', 'stat',
+    # Things that deal with FDs
+    'fstat', 'lseek', 'close', 'read', 'write', 'pread', 'pwrite',
+    # VM
+    'mmap', 'munmap', 'mprotect', 'memread', 'memwrite']
+
+print 'Shared cases (%d):' % m.shared
+print m.table_ul(calls).mapget('shared').text(shade=True)
+print
+
+nonidem = m.where('_.idempotent_projs == [[],[]]')
+print 'Non-idempotent/unknown idempotence shared cases (%d):' % nonidem.shared
+print nonidem.table_ul(calls).mapget('shared').text(shade=True)
+print
+
+
+
+print 'Non-idempotent shared case list:'
+print m.where('_.shared and _.idempotent_projs == [[],[]] and _.idempotence_unknown == 0').str_table()
+print
+
+print 'Unknown idempotence shared case list:'
+print m.where('_.shared and _.idempotent_projs == [[],[]] and _.idempotence_unknown != 0').str_table()
+print
+
+print 'Idempotent shared case list:'
+print m.where('_.shared and _.idempotent_projs != [[],[]]').str_table()
+print

@@ -121,3 +121,28 @@ def mscan(fp):
         cases.append(TestCase(calls=calls, path=calls+'_'+pathid, test=name,
                               shared=testcase['shared']))
     return TestSet.from_iterable(cases)
+
+TestModel = collections.namedtuple(
+    'TestModel',
+    'calls path test idempotent_projs idempotence_unknown assignments')
+
+def model_tests(fp):
+    """Parse a model.out file into an Enumerable of TestModels.
+
+    The returned Enumerable will have one entry per test.  Models that
+    did not generate any tests are excluded.
+    """
+
+    data = json.load(fp)
+    models = []
+    for calls, paths in data['tests'].iteritems():
+        for pathinfo in paths.itervalues():
+            path = pathinfo['id']
+            for testinfo in pathinfo.get('tests', []):
+                test = testinfo['id']
+                models.append(TestModel(
+                    calls=calls, path=path, test=test,
+                    idempotent_projs=testinfo.get('idempotent_projs', None),
+                    idempotence_unknown=testinfo.get('idempotence_unknown', 0),
+                    assignments=testinfo['assignments']))
+    return Enumerable.from_iterable(models)

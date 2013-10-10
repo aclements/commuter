@@ -1,0 +1,146 @@
+spec
+====
+
+Instead of having testgen produce test code directly, which other
+components (like `split-testgen`) then have to parse, make test
+generators produce a JSON database of test code and have something to
+convert this to C source (possible splitting it).  This will also
+enable us to display test code in the viewer.
+
+Sequential testing mode. Check that the model and implementation agree
+by running all individual operations.  This should probably also cover
+operations that never appear in a commutative context.
+
+
+fs_testgen
+==========
+
+Have a fs_testgen-specific C source file that must be compiled along
+with its output test code, rather than putting function definitions in
+giant Python strings or awkwardly in headers.  Pull
+fs_testgen-specific stuff out of the fstest headers.
+
+Pull all setup tasks into common functions, rather than open-coding
+them in every setup function.
+
+
+fstest
+======
+
+Currently specialized to testing operating systems, but it's not far
+from being able to test other interfaces.
+
+fstest is fairly specific to fs_testgen right now, which limits the
+re-usability of the whole Commuter pipeline.  Make fstest more general
+purpose.
+
+Make fstest support more than pairs.
+
+We could address both of the above problems using "script arrays".
+Instead of hard-coding the tests array structure, for each test
+produce a C array of actions of the form "thread X in process Y do Z"
+where Z can be calling a function, or creating a new thread or
+process.
+
+
+simsym
+======
+
+Use a custom AST representation.  Simsym's wrappers are currently
+"thin".  They're a single object that directly wraps a Z3 AST.  This
+has several downsides.  Instead, we should introduce our own AST
+representation that we can convert to and from Z3 ASTs as needed.
+
+* Because of the limitations of our representation, we often mix and
+  match representations in confusing ways.  This would help us
+  standardize on one representation.
+
+  * For example, there are three ways to represent a concrete value:
+    as a Python value, as a Z3 AST, and as a simsym Symbolic wrapping
+    a Z3 AST.  With a more complete abstraction, we could make
+    concrete values always be Python values and symbolic values always
+    be simsym values.  For synonym types, this might mean introducing
+    two subclasses -- one subclassing the Python concrete type and the
+    other the symbolic type -- but the user should always go through
+    the symbolic type's interface, and it may return a Python type.
+
+* There are several places where we have to go from a Z3 AST to a
+  simsym value.  These are always messy, ad hoc, and possibly wrong.
+  With our own AST, we could do this right in one place and reap the
+  benefits everywhere.
+
+* Z3 ASTs can't directly represent simsym's compound values.  Because
+  simsym's wrappers are thin, we have to convert these to a
+  Z3-compatible representation eagerly, which results in strange
+  expressions that expose simsym's internal details.  With our own
+  ASTs, we could keep these in their original form and convert Z3 ASTs
+  back to their expected form.
+
+* Z3 ASTs aren't serializable.  It would be useful to write ASTs
+  faithfully to files like the model file.  Serializable ASTs would
+  also make it possible to parallelize symbolic execution.
+
+* There are many things that are just annoying about Z3's interface
+  that we could address with a thicker abstraction.  For example, many
+  operations fail when given all concrete values.
+
+* If we separate the notion of a symbolic value from an AST, we could
+  handle hashing and equality much better.  The symbolic value would
+  overload all of the operators, including equality to produce an
+  equality expression, but would disallow hashing.  The value would be
+  backed by an AST.  The AST would allow generic traversal and
+  construction, and would act like a regular Python value, where
+  equality would mean syntactic expression equivalence and hashing
+  would hash the expression.
+
+  * The AST would keep track of its type and would be responsible for
+    computing the correct type when an operator is applied to sub-ASTs
+    (to allow for generic construction of ASTs).
+
+  * With a little metaprogramming, the AST implementation could be
+    quite simple.  For example, the AST operator could be the name of
+    the Python method for that operator (or perhaps the name of the
+    function in the operator module?).  This would make it easy to
+    convert to Z3 ASTs.
+
+
+viewer
+======
+
+When viewing a test case, also show the generated test code.  That
+might make the data too large to load all at once, though I could
+split up the testgen data and load parts of it on demand.
+
+Support a code entry box for specifying the interactive operator flow.
+
+Click on a path or test ID to pop up a new window filtered to just
+that path or test ID (but removing other filters).  For example, when
+looking at non-idempotent cases, I often wanted to see related
+idempotent cases.
+
+In the table operator, support sorting by column.
+
+Additional interactive operators
+
+* Javascript query box - Interactively enter a LINQ query.  This could
+  be either a simple predicate for filtering, or a general LINQ query
+  (which could do joins, etc).
+
+* Call grid([`aggregate`]) - Heatmap-like grid display, but simply
+  show the result of `aggregate` in each cell (which defaults to
+  count).  Useful for viewing idempotence and deltas.
+
+* Faceted search filter
+
+Implement a differential visualizer to show what cases are now
+scalable or now non-scalable because of a change (or between two
+cases).  In a call grid display, show "+N -N" boxes.  This might be
+limited to two runs of the same test code, since there's no good way
+to match up tests between two spec runs.
+
+
+misc
+====
+
+Incremental JSON output would be mighty convenient for debugging and
+development.

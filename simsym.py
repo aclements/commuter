@@ -1454,7 +1454,7 @@ def symbolic_apply(fn, *args):
         except UncheckableConstraintError as e:
             import traceback
             traceback.print_exc()
-            print >>sys.stderr, "Suppressing exception"
+            print >>sys.stderr, "Ignoring path with uncheckable constraint"
             sar = SymbolicApplyResult("exception", sys.exc_info(), Env.current())
             graph.add_sched(path_state.sched, "Exception: " + str(e), "red")
         except Exception as e:

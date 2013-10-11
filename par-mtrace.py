@@ -15,7 +15,7 @@ parser.add_argument('-j', '--jobs', type=int,
 args = parser.parse_args()
 
 if args.kernel == None and args.mode == 'linux':
-  args.kernel = '../pk/arch/x86_64/boot/bzImage'
+  args.kernel = '../linux-mtrace/arch/x86_64/boot/bzImage'
 if args.kernel != None and not os.path.isfile(args.kernel):
   parser.error('kernel file not found: %s' % args.kernel)
 

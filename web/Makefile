@@ -42,24 +42,28 @@ $O/css/%.css: ../viewer/%.css
 	@mkdir -p $(@D)
 	ln -t $(@D) $^
 
+# Copy paper databases
+$(MSCAN_DIR)/mscan-xv6.out $(MSCAN_DIR)/mscan-linux.out $(MSCAN_DIR)/model.out:
+	@echo "Please set \$$MSCAN_DIR or generate $@"
+	@false
+$O/sosp13-data.tar.gz: $(MSCAN_DIR)/mscan-xv6.out $(MSCAN_DIR)/mscan-linux.out \
+	  $(MSCAN_DIR)/model.out
+	@mkdir -p $(@D)
+	tar caf $@ --xform 's,.*/,sosp13-data/,' $^
+
 # Generate viewer databases
 $O/data/sv6.json: $(MSCAN_DIR)/mscan-xv6.out
 	@mkdir -p $(@D)
 	../viewer/mkdb --details -o $O/data $< sv6
-$(MSCAN_DIR)/mscan-xv6.out:
-	@echo "Please set \$$MSCAN_DIR or generate $@"
-	@false
 $O/data/Linux.json: $(MSCAN_DIR)/mscan-linux.out
 	@mkdir -p $(@D)
 	../viewer/mkdb --details -o $O/data $< Linux
-$(MSCAN_DIR)/mscan-linux.out:
-	@echo "Please set \$$MSCAN_DIR or generate $@"
-	@false
 
 all: $O/index.html
 all: $O/img/logo.svg $O/img/model.png $O/img/test.png $O/img/improve.png
 all: $O/favicon.ico
 all: $O/clements-commutativity-sosp13.pdf
+all: $O/sosp13-data.tar.gz
 all: $(addprefix $O/,$(wildcard css/*))
 all: $(addprefix $O/,$(wildcard img/*))
 all: $(addprefix $O/,$(wildcard js/*))

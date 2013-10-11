@@ -41,9 +41,20 @@ $O/js/%.js: ../viewer/%.js
 $O/css/%.css: ../viewer/%.css
 	@mkdir -p $(@D)
 	ln -t $(@D) $^
-$O/data/%: ../viewer/data/%
+
+# Generate viewer databases
+$O/data/sv6.json: $(MSCAN_DIR)/mscan-xv6.out
 	@mkdir -p $(@D)
-	ln -t $(@D) $^
+	../viewer/mkdb --details -o $O/data $< sv6
+$(MSCAN_DIR)/mscan-xv6.out:
+	@echo "Please set \$$MSCAN_DIR or generate $@"
+	@false
+$O/data/Linux.json: $(MSCAN_DIR)/mscan-linux.out
+	@mkdir -p $(@D)
+	../viewer/mkdb --details -o $O/data $< Linux
+$(MSCAN_DIR)/mscan-linux.out:
+	@echo "Please set \$$MSCAN_DIR or generate $@"
+	@false
 
 all: $O/index.html
 all: $O/img/logo.svg $O/img/model.png $O/img/test.png $O/img/improve.png
@@ -56,8 +67,7 @@ all: $(addprefix $O/,$(wildcard fonts/*))
 
 # Viewer files
 all: $O/js/viewer.js $O/css/viewer.css $O/js/linq.min.js
-all: $(addprefix $O/data/,sv6.json sv6-details.json Linux.json Linux-details.json)
-all: $(addprefix $O/,$(subst ../viewer/,,$(wildcard ../viewer/data/template-*)))
+all: $O/data/sv6.json $O/data/Linux.json
 
 # Manual rule to convert fonts.  Requires Fontforge.
 fonts/myicon.woff fonts/myicon.ttf: fonts/myicon.svg

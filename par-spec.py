@@ -8,6 +8,7 @@ import json
 import collections
 import traceback
 import sys
+import importlib
 
 def wrapped_main(*args):
     # Blarg!  multiprocessing eats tracebacks
@@ -22,7 +23,7 @@ def wrapped_main(*args):
 
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(
-    args.functions, args.ncomb, __import__(args.module))
+    args.functions, args.ncomb, importlib.import_module(args.module))
 pool = multiprocessing.Pool()
 subargs = []
 asyncs = []

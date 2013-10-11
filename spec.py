@@ -266,7 +266,7 @@ def idempotent_projs(result, iso_constraint=True):
 
     # It seems Z3 often can't solve our idempotence checks.  Oh well.
 
-    root = __import__(args.module).model_class
+    root = importlib.import_module(args.module).model_class
     pc = result.path_condition
     unknown_count = [0]
     def xcheck(cond):

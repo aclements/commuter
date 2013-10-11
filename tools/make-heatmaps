@@ -10,12 +10,11 @@ def nfmt(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--format', choices=['svg', 'tikz'], default='svg',
-                    help='output format')
+                    help='output format (default: svg)')
 parser.add_argument('-o', '--out', type=argparse.FileType('w'),
-                    help='output file')
-parser.add_argument('-s', '--mscan', nargs=2, action='append', required=True,
-                    metavar=('SYSNAME', 'MSCAN'),
-                    help='mscan --check-testcases output (can be repeated)')
+                    help='output file (default: stdout)')
+parser.add_argument('mscan', nargs='+', metavar='SYSNAME:MSCAN',
+                    help='mscan --check-testcases output (SYSNAME optional)')
 args = parser.parse_args()
 
 calls = [
@@ -32,7 +31,11 @@ elif args.format == 'tikz':
     # Make 14 units work out to 11pt
     ctx = render.TikZ('%gpt' % (11/14.0), '%gpt' % (11/14.0))
 
-for i, (sysname, fname) in enumerate(args.mscan):
+for i, mscan_arg in enumerate(args.mscan):
+    if ':' in mscan_arg:
+        sysname, fname = mscan_arg.split(':', 1)
+    else:
+        sysname, fname = None, mscan_arg
     m = mscan.mscan(file(fname))
     table = m.table_ul(calls)
     # In paper: 11pt => (11 * 1/72.27) * 90 => 13.7px
@@ -44,9 +47,10 @@ for i, (sysname, fname) in enumerate(args.mscan):
     ctx.font_size = 9
     if i == 0:
         hm.left_labels()
-    hm.top_labels().caption(
-        '%s (%s of %s cases scale)' %
-        (sysname, nfmt(m.nonshared), nfmt(m.total)))
+    hm.top_labels()
+    if sysname:
+        hm.caption('%s (%s of %s cases scale)' %
+                   (sysname, nfmt(m.nonshared), nfmt(m.total)))
 
     if i == len(args.mscan) - 1:
         ctx.translate(hm.width - 14, hm.height / 2)

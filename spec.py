@@ -597,7 +597,7 @@ parser.add_argument('--diff-testgen', default=False, action='store_true',
 parser.add_argument('--idempotent-projs', default=False, action='store_true',
                     help='Record idempotent projections in model file (slow)')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
-                    help='Module to test (e.g., fs)')
+                    help='Module to test (e.g., models.fs)')
 
 def print_cond(msg, cond):
     if args.check_conds and simsym.check(cond).is_unsat:

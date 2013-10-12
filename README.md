@@ -17,18 +17,22 @@ Check out Commuter's [home page](http://pdos.csail.mit.edu/commuter/).
 Dependencies
 ------------
 
-Commuter depends on several other software packages.
+Commuter depends on several other software packages.  Things will go
+most smoothly if you clone everything into neighboring directories.
 
 * Z3 - Z3 is available from https://z3.codeplex.com/ .  As of this
   writing you'll need a nightly build, since Commuter depends on
-  several bug fixes that are not in the stable 4.3.0 release.  The
-  results in the SOSP '13 paper were generated with Z3 commit
-  `a60b53bfd` from the unstable branch, but it's likely that any
-  nightly build will work.
+  several bug fixes that are not in the stable 4.3.0 release.  You can
+  download pre-built nightlies for various OSs from Z3's home page, or
+  clone their unstable branch.
 
   You may either install Z3 system-wide, or set the environment
   variables `LD_LIBRARY_PATH` and `PYTHONPATH` to the local
   installation of Z3 before running Commuter.
+
+  The results in the SOSP '13 paper were generated with Z3 commit
+  `a60b53bfd` from the unstable branch, but it's likely that any
+  nightly build will work.
 
 * mtrace - Mtrace is our modified version of QEMU that Commuter uses
   to run tests and detect sharing in OS kernels.  Mtrace supports many

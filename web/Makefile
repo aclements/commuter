@@ -43,11 +43,12 @@ $O/css/%.css: ../viewer/%.css
 	ln -t $(@D) $^
 
 # Copy paper databases
-$(MSCAN_DIR)/mscan-xv6.out $(MSCAN_DIR)/mscan-linux.out $(MSCAN_DIR)/model.out:
+PAPER_FILES := mscan-xv6.out mscan-linux.out model.out testgen.c
+PAPER_FILES := $(addprefix $(MSCAN_DIR)/,$(PAPER_FILES))
+$(PAPER_FILES):
 	@echo "Please set \$$MSCAN_DIR or generate $@"
 	@false
-$O/sosp13-data.tar.gz: $(MSCAN_DIR)/mscan-xv6.out $(MSCAN_DIR)/mscan-linux.out \
-	  $(MSCAN_DIR)/model.out
+$O/sosp13-data.tar.gz: $(PAPER_FILES)
 	@mkdir -p $(@D)
 	tar caf $@ --xform 's,.*/,sosp13-data/,' $^
 

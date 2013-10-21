@@ -78,6 +78,7 @@ class SVG(_ContextBase):
     def __init__(self):
         super(SVG, self).__init__()
         self.__elts = []
+        self.__defs = []
         self.__bounds = (0, 0, 0, 0)
         self._offset = (0, 0)
         self._save.append('_offset')
@@ -142,10 +143,10 @@ class SVG(_ContextBase):
     def clip(self, points):
         cid = 'clip%d' % self.__clipid
         self.__clipid += 1
-        self.__elts.extend(['<clipPath id="%s">' % cid,
+        self.__defs.extend(['<clipPath id="%s">' % cid,
                             '  <path d="%s" />' % self.__mkD(points),
-                            '</clipPath>',
-                            '<g clip-path="url(#%s)">' % cid])
+                            '</clipPath>'])
+        self.__elts.append('<g clip-path="url(#%s)">' % cid)
         self._unwind.append(lambda: self.__elts.append('</g>'))
 
     def text(self, text, x, y, align, rotate=0):
@@ -190,6 +191,11 @@ class SVG(_ContextBase):
         l, r, t, b = self.__bounds
         print >>fp, '<svg version="1.1" width="%dpx" height="%dpx" viewBox="%g %g %g %g" font-family="&quot;Helvetica Neue&quot;, Helvetica, Arial, sans-serif">\n' % \
             (r - l, b - t, l, t, r - l, b - t)
+        if self.__defs:
+            print >>fp, '<defs>'
+            for elt in self.__defs:
+                print >>fp, elt
+            print >>fp, '</defs>'
         for elt in self.__elts:
             print >>fp, elt
         print >>fp, '</svg>'

@@ -38,12 +38,11 @@ def _heat_fill(ctx, frac, points, cw, ch):
     scale the pattern for frac==1.
     """
 
+    ctx.path(points, fill=_frac2rgb(frac))
     if frac < 1:
-        ctx.path(points, fill=_frac2rgb(frac))
         return
     with ctx:
         ctx.clip(points)
-        ctx.path(points, fill=_frac2rgb(1))
 
         # Draw stripes
         t, r, b, l = ctx.pathBounds(points)

@@ -27,8 +27,10 @@ import importlib
 #   model.  It should subclass and implement testgen.TestGenerator.
 #   If this attribute is not present, tests cannot be generated.
 
-TestResult = collections.namedtuple(
-    'TestResult', 'diverge results op_states')
+class TestResult(collections.namedtuple(
+        'TestResult', 'diverge results op_states')):
+    def __str__(self):
+        return str_diverge(self.diverge) + ' ' + str(self.results)
 
 def test(base, *calls):
     """Test for SIM commutativity of calls

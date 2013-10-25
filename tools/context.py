@@ -1,6 +1,6 @@
 """2D rendering contexts"""
 
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, quoteattr
 
 __all__ = "SVG TikZ".split()
 
@@ -184,13 +184,16 @@ class SVG(_ContextBase):
             self.__bound(x + wadj,     y + hadj)
             self.__bound(x + wadj + w, y + hadj - h)
 
-    def write_to(self, fp):
+    def write_to(self, fp,
+                 attrs={'font-family':
+                        '"Helvetica Neue", Helvetica, Arial, sans-serif'}):
         """Write the SVG output to fp."""
 
         self.__exit__()
+        extra = ' '.join('%s=%s' % (k, quoteattr(v)) for k,v in attrs.items())
         l, r, t, b = self.__bounds
-        print >>fp, '<svg version="1.1" width="%dpx" height="%dpx" viewBox="%g %g %g %g" font-family="&quot;Helvetica Neue&quot;, Helvetica, Arial, sans-serif">\n' % \
-            (r - l, b - t, l, t, r - l, b - t)
+        print >>fp, '<svg version="1.1" width="%dpx" height="%dpx" viewBox="%g %g %g %g" %s>\n' % \
+            (r - l, b - t, l, t, r - l, b - t, extra)
         if self.__defs:
             print >>fp, '<defs>'
             for elt in self.__defs:

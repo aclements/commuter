@@ -142,7 +142,7 @@ def test_blocks_horiz(ctx, testset, height, rows, col_width=None):
         pts.extend(region(start, end))
     ctx.path(pts, fill=_frac2rgb(0))
 
-def heat_map(ctx, table, cw, ch):
+def heat_map(ctx, table, cw, ch, sep=4):
     """Create a heat map of table and return a HeatMapObj.
 
     cw and ch are with width and height of the cells.  The returned
@@ -226,12 +226,13 @@ def heat_map(ctx, table, cw, ch):
 
             _heat_fill(ctx, val, points, cw, ch)
 
-    for i, row in enumerate(table.rows):
-        if i % 4 == 0 and i != 0:
-            ctx.path([('M', 0, i*ch), ('H', (len(table.rows) - i + 1)*cw)],
-                      stroke=(1,1,1))
-            ctx.path([('M', i*ch, 0), ('V', (len(table.rows) - i + 1)*ch)],
-                      stroke=(1,1,1))
+    if sep:
+        for i, row in enumerate(table.rows):
+            if i % sep == 0 and i != 0:
+                ctx.path([('M', 0, i*ch), ('H', (len(table.rows) - i + 1)*cw)],
+                          stroke=(1,1,1))
+                ctx.path([('M', i*ch, 0), ('V', (len(table.rows) - i + 1)*ch)],
+                          stroke=(1,1,1))
 
     width = max(pt[0]+1 for pt in filled) * cw
     height = max(pt[1]+1 for pt in filled) * ch

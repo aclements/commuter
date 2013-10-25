@@ -269,7 +269,8 @@ class HeatMapObj(object):
                                 'cm')
         return self
 
-    def key(self, width, height, height100, segments=50, side='right'):
+    def key(self, width, height, height100, segments=50, side='right',
+            l0='0%', l1='100%'):
         ctx = self.__ctx
         height_rest = height - height100
         if side == 'right':
@@ -290,6 +291,5 @@ class HeatMapObj(object):
         ctx.rect(0, height100, width, height - height100, stroke=(0,0,0))
 
         # Labels
-        ctx.text('100%', lx, height100 * .5, align)
-        ctx.text('0%', lx, height - height100 * .5, align)
-
+        ctx.text(l1, lx, height100 * .5, align)
+        ctx.text(l0, lx, height - height100 * .5, align)

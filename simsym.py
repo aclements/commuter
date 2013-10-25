@@ -1100,13 +1100,16 @@ class SchedNode(object):
 
     - "assumption" for an assumption.  val must be True.
 
+    - "note" for a user-defined schedule note.  expr must be None.
+      val must be the note.
+
     In all cases except "exception", expr is the Symbolic expression
     that must be equal to val to follow this schedule step.
     """
 
     def __init__(self, typ, expr, val):
         if typ not in ("branch_nondet", "branch_det", "exception",
-                       "assumption"):
+                       "assumption", "note"):
             raise ValueError("Bad SchedNode type %r" % typ)
         self.typ = typ
         self.expr = expr
@@ -1163,7 +1166,7 @@ class PathState(object):
 
         out = []
         for node in self.sched[:self.schedidx]:
-            if node.typ == "exception":
+            if node.typ in ("exception", "note"):
                 note = str(node.val)
             else:
                 note = str(simplify(node.path_expr()))
@@ -1174,6 +1177,20 @@ class PathState(object):
                        (os.path.basename(node.frames[0].filename),
                         node.frames[0].lineno, note))
         return "\n".join(out)
+
+def note(note):
+    """Record a user-defined note in the current schedule."""
+
+    path_state = Env.path_state()
+    cursched = path_state.sched
+    if len(cursched) == path_state.schedidx:
+        cursched.append(SchedNode("note", None, note))
+    else:
+        # Check for replay divergence
+        node = cursched[path_state.schedidx]
+        if node.typ != "note":
+            raise ReplayDivergedError(node, "note")
+    path_state.schedidx += 1
 
 def simplify(expr, try_harder=False):
     expr = unwrap(expr)
@@ -1308,7 +1325,7 @@ class SymbolicApplyResult(object):
                     res.append(node.path_expr())
             elif node.typ == "branch_nondet":
                 res.append(node.path_expr())
-            elif node.typ == "exception":
+            elif node.typ == "exception" or node.typ == "note":
                 pass
             else:
                 raise ValueError("Unexpected SchedNode type %r" % node)
@@ -1340,7 +1357,7 @@ class SymbolicApplyResult(object):
             if node.typ == "branch_nondet":
                 bitstring = (bitstring << 1) | node.val
                 length += 1
-            elif node.typ in ("branch_det", "assumption"):
+            elif node.typ in ("branch_det", "assumption", "note"):
                 continue
             elif node.typ == "exception" and node is self.__schedule[-1]:
                 bitstring = (bitstring << 1) | node.expr

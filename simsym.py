@@ -6,6 +6,7 @@ import z3
 import types
 import collections
 import inspect
+import graph
 
 # Monkey-patch __nonzero__ on Z3 types to make sure we don't
 # accidentally call it instead of our wrappers.
@@ -948,47 +949,37 @@ def ast_cleanup(a):
 # Execution graph visualization
 #
 
-class Graph(object):
+class SchedGraph(graph.Graph):
     def __init__(self):
-        self.__edges = set()
+        super(SchedGraph, self).__init__()
+        self.node_attrs(shape="box")
+        # SchedNodes are graph *edges*.  When the schedule forks,
+        # we'll get two SchedNodes with identical metadata but
+        # different vals.  For each graph node, we pick the first edge
+        # out of it we see to represent that graph node and we
+        # identify it by its predecessor SchedNode (which can be
+        # thought of as the edge tail going in to the graph node).
+        self.__tail_to_gnode = {}
 
-    def add_sched(self, sched, result, result_color="black"):
-        prev_gnode = None
-        for node in sched:
-            if node.typ in ("branch_nondet", "assumption"):
-                self.__edges.add((prev_gnode, node))
-                prev_gnode = node
-        self.__edges.add((prev_gnode, (result, result_color, object())))
+    def add_sched(self, sched, result, result_color=None):
+        prev_snode = None
+        path = []
+        for snode in sched:
+            if snode.typ in ("assumption", "branch_nondet"):
+                gnode = self.__tail_to_gnode.get(prev_snode)
+                if gnode is None:
+                    gnode = self.__tail_to_gnode[prev_snode] = self.node(snode)
+                if snode.typ == "branch_nondet":
+                    edge_attrs = {"label": str(snode.val)[0]}
+                else:
+                    edge_attrs = {}
+                path.append((gnode, edge_attrs))
+            prev_snode = snode
+        path.append((self.node(result, unique=True, color=result_color), {}))
+        for (n1, attrs), (n2, _) in zip(path, path[1:]):
+            self.edge(n1, n2, **attrs)
 
-    def show(self):
-        import subprocess, tempfile
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
-                p = subprocess.Popen(["dot", "-Tpdf"], stdin=subprocess.PIPE,
-                                     stdout=f)
-                self.to_dot(p.stdin)
-                p.stdin.close()
-                p.wait()
-                subprocess.check_call(["evince", f.name])
-        except Exception as e:
-            print >> sys.stderr, "Suppressing exception from Graph.show():"
-            import traceback; traceback.print_exc()
-
-    def to_dot(self, fp=sys.stdout):
-        print >>fp, "digraph G {"
-        #print >>fp, "rankdir=LR;"
-        srcs = {src for src, target in self.__edges}
-        for src, target in self.__edges:
-            elabel, label, color = self.__format_node(target)
-            print >>fp, "n%s [label=%s,color=%s,shape=box];" % \
-                (id(src), self.__dot_quote(label), self.__dot_quote(color))
-            if target in srcs:
-                print >>fp, "n%s -> n%s [label=%s];" % \
-                    (id(src), id(target), self.__dot_quote(elabel))
-        print >>fp, "}"
-
-    def __format_node(self, node):
-        elabel, color = "", "black"
+    def obj_attrs(self, node):
         if isinstance(node, SchedNode):
             parts = []
             if node.expr is not None:
@@ -996,23 +987,15 @@ class Graph(object):
             parts.append("%s:%s" % (os.path.basename(node.frames[0].filename),
                                     node.frames[0].lineno))
             label = "\n".join(parts)
-            if node.is_branch():
-                elabel = str(node.val)[0]
         else:
-            label, color, _ = node
+            label = str(node)
 
         # Trim label
         if len(label.splitlines()) > 10:
             lines = label.splitlines()
             lines = lines[:5] + [".. %d more lines .." % (len(lines) - 9)] + lines[-4:]
             label = "\n".join(lines)
-
-        return elabel, label, color
-
-    def __dot_quote(self, s):
-        return '"' + (s.replace("\\", "\\\\")
-                      .replace("\n", "\\l")
-                      .replace("\"", "\\\"")) + '"'
+        return {"label": label}
 
 #
 # Symbolic executor
@@ -1454,7 +1437,7 @@ def symbolic_apply(fn, *args):
     # code path from the same environment, so snapshot it now.
     root_env = Env(Env.current())
     scheduler = Scheduler()
-    graph = Graph()
+    graph = SchedGraph()
 
     for cursched in scheduler.schedule_generator():
         old_env = Env.current()

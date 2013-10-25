@@ -91,6 +91,8 @@ def test(base, *calls):
             seqname = callseq_name(callseq)
             # Include the sequence in all anonymous variable names
             simsym.anon_info = '_seq' + seqname
+            # Record our call sequence as a schedule note
+            simsym.note(('begin', ncallseq))
 
             # Build the Python arguments dictionary and copy each
             # argument, just in case the call mutates it
@@ -104,6 +106,7 @@ def test(base, *calls):
                 res = calls[callidx](nstate, **cargs)
             finally:
                 model.cur_thread_idx = None
+                simsym.note(('end', ncallseq, res))
 
             # Record or check result
             call_result = call_results.get(callidx)

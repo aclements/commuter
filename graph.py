@@ -48,6 +48,7 @@ class Graph(object):
         # Use an ordered dict to keep the nodes in order
         self.__nodes = collections.OrderedDict()
         self.__edges = set()
+        self.__ranks = collections.defaultdict(set)
 
     def graph_attrs(self, **attrs):
         self.__graph_attrs.update(attrs)
@@ -61,9 +62,11 @@ class Graph(object):
         self.__edge_attrs.update(attrs)
         return self
 
-    def node(self, obj, unique=False, **attrs):
+    def node(self, obj, unique=False, rank=None, **attrs):
         node = GNode(obj, unique, **attrs)
         self.__nodes[node] = True
+        if rank is not None:
+            self.__ranks[rank].add(node)
         return node
 
     def edge(self, n1, n2, **attrs):
@@ -96,6 +99,10 @@ class Graph(object):
         for src, dst, attrs in self.__edges:
             print >>fp, '%s -> %s %s;' % (nids[src], nids[dst],
                                           dot_attrs(dict(attrs)))
+        for rank_id, same_rank in self.__ranks.items():
+            print >>fp, "// %s" % (rank_id,)
+            print >>fp, "{rank=same;%s;}" % \
+                ";".join(nids[node] for node in same_rank)
         print >>fp, '}'
 
     def obj_attrs(self, obj):

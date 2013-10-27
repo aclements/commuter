@@ -825,12 +825,17 @@ def symnot(e):
     else:
         return not e
 
-def symeq(a, b):
-    if isinstance(a, tuple) and isinstance(b, tuple):
+def symeq(*exprs):
+    if len(exprs) == 2 and isinstance(exprs[0], tuple) \
+       and isinstance(exprs[1], tuple):
+        # XXX Do we still use this?
+        a, b = exprs
         if len(a) != len(b):
             return False
         return symand([symeq(aa, bb) for (aa, bb) in zip(a, b)])
-    return a == b
+    if len(exprs) == 2:
+        return exprs[0] == exprs[1]
+    return symand([a == b for a, b in zip(exprs, exprs[1:])])
 
 def symif(pred, cons, alt):
     return wrap(z3.If(unwrap(pred), unwrap(cons), unwrap(alt)))

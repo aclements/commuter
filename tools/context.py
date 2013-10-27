@@ -161,7 +161,7 @@ class SVG(_ContextBase):
         self.__elts.append('<g clip-path="url(#%s)">' % cid)
         self._unwind.append(lambda: self.__elts.append('</g>'))
 
-    def text(self, text, x, y, align, rotate=0):
+    def text(self, text, x, y, align, rotate=0, **kw):
         # Unfortunately, the various baseline adjustment properties
         # are not well supported, so we fake it by manually adjusting
         # the position relative to the line-height/font-size.
@@ -180,8 +180,9 @@ class SVG(_ContextBase):
             raise ValueError('Unknown alignment %r' % align)
         if rotate:
             extra += ' transform="rotate(%g %g,%g)"' % (-rotate, x, y)
-        e = '<text x="%g" y="%g" fill="black" text-anchor="%s" font-size="%gpt"%s>%s</text>' % \
-            (x, y, text_anchor, self.font_size, extra, e)
+        kw.setdefault('fill', (0,0,0))
+        e = '<text x="%g" y="%g" text-anchor="%s" font-size="%gpt"%s%s>%s</text>' % \
+            (x, y, text_anchor, self.font_size, extra, self.__fsAttrs(**kw), e)
         self.__elts.append(e)
 
         # Guess bounds (more foolishness)

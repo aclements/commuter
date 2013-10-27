@@ -189,11 +189,16 @@ class IsomorphicMatch(object):
     ## order, rather than in the same equality pattern.
 
     def __init__(self):
-        # This maps from Interpreter instances to representative maps.
-        # A representative map is a dictionary from HashableAst
-        # literal values to Z3 expressions that represent those
-        # values.
-        self.__distinct_realms = collections.defaultdict(dict)
+        # For conditions subject to equality isomorphism, this maps
+        # from realms (specifically, Interpreter instances) to
+        # equivalence classes of expressions.  Each equivalence class
+        # contains the set of known expressions that evaluate to the
+        # same literal value.  Specifically,
+        #   {Interpreter: RepMap}
+        #   RepMap := {HashableAst literal (e.g., 2 or f!0): Reps}
+        #   Reps   := AstSet of expressions that evaluate to the representative
+        self.__repmaps = collections.defaultdict(
+            lambda: collections.defaultdict(z3util.AstSet))
         # Set of isomorphism conditions for value isomorphisms.
         self.__conds = z3util.AstSet()
 
@@ -228,9 +233,8 @@ class IsomorphicMatch(object):
             self.__conds.add(expr == val)
         elif isinstance(realm, testgen.Interpreter):
             # Use equality isomorphism within this realm
-            rep_map = self.__distinct_realms[realm]
             hval = z3util.HashableAst(val)
-            rep_map.setdefault(hval, expr)
+            self.__repmaps[realm][z3util.HashableAst(val)].add(expr)
         else:
             raise ValueError("Unknown realm type %r" % realm)
 
@@ -238,10 +242,17 @@ class IsomorphicMatch(object):
         """Return the isomorphism condition."""
         conds = list(self.__conds)
 
-        for rep_map in self.__distinct_realms.values():
-            representatives = rep_map.values()
-            if len(representatives) > 1:
-                conds.append(simsym.distinct(*representatives))
+        for rep_map in self.__repmaps.itervalues():
+            distinct = []
+            for reps in rep_map.itervalues():
+                reps = list(reps)
+                # Require each representative group to be distinct
+                distinct.append(reps[0])
+                # Require all expressions within the representative
+                # group to be equal
+                conds.append(simsym.symeq(*reps))
+            if len(distinct) > 1:
+                conds.append(simsym.distinct(*distinct))
 
         return simsym.symand(conds)
 

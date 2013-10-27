@@ -8,6 +8,15 @@ import collections
 import inspect
 import graph
 
+class options(object):
+    # If set, equality tests eagerly simplify expressions that are
+    # structurally identical to a concrete True.  This can produce
+    # much simpler equality expressions, especially when comparing
+    # large structures, but can sometimes turn what looks like a
+    # symbolic branch into a concrete branch, which can be confusing
+    # when tracing symbolic execution.
+    eq_eliminate_structural = True
+
 # Monkey-patch __nonzero__ on Z3 types to make sure we don't
 # accidentally call it instead of our wrappers.
 def z3_nonzero(self):
@@ -606,7 +615,8 @@ def tsynonym(name, baseType):
 
 def compound_eq(c1, c2):
     def cmp1(a, b):
-        if z3.is_ast(a) and z3.is_ast(b) and a.eq(b):
+        if options.eq_eliminate_structural and \
+           z3.is_ast(a) and z3.is_ast(b) and a.eq(b):
             return True
         if z3.is_ast(a) or z3.is_ast(b):
             return wrap(a == b)

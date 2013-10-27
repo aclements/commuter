@@ -119,6 +119,8 @@ def test(base, *calls):
                 # result agrees.
                 if call_result[1] != res:
                     diverge.append(('result', call_result[0], ncallseq))
+            if diverge:
+                return
 
             # Record or check state
             op_states[callidx].append((base_state, nstate))

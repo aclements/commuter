@@ -28,6 +28,9 @@ class _ContextBase(object):
     def rect(self, x, y, w, h, fill=None, stroke=None, stroke_width=None):
         raise NotImplementedError
 
+    def circle(self, x, y, r, fill=None, stroke=None, stroke_width=None):
+        raise NotImplementedError
+
     def path(self, points, fill=None, stroke=None, stroke_width=None):
         raise NotImplementedError
 
@@ -117,6 +120,15 @@ class SVG(_ContextBase):
         self.__elts.append(e)
         self.__bound(x, y)
         self.__bound(x+w, y+h)
+
+    def circle(self, x, y, r, **kw):
+        e = '<circle cx="%g" cy="%g" r="%g"%s />' % \
+            (x, y, r, self.__fsAttrs(**kw))
+        self.__elts.append(e)
+        self.__bound(x + r, y)
+        self.__bound(x - r, y)
+        self.__bound(x, y + r)
+        self.__bound(x, y - r)
 
     def __mkD(self, points):
         d = []

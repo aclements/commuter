@@ -11,6 +11,13 @@ Sequential testing mode. Check that the model and implementation agree
 by running all individual operations.  This should probably also cover
 operations that never appear in a commutative context.
 
+Introspecting on spec's behavior to visualize the symbolic execution
+plan was a mess.  Try to make spec more modular so it can be used by a
+visualizer without having to hack the visualizer directly into
+simsym/spec.  Perhaps make the model driver general purpose, move it
+out into a module, and use something like the TestWriter interface to
+register hooks into it.
+
 
 fs_testgen
 ==========

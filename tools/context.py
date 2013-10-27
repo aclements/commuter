@@ -99,14 +99,18 @@ class SVG(_ContextBase):
             ats += ' fill="none"'
         else:
             ats += ' fill="%s"' % self.__rgb2css(fill)
+            if len(fill) == 4:
+                ats += ' fill-opacity="%g"' % fill[3]
         if stroke is not None:
             ats += ' stroke="%s"' % self.__rgb2css(stroke)
+            if len(stroke) == 4:
+                ats += ' stroke-opacity="%g"' % stroke[3]
         if stroke_width is not None:
             ats += ' stroke-width="%s"' % stroke_width
         return ats
 
     def __rgb2css(self, rgb):
-        r, g, b = rgb
+        r, g, b = rgb[:3]
         return '#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
 
     def translate(self, x, y):

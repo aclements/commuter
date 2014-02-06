@@ -1,6 +1,6 @@
 """Test the SIM-commutativity of sets of methods."""
 
-__all__ = ['str_diverge', 'TestResult', 'ExecutionMonitorBase', 'test_callset']
+__all__ = ['TestResult', 'Divergence', 'ExecutionMonitorBase', 'test_callset']
 
 import simsym
 import z3
@@ -16,23 +16,16 @@ def callseq_name(callseq):
     """
     return ''.join(chr(idx + ord('a')) for idx in callseq)
 
-def str_diverge(diverge):
-    """Convert a divergence list to a string."""
-    return ', '.join(
-        '%s/%s %s' % (callseq_name(seq1), callseq_name(seq2), typ)
-        for (typ, seq1, seq2) in diverge)
-
 class TestResult(collections.namedtuple(
         'TestResult', 'diverge results op_states')):
     """The result of a single SIM commutativity test.
 
     diverge will be an empty list if the calls under test SIM-commute.
-    Otherwise, it will be a non-empty list of divergence reasons,
-    which are triples of the form
-      ('state' | 'result', seq1, seq2)
-    where seq1 and seq2 are call sequences.  For a state divergence,
-    seq1 and seq2 will be permutations of each other.  For a result
-    divergence, seq1 and seq2 will end in the same call.
+    Otherwise, it will be a non-empty list of Divergence objects
+    giving the reason for non-commutativity.  (Currently, this list
+    always contains just one divergence because the commutativity test
+    aborts as soon as it finds a divergence, but there's no reason it
+    couldn't keep going.)
 
     results will be a list of return values for each method in the
     call set.  This records only the result of one call for each
@@ -42,7 +35,21 @@ class TestResult(collections.namedtuple(
     """
 
     def __str__(self):
-        return str_diverge(self.diverge) + ' ' + str(self.results)
+        return str(self.diverge) + ' ' + str(self.results)
+
+class Divergence(collections.namedtuple('Divergence', 'typ seq1 seq2')):
+    """A divergence (or non-commuativity).
+
+    typ is either 'state' or 'result' indicating whether this is a
+    divergence in system state or in return values.  seq1 and seq2 are
+    the two diverging call sequences.  For a state divergence, seq1
+    and seq2 will be permutations of each other.  For a result
+    divergence, seq1 and seq2 will end in the same call.
+    """
+
+    def __str__(self):
+        return '%s/%s %s' % (callseq_name(self.seq1), callseq_name(self.seq2),
+                             self.typ)
 
 def test(base, *calls):
     """Test for SIM commutativity of calls
@@ -73,7 +80,7 @@ def test(base, *calls):
     # result of last call in callseq).
     call_results = {}
 
-    # List of divergences.  See TestResult.diverge.
+    # List of Divergences
     diverge = []
 
     # Explore every permutation of calls, requiring that the state
@@ -126,7 +133,8 @@ def test(base, *calls):
                 # We've called this call before.  Check that its
                 # result agrees.
                 if call_result[1] != res:
-                    diverge.append(('result', call_result[0], ncallseq))
+                    diverge.append(
+                        Divergence('result', call_result[0], ncallseq))
             if diverge:
                 return
 
@@ -143,7 +151,7 @@ def test(base, *calls):
                 # already.  Check that the state agrees.  Recursing
                 # from here would be redundant.
                 if perm_state[1] != nstate:
-                    diverge.append(('state', perm_state[0], ncallseq))
+                    diverge.append(Divergence('state', perm_state[0], ncallseq))
     try:
         rec(())
     finally:
@@ -348,6 +356,6 @@ def test_callset(base, callset, monitors,
 
     if False in condlists:
         diverge = simsym.symor(condlists[False])
-        print_cond('can not commute; %s' % str_diverge(diverged),
+        print_cond('can not commute; %s' % ', '.join(map(str, diverged)),
                    simsym.symand([diverge, cannot_commute]),
                    check_conds, print_conds)

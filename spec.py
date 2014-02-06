@@ -286,7 +286,7 @@ class TestWriter(simtest.ExecutionMonitorBase):
             self.nerror += 1
             return
 
-        pathinfo['diverge'] = simtest.str_diverge(result.value.diverge)
+        pathinfo['diverge'] = ', '.join(map(str, result.value.diverge))
 
         # Filter out non-commutative results
         if len(result.value.diverge):

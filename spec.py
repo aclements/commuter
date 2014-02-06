@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import simtest
 import simsym
 import z3
 import z3printer
@@ -11,10 +12,8 @@ import os
 import z3util
 import pprint
 import json
-import progress
 import testgen
 import traceback
-import model
 import importlib
 
 # A test module must have the following two attributes:
@@ -26,133 +25,6 @@ import importlib
 # * model_testgen (optional) must be the test generator class for this
 #   model.  It should subclass and implement testgen.TestGenerator.
 #   If this attribute is not present, tests cannot be generated.
-
-class TestResult(collections.namedtuple(
-        'TestResult', 'diverge results op_states')):
-    def __str__(self):
-        return str_diverge(self.diverge) + ' ' + str(self.results)
-
-def test(base, *calls):
-    """Test for SIM commutativity of calls
-
-    base must be a class type for the system state.  calls must be the
-    unbound methods of base to test for SIM commutativity.  Returns a
-    TestResult.  This function must be executed symbolically.
-    """
-
-    # Create arguments for each call.  We reuse these arguments in
-    # each permutation, so each call receives the same arguments each
-    # time we test it.
-    args = []
-    for callidx, call in enumerate(calls):
-        arg_name = '%s.%s' % (callseq_name([callidx]), call.__name__)
-        args.append(call.arg_struct_type.var(arg_name))
-
-    # op_states[op_index] is a list of pairs of before and after
-    # states for operation op_index.
-    op_states = [[] for _ in calls]
-
-    # Mapping from frozenset of call indexes to a pair of (callseq,
-    # state after callseq).  Prepare with initial state.
-    init = base.var(base.__name__)
-    perm_states = {frozenset([]): ([], init)}
-
-    # Mapping from callidx to pair of (callseq ending in callidx,
-    # result of last call in callseq).
-    call_results = {}
-
-    # List of divergences.  Each is a triple of
-    #   ('state' | 'result', seq1, seq2)
-    # If this is state divergence, seq1 and seq2 will be permutations
-    # of each other.  If this is result divergence, seq1 and seq2 will
-    # end in the same call.
-    diverge = []
-
-    # Explore every permutation of calls, requiring that the state
-    # following every permutation of every subset of callseq be the
-    # same.  This uses a depth-first walk of every n-step path from
-    # one corner to the opposite corner of an n-dimensional cube,
-    # where n is the number of calls.  Each edge represents a call
-    # (the edge's direction determines which call) and each vertex a
-    # state.  Where these paths rejoin, the states must be equal.
-    # This way, we make the minimal number of calls and state
-    # comparisons possible.
-    def rec(callseq):
-        base_state = perm_states[frozenset(callseq)][1]
-
-        # Extend callseq in every way that doesn't duplicate a call
-        # already in callseq
-        for callidx in range(len(calls)):
-            if callidx in callseq:
-                continue
-            if diverge:
-                return
-            ncallseq = callseq + (callidx,)
-            seqname = callseq_name(callseq)
-            # Include the sequence in all anonymous variable names
-            simsym.anon_info = '_seq' + seqname
-            # Record our call sequence as a schedule note
-            simsym.note(('begin', ncallseq))
-
-            # Build the Python arguments dictionary and copy each
-            # argument, just in case the call mutates it
-            arg_struct = args[callidx]
-            cargs = {arg: getattr(arg_struct, arg).copy()
-                     for arg in arg_struct._fields}
-            # Invoke the call
-            nstate = base_state.copy()
-            model.cur_thread_idx = callidx
-            try:
-                res = calls[callidx](nstate, **cargs)
-            finally:
-                model.cur_thread_idx = None
-                simsym.note(('end', ncallseq, res))
-
-            # Record or check result
-            call_result = call_results.get(callidx)
-            if call_result is None:
-                # This is the first time we've made this call.  Record
-                # its result.
-                call_results[callidx] = (ncallseq, res)
-            else:
-                # We've called this call before.  Check that its
-                # result agrees.
-                if call_result[1] != res:
-                    diverge.append(('result', call_result[0], ncallseq))
-            if diverge:
-                return
-
-            # Record or check state
-            op_states[callidx].append((base_state, nstate))
-            perm_state = perm_states.get(frozenset(ncallseq))
-            if perm_state is None:
-                # This is the first permutation of these calls we've
-                # executed.  Record the state and recurse.
-                perm_states[frozenset(ncallseq)] = (ncallseq, nstate)
-                rec(ncallseq)
-            else:
-                # We've executed some other permutation of these calls
-                # already.  Check that the state agrees.  Recursing
-                # from here would be redundant.
-                if perm_state[1] != nstate:
-                    diverge.append(('state', perm_state[0], ncallseq))
-    try:
-        rec(())
-    finally:
-        simsym.anon_info = ''
-
-    return TestResult(diverge,
-                      [call_results[callidx][1]
-                       for callidx in range(len(calls))],
-                      op_states)
-
-def callseq_name(callseq):
-    return ''.join(chr(idx + ord('a')) for idx in callseq)
-
-def str_diverge(diverge):
-    return ', '.join(
-        '%s/%s %s' % (callseq_name(seq1), callseq_name(seq2), typ)
-        for (typ, seq1, seq2) in diverge)
 
 def expr_vars(e):
     """Return an AstSet of uninterpreted constants in e.
@@ -352,7 +224,7 @@ def idempotent_projs(result, iso_constraint=True):
         res.append(idem_projs)
     return res, unknown_count[0]
 
-class TestWriter(object):
+class TestWriter(simtest.ExecutionMonitorBase):
     def __init__(self, trace_file, model_file, test_file, testgen):
         if isinstance(trace_file, basestring):
             trace_file = open(trace_file, 'w')
@@ -378,6 +250,11 @@ class TestWriter(object):
         #   testname -> pathname '_' testnum
         self.model_data = {'tests':{}}
 
+        self.nmodel = self.nerror = 0
+
+    def get_progress_format(self):
+        return '{0.nmodel} testcases ({0.nerror} errors)'
+
     def begin_call_set(self, callset):
         if self.trace_file:
             print >> self.trace_file, "==== Call set %s ====" % \
@@ -389,17 +266,15 @@ class TestWriter(object):
             = self.model_data_callset
 
         self.callset = callset
-        self.npath = self.ncompath = self.nmodel = self.nerror = 0
+        self.nmodel = self.nerror = 0
 
         if self.testgen:
             self.testgen.begin_call_set(callset)
 
-    def keep_going(self):
-        return self.nmodel < args.max_testcases
+    def stop_call_set(self):
+        return self.nmodel >= args.max_testcases
 
-    def on_result(self, result):
-        self.npath += 1
-
+    def on_path(self, result):
         pathinfo = collections.OrderedDict([
             ('id', ('_'.join(c.__name__ for c in self.callset) +
                     '_' + result.pathid))])
@@ -411,13 +286,11 @@ class TestWriter(object):
             self.nerror += 1
             return
 
-        pathinfo['diverge'] = str_diverge(result.value.diverge)
+        pathinfo['diverge'] = simtest.str_diverge(result.value.diverge)
 
         # Filter out non-commutative results
         if len(result.value.diverge):
             return
-
-        self.ncompath += 1
 
         if not self.trace_file and not self.testgen:
             return
@@ -437,6 +310,10 @@ class TestWriter(object):
         if args.verbose_testgen:
             print "Simplified path condition:"
             print e
+
+        if self.trace_file:
+            print >> self.trace_file, e
+            print >> self.trace_file
 
         # Find the uninterpreted constants in the path condition.  We
         # omit assumptions because uninterpreted constants that appear
@@ -460,7 +337,8 @@ class TestWriter(object):
 
         self.npathmodel = 0
         self.last_assignments = None
-        while self.keep_going() and self.npathmodel < args.max_tests_per_path:
+        while not self.stop_call_set() and \
+              self.npathmodel < args.max_tests_per_path:
             # XXX Would it be faster to reuse the solver?
             check = simsym.check(e)
             if check.is_unsat: break
@@ -589,6 +467,10 @@ parser.add_argument('-c', '--check-conds', action='store_true',
                     help='Check commutativity conditions for sat/unsat')
 parser.add_argument('-p', '--print-conds', action='store_true',
                     help='Print commutativity conditions')
+parser.add_argument('-pp', '--pretty-print-conds', action='store_const',
+                    dest='print_conds', const='simplify',
+                    help='Print commutativity conditions with aggressive \
+                    simplification')
 parser.add_argument('-m', '--model-file',
                     help='Z3 model output file')
 parser.add_argument('--trace-file',
@@ -602,8 +484,6 @@ parser.add_argument('-f', '--functions', action='store',
                     specify call sets, {x,y} for grouping, * for all calls, and \
                     any combination of these.  All single calls will be \
                     collected into combinations of size NCOMB.')
-parser.add_argument('--simplify-more', default=False, action='store_true',
-                    help='Use ctx-solver-simplify')
 parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='store',
                     help='Maximum # test cases to generate per call set')
 parser.add_argument('--max-tests-per-path', type=int, default=sys.maxint,
@@ -616,43 +496,6 @@ parser.add_argument('--idempotent-projs', default=False, action='store_true',
                     help='Record idempotent projections in model file (slow)')
 parser.add_argument('module', metavar='MODULE', default='fs', action='store',
                     help='Module to test (e.g., models.fs)')
-
-def print_cond(msg, cond):
-    if args.check_conds and simsym.check(cond).is_unsat:
-        return
-
-    ## If the assumptions (i.e., calls to simsym.assume) imply the condition
-    ## is true, we say that condition always holds, and we can print "always".
-    ## It would be nice to print a clean condition that excludes assumptions,
-    ## even if the assumptions don't directly imply the condition, but that
-    ## would require finding the simplest expression for x such that
-    ##
-    ##   x AND simsym.assume_list = cond
-    ##
-    ## which seems hard to do using Z3.  In principle, this should be the
-    ## same as simplifying the 'c' expression below, but Z3 isn't good at
-    ## simplifying it.  We could keep the two kinds of constraints (i.e.,
-    ## explicit assumptions vs. symbolic execution control flow constraints)
-    ## separate in simsym, which will make them easier to disentangle..
-
-    #c = simsym.implies(simsym.symand(simsym.assume_list), cond)
-    ## XXX the above doesn't work well -- it causes open*open to say "always".
-    ## One hypothesis is that we should be pairing the assume_list with each
-    ## path condition, instead of taking the assume_list across all paths.
-    c = cond
-
-    if args.check_conds and simsym.check(simsym.symnot(c)).is_unsat:
-        s = 'always'
-    else:
-        if args.print_conds:
-            scond = simsym.simplify(cond, args.simplify_more)
-            s = '\n    ' + str(scond).replace('\n', '\n    ')
-        else:
-            if args.check_conds:
-                s = 'sometimes'
-            else:
-                s = 'maybe'
-    print '  %s: %s' % (msg, s)
 
 def parse_functions(functions, ncomb, module):
     """Parse a functions string, returning a list of callsets."""
@@ -735,60 +578,11 @@ def main(spec_args):
 
     for callset in parse_functions(args.functions, args.ncomb, m):
         calls = [getattr(m.model_class, callname) for callname in callset]
-        do_callset(m.model_class, calls, test_writer)
+        simtest.test_callset(m.model_class, calls, [test_writer],
+                             check_conds=args.check_conds,
+                             print_conds=args.print_conds)
 
     test_writer.finish()
-
-def do_callset(base, callset, test_writer):
-    print ' '.join([c.__name__ for c in callset])
-    test_writer.begin_call_set(callset)
-
-    reporter = progress.ProgressReporter(
-        '  {0.npath} paths ({0.ncompath} commutative), {0.nmodel} testcases,' +
-        ' {0.nerror} errors',
-        test_writer)
-
-    condlists = collections.defaultdict(list)
-    terminated = False
-    diverged = set()
-    all_internals = []
-    for sar in simsym.symbolic_apply(test, base, *callset):
-        if sar.type == 'value':
-            is_commutative = (len(sar.value.diverge) == 0)
-            diverged.update(sar.value.diverge)
-            condlists[is_commutative].append(sar.path_condition)
-            all_internals.extend(sar.internals)
-        test_writer.on_result(sar)
-        if not test_writer.keep_going():
-            terminated = True
-            break
-
-    test_writer.end_call_set()
-    reporter.end()
-
-    if terminated:
-        print '  enumeration incomplete; skipping conditions'
-        return
-
-    conds = collections.defaultdict(lambda: [simsym.wrap(z3.BoolVal(False))])
-    for result, condlist in condlists.items():
-        conds[result] = condlist
-
-    if True in condlists:
-        commute = simsym.symor(condlists[True])
-        # Internal variables help deal with situations where, for the
-        # same assignment of initial state + external inputs, two
-        # operations both can commute and can diverge (depending on
-        # internal choice, like the inode number for file creation).
-        cannot_commute = simsym.symnot(simsym.exists(all_internals, commute))
-        print_cond('can commute', commute)
-    else:
-        cannot_commute = True
-
-    if False in condlists:
-        diverge = simsym.symor(condlists[False])
-        print_cond('can not commute; %s' % str_diverge(diverged),
-                   simsym.symand([diverge, cannot_commute]))
 
 if __name__ == "__main__":
     main(parser.parse_args())

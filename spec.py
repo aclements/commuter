@@ -226,6 +226,7 @@ def idempotent_projs(result, iso_constraint=True):
 
 class TestWriter(simtest.ExecutionMonitorBase):
     def __init__(self, trace_file, model_file, test_file, testgen):
+        super(TestWriter, self).__init__()
         if isinstance(trace_file, basestring):
             trace_file = open(trace_file, 'w')
         self.trace_file, self.model_file, self.test_file \
@@ -256,16 +257,16 @@ class TestWriter(simtest.ExecutionMonitorBase):
         return '{0.nmodel} testcases ({0.nerror} errors)'
 
     def begin_call_set(self, callset):
+        super(TestWriter, self).begin_call_set(callset)
         if self.trace_file:
             print >> self.trace_file, "==== Call set %s ====" % \
-                " ".join(c.__name__ for c in callset)
+                " ".join(self.callset_names)
             print >> self.trace_file
 
         self.model_data_callset = collections.OrderedDict()
         self.model_data['tests']['_'.join(c.__name__ for c in callset)] \
             = self.model_data_callset
 
-        self.callset = callset
         self.nmodel = self.nerror = 0
 
         if self.testgen:
@@ -275,9 +276,10 @@ class TestWriter(simtest.ExecutionMonitorBase):
         return self.nmodel >= args.max_testcases
 
     def on_path(self, result):
+        super(TestWriter, self).on_path(result)
+
         pathinfo = collections.OrderedDict([
-            ('id', ('_'.join(c.__name__ for c in self.callset) +
-                    '_' + result.pathid))])
+            ('id', '_'.join(self.callset_names) + '_' + result.pathid)])
         self.model_data_callset[result.pathid] = pathinfo
 
         if result.type == 'exception':
@@ -364,7 +366,7 @@ class TestWriter(simtest.ExecutionMonitorBase):
                 print "Model:"
                 print check.model
 
-            testid = ('_'.join(c.__name__ for c in self.callset) +
+            testid = ('_'.join(self.callset_names) +
                       '_' + result.pathid + '_' + str(self.npathmodel))
             testinfo = collections.OrderedDict(id=testid)
             self.model_data_testinfo_list.append(testinfo)
@@ -453,10 +455,12 @@ class TestWriter(simtest.ExecutionMonitorBase):
         return res
 
     def end_call_set(self):
+        super(TestWriter, self).end_call_set()
         if self.testgen:
             self.testgen.end_call_set()
 
     def finish(self):
+        super(TestWriter, self).finish()
         if self.testgen:
             self.testgen.finish()
         if self.model_file is not None:

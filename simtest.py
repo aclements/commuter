@@ -165,12 +165,20 @@ def test(base, *calls):
 class ExecutionMonitorBase(object):
     """Base class for model execution monitoring."""
 
+    def __init__(self):
+        self.__callset = None
+
     def get_progress_format(self):
         """Return a format string for progress reporting this monitor.
 
         The format string should use "{0}" to refer to this object.
         """
         return None
+
+    @property
+    def callset_names(self):
+        """A list of string names of the methods in the current call set."""
+        return [c.__name__ for c in self.__callset]
 
     def begin_call_set(self, callset):
         """Handle the beginning of a call set.
@@ -184,7 +192,7 @@ class ExecutionMonitorBase(object):
         completes all paths in this call set, it will call
         end_call_set.
         """
-        pass
+        self.__callset = callset
 
     def stop_call_set(self):
         """Return True if path enumeration should stop for this call set."""
@@ -201,7 +209,7 @@ class ExecutionMonitorBase(object):
 
     def end_call_set(self):
         """Handle the end of a call set."""
-        pass
+        self.__callset = None
 
     def finish(self):
         """Finish test generation.

@@ -234,17 +234,23 @@ class TikZ(_ContextBase):
         self.__o = []
         self.__enter__()
 
+    def __mkColor(self, attr_name, spec):
+        self.o(r'\definecolor{tmp%s}{rgb}{%g,%g,%g}' %
+               ((attr_name,) + tuple(spec[:3])))
+        attr = '%s=tmp%s' % (attr_name, attr_name)
+        if len(spec) == 4:
+            attr += ',%s opacity=%g' % (attr_name, spec[3])
+        return attr
+
     def __fsOpts(self, fill=None, stroke=None, stroke_width=None):
-        opts = []
+        attrs = []
         if fill is not None:
-            self.o(r'\definecolor{tmpfill}{rgb}{%g,%g,%g}' % tuple(fill))
-            opts.append('fill=tmpfill')
+            attrs.append(self.__mkColor('fill', fill))
         if stroke is not None:
-            self.o(r'\definecolor{tmpdraw}{rgb}{%g,%g,%g}' % tuple(stroke))
-            opts.append('draw=tmpdraw')
+            attrs.append(self.__mkColor('draw', stroke))
         if stroke_width is not None:
-            opts.append('line width=%g' % stroke_width)
-        return ','.join(opts)
+            attrs.append('line width=%s' % stroke_width)
+        return ','.join(attrs)
 
     def o(self, code):
         self.__o.append(code)

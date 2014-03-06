@@ -78,8 +78,9 @@ class _ContextBase(object):
         return t, r, b, l
 
 class SVG(_ContextBase):
-    def __init__(self):
+    def __init__(self, **attrs):
         super(SVG, self).__init__()
+        self.__gattrs = attrs
         self.__elts = []
         self.__defs = []
         self.__bounds = (0, 0, 0, 0)
@@ -201,13 +202,12 @@ class SVG(_ContextBase):
             self.__bound(x + wadj,     y + hadj)
             self.__bound(x + wadj + w, y + hadj - h)
 
-    def write_to(self, fp,
-                 attrs={'font-family':
-                        '"Helvetica Neue", Helvetica, Arial, sans-serif'}):
+    def write_to(self, fp):
         """Write the SVG output to fp."""
 
         self.__exit__()
-        extra = ' '.join('%s=%s' % (k, quoteattr(v)) for k,v in attrs.items())
+        extra = ' '.join('%s=%s' % (k, quoteattr(v))
+                         for k,v in self.__gattrs.items())
         l, r, t, b = self.__bounds
         print >>fp, '<svg version="1.1" width="%dpx" height="%dpx" viewBox="%g %g %g %g" %s>\n' % \
             (r - l, b - t, l, t, r - l, b - t, extra)

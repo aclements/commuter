@@ -221,10 +221,12 @@ class SVG(_ContextBase):
         print >>fp, '</svg>'
 
 class TikZ(_ContextBase):
-    def __init__(self, x, y):
+    def __init__(self, x='%gin' % (1/90.0), y='%gin' % (1/90.0)):
         """Create a new TikZ document.
 
-        x and y specify the size of the x and y units."""
+        x and y specify the size of the x and y units.  Their default
+        values match the physical size of SVG pixels.
+        """
         super(TikZ, self).__init__()
         self.__x, self.__y = x, y
         self.__o = []

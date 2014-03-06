@@ -286,7 +286,7 @@ class TikZ(_ContextBase):
         self.o(r'\clip %s;' % self.__mkPath(points))
         self._unwind.append(lambda: self.o(r'\end{scope}'))
 
-    def text(self, text, x, y, align, rotate=0):
+    def text(self, text, x, y, align, rotate=0, fill=None):
         attrs = [r'font=\fontsize{%g}{%g}\selectfont' %
                  (self.font_size, self.font_size*1.2)]
         if align != 'cm':
@@ -296,6 +296,8 @@ class TikZ(_ContextBase):
                           {'l': ' west', 'm': '',    'r': ' east'}[align[1]]))
         if rotate:
             attrs.append('rotate=%g' % rotate)
+        if fill is not None:
+            attrs.append(self.__mkColor('text', fill))
         text = text.replace('%', '\\%')
         self.o(r'\path (%g,%g) node[%s] {%s};' % (x, y, ','.join(attrs), text))
 

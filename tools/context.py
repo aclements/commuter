@@ -257,6 +257,10 @@ class TikZ(_ContextBase):
         self.o(r'\path[%s] (%g,%g) rectangle +(%g,%g);' %
                (self.__fsOpts(**kw), x, y, w, h))
 
+    def circle(self, x, y, r, **kw):
+        self.o(r'\path[%s] (%g,%g) circle (%g);' %
+               (self.__fsOpts(**kw), x, y, r))
+
     def __mkPath(self, points):
         d = []
         for op in self._canonPath(points):

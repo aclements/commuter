@@ -221,14 +221,16 @@ class SVG(_ContextBase):
         print >>fp, '</svg>'
 
 class TikZ(_ContextBase):
-    def __init__(self, x='%gin' % (1/90.0), y='%gin' % (1/90.0)):
+    def __init__(self, x='%gin' % (1/90.0), y='%gin' % (1/90.0),
+                 **attrs):
         """Create a new TikZ document.
 
         x and y specify the size of the x and y units.  Their default
         values match the physical size of SVG pixels.
         """
         super(TikZ, self).__init__()
-        self.__x, self.__y = x, y
+        self.__gattrs = attrs.copy()
+        self.__gattrs.update(x=str(x), y='-' + str(y))
         self.__o = []
         self.__enter__()
 
@@ -291,7 +293,8 @@ class TikZ(_ContextBase):
         """Write the TikZ output to fp."""
 
         self.__exit__()
-        print >>fp, r'\begin{tikzpicture}[x=%s,y=-%s]' % (self.__x, self.__y)
+        print >>fp, r'\begin{tikzpicture}[%s]' % (
+            ','.join('%s=%s' % kv for kv in self.__gattrs.items()))
         for line in self.__o:
             print >>fp, line
         print >>fp, r'\end{tikzpicture}'

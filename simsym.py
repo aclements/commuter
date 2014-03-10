@@ -1113,6 +1113,7 @@ class SchedNode(object):
         self.expr = expr
         self.val = val
 
+        # Unwind out of this module and record the call stack
         frames = [inspect.getframeinfo(frrec[0], 3)
                   for frrec in inspect.stack()]
         for i, frame in enumerate(frames):

@@ -173,7 +173,7 @@ class SVG(_ContextBase):
         # baseline = {'t': 'text-before-edge', 'c': 'central',
         #             'b': 'text-after-edge'}[align[0]]
         text_anchor = {'l': 'start', 'm': 'middle', 'r': 'end'}[align[1]]
-        e = escape(text)
+        e = escape(text).encode('ascii', 'xmlcharrefreplace')
         extra = ''
         if align[0] == 't':
             extra += ' dy="%gpt"' % (self.font_size * .66)

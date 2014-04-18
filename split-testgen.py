@@ -12,7 +12,7 @@ parser.usage = parser.format_usage().split(':',1)[1].strip() + ' < testgen.c'
 args = parser.parse_args()
 
 shard_names = [os.path.join(args.output_dir, 'testgen.%d.c' % i)
-               for i in xrange(args.jobs - 1)]
+               for i in xrange(max(args.jobs - 1, 1))]
 if set(glob.glob(os.path.join(args.output_dir, 'testgen.*.c'))) - \
    set(shard_names):
     parser.error('Output directory is dirty')

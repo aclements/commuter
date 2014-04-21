@@ -173,3 +173,8 @@ was expedient.
     make HW=linuxmtrace
     ../commuter/par-mtrace.py -m linux
     ../commuter/par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
+
+Now you can examine `mscan-sv6.out` or `mscan-linux.out` for
+unnecessary sharing, or use the tools in `tools/` to generate
+summaries, or fire up the [interactive viewer](viewer/README.md) in
+`viewer/`.

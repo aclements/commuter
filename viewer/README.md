@@ -1,23 +1,26 @@
 Commuter viewer
 ===============
 
-This is a web-based interactive viewer for Commuter output files.
+This is a web-based interactive viewer for Commuter output files.  You
+can use the simple pre-built viewer in `index.html` or build a
+specialized viewer using `viewer.js` and LINQ directly.
 
-Use `mkdb` to convert an `mscan --check-testcases` output database
-into the pre-processed format required by the viewer.
-
-This is primarily a JavaScript library from which you can quickly
-build a specialized interactive viewer.  A demo of its use can be
-found in `demo.html` and `demo.js`.  The demo assumes databases are
-present in `data/sv6.json` and `data/Linux.json`.  For example, to
-generate the sv6 database from `mscan-sv6.out`, run the following in
-the `viewer/` directory:
+Before you can use the viewer, you must convert the output of `mscan
+--check-testcases` to a pre-processed format using `mkdb`.  The demo
+viewer expects these databases to be present in `data/sv6.json` and
+`data/Linux.json`.  For example, to generate these from
+`mscan-sv6.out` and `mscan-linux.out`, run the following in the
+`viewer/` directory:
 
     mkdir -p data
-    ./mkdb -o data --details mscan-sv6.out sv6
+    ./mkdb -o data mscan-sv6.out sv6
+    ./mkdb -o data mscan-linux.out Linux
 
-Chrome users: Chrome cannot run the demo directly from the file system
-because it disallows XMLHttpRequest for local files.  You can serve
-the local directory over HTTP using, for example:
+(It's okay if you only generate one of these; the viewer will show
+whatever it can find.)
 
-    python -m SimpleHTTPServer [port]
+Then, fire up a local web server:
+
+    python -m SimpleHTTPServer 8000
+
+And point your web browser at http://localhost:8000 .

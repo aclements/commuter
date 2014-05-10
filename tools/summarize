@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+import argparse
+import mscan
+import collections
+import posix_model
+
+parser = argparse.ArgumentParser(description='Print a summary of mscan results')
+parser.add_argument('mscan', type=file, help='mscan --check-testcases output')
+args = parser.parse_args()
+
+m = mscan.mscan(args.mscan)
+calls = posix_model.sort_calls(m.calls)
+
+print '%d total tests' % m.total
+print '%d conflicted tests (%d%%)' % (m.shared, 100*m.shared_frac)
+print '%d conflict-free tests (%d%%)' % (m.nonshared, 100*m.nonshared_frac)
+print
+
+npairs = ncfpairs = 0
+for row in m.table_ul(calls).rows:
+    for col in row:
+        if col is not None:
+            npairs += 1
+            if col.shared == 0:
+                ncfpairs += 1
+print '%d total call pairs' % npairs
+print '%d call pairs entirely conflict-free (%d%%)' % (
+    ncfpairs, 100 * ncfpairs / npairs)
+print
+
+print 'Conflicted tests by call pair:'
+print m.table_ul(calls).mapget('shared').text(shade=True)
+print
+
+print 'Conflicted tests percent by call pair:'
+print m.table_ul(calls).mapget('shared_frac').map(lambda f: int(f*100)).\
+    text(shade=True)
+print

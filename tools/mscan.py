@@ -12,8 +12,13 @@ class TestSet(Enumerable):
 
     @property
     def shared(self):
-        """The number of shared cases."""
+        """The number of shared (conflicted) cases."""
         return len(self.where('_.shared'))
+
+    @property
+    def shared_frac(self):
+        """The fraction of shared (conflicted) cases."""
+        return self.shared / float(self.total)
 
     @property
     def nonshared(self):

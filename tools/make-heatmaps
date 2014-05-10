@@ -4,6 +4,7 @@ import sys
 import argparse
 import mscan
 import render
+import posix_model
 
 def nfmt(v):
     return '{0:,}'.format(v)
@@ -17,14 +18,6 @@ parser.add_argument('mscan', nargs='+', metavar='SYSNAME:MSCAN',
                     help='mscan --check-testcases output (SYSNAME optional)')
 args = parser.parse_args()
 
-calls = [
-    # Things that deal with names
-    'open', 'link', 'unlink', 'rename', 'stat',
-    # Things that deal with FDs
-    'fstat', 'lseek', 'close', 'pipe', 'read', 'write', 'pread', 'pwrite',
-    # VM
-    'mmap', 'munmap', 'mprotect', 'memread', 'memwrite']
-
 if args.format == 'svg':
     ctx = render.SVG()
 elif args.format == 'tikz':
@@ -37,6 +30,7 @@ for i, mscan_arg in enumerate(args.mscan):
     else:
         sysname, fname = None, mscan_arg
     m = mscan.mscan(file(fname))
+    calls = posix_model.sort_calls(m.calls)
     table = m.table_ul(calls)
     # In paper: 11pt => (11 * 1/72.27) * 90 => 13.7px
     hm = render.heat_map(ctx, table.mapget('nonshared_frac'), 14, 14)

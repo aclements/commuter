@@ -3,6 +3,7 @@
 import argparse
 import mscan
 import collections
+import posix_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument('mscan', type=file, help='mscan --check-testcases output')
@@ -22,13 +23,7 @@ m = m.join(model, '_.test', '_.test',
            lambda o,i: Joined(**dict(i._asdict().items() +
                                      o._asdict().items())))
 
-calls = [
-    # Things that deal with names
-    'open', 'link', 'unlink', 'rename', 'stat',
-    # Things that deal with FDs
-    'fstat', 'lseek', 'close', 'read', 'write', 'pread', 'pwrite',
-    # VM
-    'mmap', 'munmap', 'mprotect', 'memread', 'memwrite']
+calls = posix_model.sort_calls(m.calls)
 
 print 'Shared cases (%d):' % m.shared
 print m.table_ul(calls).mapget('shared').text(shade=True)

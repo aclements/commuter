@@ -1,0 +1,281 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+import argparse
+import multiprocessing
+import contextlib
+import pipes
+import errno
+
+def main():
+    component_names = [name for name, _, _ in COMPONENTS]
+
+    parser = argparse.ArgumentParser(
+        description='Download and build Commuter dependencies.',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = parser.add_argument_group(
+        title='components',
+        description='''\
+z3: Z3 SMT solver.  Required to run models.
+
+mtrace: Memory-tracing QEMU.  Required to run file system tests and
+check sharing in Linux and sv6.  Implies libelfin.
+
+libelfin: ELF/DWARF library.  Required by mtrace.
+
+linux: Mtrace-enabled Linux.  Required to run sharing tests on Linux.
+
+sv6: Scalable research OS.  Required to run sharing tests on sv6.
+
+Any components that are already downloaded and/or built will not be
+re-downloaded or built.''')
+    g.add_argument('components', metavar='COMPONENT', nargs='*',
+                   help='''list of components to download and build or "all"''',
+                   choices=component_names + ['all', []])
+    parser.add_argument('--z3-commit', default='known-good',
+                        help='''Z3 commit to download and build.
+                        Can be "known-good" for a known-good but
+                        potentially old version, "unstable" for the
+                        latest unstable, or any GIT branch, tag, or
+                        commit hash. (default: %(default)s)
+                        ''')
+    parser.add_argument('--dir', default='ext',
+                        help='''directory to download and build external
+                        components in (default: %(default)s)''')
+    parser.add_argument('-j', type=int,
+                        default=int(multiprocessing.cpu_count()*1.5),
+                        help='''Parallelism for make jobs
+                        (default: %(default)s)''')
+    args = parser.parse_args()
+
+    if len(args.components) == 0:
+        parser.print_help()
+        sys.exit(2)
+
+    if 'mtrace' in args.components:
+        args.components.append('libelfin')
+
+    if 'all' in args.components:
+        args.components = component_names
+
+    global makecmd
+    makecmd = ['make', '-j', str(args.j)]
+
+    try:
+        os.makedirs(args.dir)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+    with cd(args.dir):
+        with open('env.sh', 'w') as script:
+            print >>script,\
+                '# Run "source %s/env.sh" to set up your environment' % args.dir
+            for name, fn, envfn in COMPONENTS:
+                if name in args.components:
+                    fn(args)
+                if envfn:
+                    envfn(args, script)
+
+    print
+    print 'Build complete.'
+    print 'Run "source %s/env.sh" to set up your environment.' % args.dir
+
+def trace(msg):
+    print
+    print '###'
+    print '###', msg
+    print '###'
+    print
+
+def trace_sh(args):
+    print ' '.join(map(pipes.quote, args))
+
+@contextlib.contextmanager
+def cd(cwd):
+    start = os.getcwd()
+    trace_sh(['cd', cwd])
+    os.chdir(cwd)
+    yield
+    trace_sh(['cd', start])
+    os.chdir(start)
+
+def sh(cmd, *args, **kwargs):
+    trace_sh(cmd)
+    subprocess.check_call(cmd, *args, **kwargs)
+
+COMPONENTS = []
+
+def component_z3(args):
+    if args.z3_commit == 'known-good':
+        commit = 'a60b53bfd'
+    else:
+        commit = args.z3_commit
+
+    if not os.path.isdir('z3'):
+        trace('Clone Z3')
+        try:
+            sh(['git', 'clone', 'https://git01.codeplex.com/z3'])
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 128:
+                print >>sys.stderr
+                print >>sys.stderr, 'Clone failed.  You may need to read:'
+                print >>sys.stderr, 'https://z3.codeplex.com/wikipage?title=Git%20HTTPS%20cloning%20errors'
+                raise
+        fresh = True
+    else:
+        fresh = False
+
+    with cd('z3'):
+        if fresh:
+            sh(['git', 'checkout', commit])
+        else:
+            # Check revision
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+
+            try:
+                want = subprocess.check_output(['git', 'rev-parse',
+                                                commit]).strip()
+            except subprocess.CalledProcessError as e:
+                print >>sys.stderr, ('Bad Z3 commit %s\n' % commit) + e
+                sys.exit(1)
+
+            if head != want:
+                print >>sys.stderr, 'Z3 is checked out in %s, but on revision\n  %s\ninstead of the requested revision\n  %s' % (args.dir, head, want)
+                sys.exit(1)
+
+        if os.path.exists('build/libz3.so') and \
+           os.path.exists('build/z3core.pyc'):
+            trace('Z3 already built')
+        else:
+            trace('Build Z3')
+            sh(['python', 'scripts/mk_make.py'])
+            with cd('build'):
+                sh(makecmd)
+
+def env_z3(args, script):
+    if os.path.exists('z3/build/libz3.so'):
+        print >>script,\
+            'export LD_LIBRARY_PATH=%s${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' % \
+            os.path.abspath('z3/build')
+    if os.path.exists('z3/build/z3core.pyc'):
+        print >>script,\
+            'export PYTHONPATH=%s${PYTHONPATH:+:$PYTHONPATH}' % \
+            os.path.abspath('z3/build')
+COMPONENTS.append(('z3', component_z3, env_z3))
+
+def component_libelfin(args):
+    env = os.environ.copy()
+    pcp = os.path.abspath('libelfin/elf') + ':' + os.path.abspath('libelfin/dwarf')
+    if env.get('PKG_CONFIG_PATH'):
+        env['PKG_CONFIG_PATH'] += ':' + pcp
+    else:
+        env['PKG_CONFIG_PATH'] = pcp
+
+    try:
+        sh(['pkg-config', '--exists', 'libelf++', 'libdwarf++'], env=env)
+        trace('libelfin already built or installed')
+        return
+    except subprocess.CalledProcessError:
+        pass
+
+    if not os.path.isdir('libelfin'):
+        trace('Clone libelfin')
+        sh(['git', 'clone', 'https://github.com/aclements/libelfin.git'])
+
+    with cd('libelfin'):
+        trace('Build libelfin')
+        sh(makecmd)
+COMPONENTS.append(('libelfin', component_libelfin, None))
+
+def component_mtrace(args):
+    if not os.path.isdir('mtrace'):
+        trace('Clone mtrace')
+        sh(['git', 'clone', 'https://github.com/aclements/mtrace.git'])
+
+    with cd('mtrace'):
+        if os.path.exists('x86_64-softmmu/qemu-system-x86_64'):
+            trace('mtrace already built')
+        else:
+            trace('Configure mtrace (minimal)')
+            sh(['./configure', '--target-list=x86_64-softmmu', '--disable-kvm',
+                '--audio-card-list=""', '--disable-vnc-jpeg',
+                '--disable-vnc-png', '--disable-strip'])
+
+            trace('Build mtrace')
+            sh(makecmd)
+
+        with cd('mtrace-tools'):
+            if os.path.exists('mscan'):
+                trace('mtrace-tools already built')
+            else:
+                trace('Build mtrace-tools')
+                sh(makecmd)
+
+def env_mtrace(args, script):
+    if os.path.exists('mtrace/x86_64-softmmu/qemu-system-x86_64'):
+        print >>script,\
+            'export PATH=%s:$PATH' % os.path.abspath('mtrace/x86_64-softmmu')
+    if os.path.exists('mtrace/mtrace-tools/mscan'):
+        print >>script,\
+            'export PATH=%s:$PATH' % os.path.abspath('mtrace/mtrace-tools')
+COMPONENTS.append(('mtrace', component_mtrace, env_mtrace))
+
+def component_linux(args):
+    if not os.path.isdir('linux-mtrace'):
+        trace('Clone linux')
+        sh(['git', 'clone', 'https://github.com/aclements/linux-mtrace.git'])
+
+    with cd('linux-mtrace'):
+        if os.path.exists('arch/x86_64/boot/bzImage'):
+            trace('linux already built')
+        else:
+            trace('Configuring linux')
+            sh(['make', 'defconfig'])
+            with open('.config', 'a') as config:
+                print >>config, '''\
+CONFIG_DEBUG_INFO=y
+CONFIG_NR_CPUS=16
+CONFIG_HZ_100=y
+CONFIG_PARTITION_ADVANCED=n
+CONFIG_SUSPEND=n
+CONFIG_HIBERNATION=n
+CONFIG_CPU_FREQ=n
+CONFIG_YENTA=n
+CONFIG_IPV6=n
+CONFIG_NETFILTER=n
+CONFIG_NET_SCHED=n
+CONFIG_ETHERNET=n
+CONFIG_HAMRADIO=n
+CONFIG_CFG80211=n
+CONFIG_AGP=n
+CONFIG_DRM=n
+CONFIG_FB=n
+CONFIG_SOUND=n
+CONFIG_USB=n
+CONFIG_I2C=n
+CONFIG_HID=n
+CONFIG_SECURITY_SELINUX=n'''
+            sh(['make', 'olddefconfig'])
+
+            trace('Building linux')
+            sh(makecmd)
+COMPONENTS.append(('linux', component_linux, None))
+
+def component_sv6(args):
+    if not os.path.isdir('sv6'):
+        trace('Clone sv6')
+        sh(['git', 'clone', 'https://github.com/aclements/sv6.git'])
+
+    with cd('sv6'):
+        if os.path.exists('o.mtrace/kernel.elf'):
+            trace('sv6 already built')
+        else:
+            trace('Build sv6')
+            sh(makecmd + ['HW=mtrace'])
+COMPONENTS.append(('sv6', component_sv6, None))
+
+if __name__ == '__main__':
+    main()

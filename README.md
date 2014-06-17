@@ -14,11 +14,22 @@ Linux and our research OS kernel, sv6.
 
 Check out Commuter's [home page](http://pdos.csail.mit.edu/commuter/).
 
+Quick start
+-----------
+
+To simplify getting up and running, Commuter includes a "setup" script
+that can download and build all of Commuter's unusual dependencies
+with default configurations, as well as both sv6 and Mtrace-enabled
+Linux.  You can run `./setup all`, then jump straight to "Running the
+POSIX model" below.  You can run `./setup` with different arguments to
+install just some of the components.
+
 Dependencies
 ------------
 
-Commuter depends on several other software packages.  Things will go
-most smoothly if you clone everything into neighboring directories.
+Commuter depends on several other software packages, which themselves
+depend on other packages.  You can either use Commuter's setup script
+to install these, or install them yourself.
 
 * Z3 - Z3 is available from https://z3.codeplex.com/ .  As of this
   writing you'll need a nightly build, since Commuter depends on

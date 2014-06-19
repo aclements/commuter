@@ -63,7 +63,6 @@ $O/data/Linux.json: $(MSCAN_DIR)/mscan-linux.out
 all: $O/index.html
 all: $O/img/logo.svg $O/img/model.png $O/img/test.png $O/img/improve.png
 all: $O/favicon.ico
-all: $O/clements-commutativity-sosp13.pdf
 all: $O/sosp13-data.tar.gz
 all: $(addprefix $O/,$(wildcard css/*))
 all: $(addprefix $O/,$(wildcard img/*))

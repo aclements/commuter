@@ -49,6 +49,10 @@ produce a C array of actions of the form "thread X in process Y do Z"
 where Z can be calling a function, or creating a new thread or
 process.
 
+If fstest could also drive a traditional code coverage analyzer, we
+would get a good idea of how much coverage we're sacrificing.  This
+may also point toward things we haven't but should model.
+
 
 simsym
 ======

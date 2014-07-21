@@ -273,6 +273,8 @@ class TestWriter(simtest.ExecutionMonitorBase):
             self.testgen.begin_call_set(callset)
 
     def stop_call_set(self):
+        if self.testgen and self.testgen.stop_call_set():
+            return True
         return self.nmodel >= args.max_testcases
 
     def on_path(self, result):

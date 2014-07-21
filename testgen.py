@@ -1,10 +1,14 @@
 import simsym
+import simtest
 import z3
 import z3util
 import collections
 
-class TestGenerator(object):
+class TestGenerator(simtest.ExecutionMonitorBase):
     """Base class for test case generators.
+
+    This extends the basic execution monitor with methods that trace
+    the generation of test models for each code path.
 
     The methods of this class will be invoked as symbolic execution
     and model enumeration proceed in the following order:
@@ -19,22 +23,8 @@ class TestGenerator(object):
         test_file_name is the file name for test output.  The subclass
         may derive other file names from this.
         """
-        self.__callset = self.__result = self.__model = None
-
-    def begin_call_set(self, callset):
-        """Handle the beginning of a call set.
-
-        callset is a list of method objects representing the methods
-        being tested for commutativity.
-
-        Execution of the call set will yield zero or more code paths.
-        """
-        self.__callset = callset
-
-    @property
-    def callset_names(self):
-        """A list of string names of the methods in the current call set."""
-        return [c.__name__ for c in self.__callset]
+        super(TestGenerator, self).__init__()
+        self.__result = self.__model = None
 
     def get_result(self, callno):
         """Return the result for the callno'th call.
@@ -48,8 +38,7 @@ class TestGenerator(object):
 
     def get_call_args(self, callno):
         """Return the arguments struct for the callno'th call."""
-        var_name = (chr(ord('a') + callno) + "." +
-                    self.__callset[callno].__name__)
+        var_name = (chr(ord('a') + callno) + "." + self.callset_names[callno])
         return self.__model[var_name]
 
     def begin_path(self, result):
@@ -84,16 +73,6 @@ class TestGenerator(object):
     def end_path(self):
         """Handle the end of a code path."""
         self.__result = None
-
-    def end_call_set(self):
-        """Handle the end of a call set."""
-        self.__callset = None
-
-    def finish(self):
-        """Finish test generation.
-
-        The default implementation of this method does nothing."""
-        pass
 
 class CodeWriter(object):
     def __init__(self, fp=None):

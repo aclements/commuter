@@ -232,7 +232,7 @@ class StatMonitor(ExecutionMonitorBase):
     def on_path(self, result):
         super(StatMonitor, self).on_path(result)
         self.npath += 1
-        if len(result.value.diverge) == 0:
+        if result.type == 'value' and len(result.value.diverge) == 0:
             self.ncompath += 1
 
 class MetaMonitor(ExecutionMonitorBase):

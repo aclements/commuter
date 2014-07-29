@@ -117,6 +117,7 @@ def test(base, *calls):
             # Invoke the call
             nstate = base_state.copy()
             model.cur_thread_idx = callidx
+            res = None
             try:
                 res = calls[callidx](nstate, **cargs)
             finally:

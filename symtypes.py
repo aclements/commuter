@@ -72,6 +72,96 @@ def tlist(valueType, lenType=SInt):
                    _start = lenType)
     return type(name, (SListBase, base), {})
 
+class SSmallListBase(Symbolic):
+    def _declare_assumptions(self, assume):
+        super(SSmallListBase, self)._declare_assumptions(assume)
+        assume(self._len >= 0)
+        assume(self._len < self._limit)
+
+    def __check_idx(self, idx):
+        if idx < 0:
+            raise IndexError("SSmallList index out of range: %r < %r" % (idx, 0))
+        if idx >= self.len():
+            raise IndexError("SSmallList index out of range: %r >= %r" %
+                             (idx, self.len()))
+        return idx
+
+    def __getitem__(self, idx):
+        return self._get_unchecked(self.__check_idx(idx))
+
+    def _get_unchecked(self, idx):
+        if isinstance(idx, int):
+            # Optimize concrete fetch
+            return getattr(self, "_e%d" % idx)
+        if idx.is_concrete():
+            return getattr(self, "_e%d" % idx.get_concrete())
+
+        expr = getattr(self, "_e0")
+        for n in range(1, self._limit):
+            expr = symif(idx == n, getattr(self, "_e%d" % n), expr)
+        return expr
+
+    def __setitem__(self, idx, val):
+        self.__check_idx(idx)
+        if isinstance(idx, int):
+            # Optimize concrete store
+            setattr(self, "_e%d" % idx, val)
+            return
+        if idx.is_concrete():
+            setattr(self, "_e%d" % idx.get_concrete(), val)
+            return
+
+        for n in range(self._limit):
+            f = "_e%d" % n
+            setattr(self, f, symif(idx == n, val, getattr(self, f)))
+
+    def _eq_internal(self, o):
+        if type(self) != type(o):
+            return NotImplemented
+        return symand([self._len == o._len] +
+                      [implies(self._len > n,
+                               self._get_unchecked(n) == o._get_unchecked(n))
+                       for n in range(self._limit)])
+
+    def len(self):
+        return self._len
+
+    def append(self, val):
+        l = self.len()
+        if l == self._limit:
+            raise IndexError("Cannot append to full SSmallList (%d elements)" %
+                             self._limit)
+        self._len += 1
+        self[l] = val
+
+    def shift(self, by=1):
+        if by == 0:
+            return
+        self.__check_idx(by - 1)
+        for x in range(by, self._limit):
+            setattr(self, "_e%d" % (x - by), getattr(self, "_e%d" % x))
+        self._len -= by
+
+def tsmalllist(limit, valueType, lenType=SInt):
+    """Return a new small list type whose length is limited to limit.
+
+    This is like tlist, but the returned list is limited to limit
+    elements, where limit must be a concrete value.  The resulting
+    list is represented as a sequence of separate Z3 values (rather
+    than a Z3 array), which can help for small lists, but is a bad
+    idea for large or unbounded lists.
+    """
+
+    # XXX We could potentially do this with a Z3 array over an
+    # enumerated type.  Don't know if that would make things easier or
+    # harder for Z3.
+    name = "SSmallList_" + valueType.__name__ + "_" + str(limit)
+    fields = {"_len" : lenType}
+    for n in range(limit):
+        fields["_e%d" % n] = valueType
+    base = tstruct(**fields)
+    return type(name, (SSmallListBase, base), {"_limit": limit})
+
 class SDictBase(Symbolic):
     def __getitem__(self, key):
         if self._valid[key]:

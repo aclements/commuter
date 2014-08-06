@@ -92,8 +92,11 @@ class FsState(object):
       if alen == 0:
         return
       for i in range(alen):
+        # XXX We have to use _get_unchecked here to avoid symbolic
+        # execution.  It would be better if we could use the fact that
+        # data.len() is now concrete and just index data.
         emit('r = write(%s, %s, %d);' % (fdexpr,
-                                         self.datavals[data._vals[i]].expr,
+                                         self.datavals[data._get_unchecked(i)].expr,
                                          DATAVAL_BYTES),
              'if (r != %d) setup_error("write => %%d", r);' % DATAVAL_BYTES)
 

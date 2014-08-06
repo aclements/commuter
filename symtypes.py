@@ -19,7 +19,16 @@ class SListBase(Symbolic):
         return idx
 
     def __getitem__(self, idx):
-        return self._vals[self.__check_idx(idx) + self._start]
+        return self._get_unchecked(self.__check_idx(idx))
+
+    def _get_unchecked(self, idx):
+        """Return the item at index idx without bounds checking.
+
+        This is useful when the caller has already ensured idx is
+        within bounds, but in some way the symbolic engine can't track
+        (such as an implies or a quantifier).
+        """
+        return self._vals[idx + self._start]
 
     def __setitem__(self, idx, val):
         self._vals[self.__check_idx(idx) + self._start] = val

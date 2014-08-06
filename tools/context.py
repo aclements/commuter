@@ -232,6 +232,8 @@ class TikZ(_ContextBase):
         self.__gattrs = attrs.copy()
         self.__gattrs.update(x=str(x), y='-' + str(y))
         self.__o = []
+        self.font_extra = ''
+        self._save.append('font_extra')
         self.__enter__()
 
     def __mkColor(self, attr_name, spec):
@@ -287,8 +289,8 @@ class TikZ(_ContextBase):
         self._unwind.append(lambda: self.o(r'\end{scope}'))
 
     def text(self, text, x, y, align, rotate=0, fill=None):
-        attrs = [r'font=\fontsize{%g}{%g}\selectfont' %
-                 (self.font_size, self.font_size*1.2)]
+        attrs = [r'font=\fontsize{%g}{%g}\selectfont%s' %
+                 (self.font_size, self.font_size*1.2, self.font_extra)]
         if align != 'cm':
             attrs.append('inner sep=0')
             attrs.append('anchor=%s%s' %

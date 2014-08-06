@@ -192,14 +192,23 @@ class Symbolic(object):
         This is what Python's == would usually mean, but Symbolic
         overrides == to return symbolic equality expressions.
         """
+        if self is o:
+            return True
+        if not isinstance(o, Symbolic):
+            return False
         def rec(a, b):
             if isinstance(a, dict) != isinstance(b, dict):
                 return False
             if isinstance(a, dict):
-                return all(rec(asub, bsub)
-                           for asub, bsub in zip(a.values(), b.values()))
-            # XXX Will do the wrong thing if there are concrete values
-            return a.eq(b)
+                if len(a) != len(b):
+                    return False
+                for k in a.keys():
+                    if k not in b or not rec(a[k], b[k]):
+                        return False
+            elif z3.is_ast(a):
+                return z3.is_ast(b) and a.eq(b)
+            else:
+                return a == b
         return rec(self._z3_value(), o._z3_value())
 
     def __hash__(self):

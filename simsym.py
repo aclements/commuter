@@ -443,6 +443,19 @@ class SInt(SArith, SymbolicConst):
     # sorts (which Z3 can't do because its C implementation can't
     # construct new types on the fly like we can in Python).
 
+    def is_concrete(self):
+        """Return True if this can be resolved to a concrete value."""
+        return isinstance(self._v, z3.IntNumRef)
+
+    def get_concrete(self):
+        """Return this as a Python int.
+
+        If this value is not concrete, throws ValueError.
+        """
+        if not self.is_concrete():
+            raise ValueError("%r is not concrete" % self)
+        return self._v.as_long()
+
 class UncheckableConstraintError(RuntimeError):
     def __init__(self, expr, reason):
         RuntimeError.__init__(self, reason)

@@ -33,7 +33,7 @@ class SListBase(Symbolic):
     def __setitem__(self, idx, val):
         self._vals[self.__check_idx(idx) + self._start] = val
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(o) != type(self):
             return NotImplemented
         i = SInt.var()
@@ -85,7 +85,7 @@ class SDictBase(Symbolic):
     def __delitem__(self, key):
         self._valid[key] = False
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         key = self._map._indexType.var()

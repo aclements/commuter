@@ -35,7 +35,7 @@ class SFd(simsym.tstruct(ispipe = simsym.SBool,
         super(SFd, self)._declare_assumptions(assume)
         assume(self.off >= 0)
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         return simsym.symand(
@@ -58,7 +58,7 @@ class SVMA(simsym.tstruct(anon = simsym.SBool,
         assume(self.off >= 0)
         assume(self.off % PAGE_DATAVALS == 0)
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         return simsym.symand(

@@ -5,7 +5,7 @@ import model
 SEventList = symtypes.tlist(simsym.SInt)
 
 class Tracker(simsym.tstruct(events=SEventList, forgot=simsym.SBool)):
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         return simsym.symand([self.forgot == o.forgot,

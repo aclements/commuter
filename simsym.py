@@ -180,11 +180,27 @@ class Symbolic(object):
         """
         pass
 
+    def __eq__(self, o):
+        if options.eq_eliminate_structural and self.eq(o):
+            return True
+        return self._eq_internal(o)
+
+    def _eq_internal(self, o):
+        """Abstract method for equality testing.
+
+        In general, subclasses should override _eq_internal to
+        implement equality testing, as __eq__ performs structural
+        equality optimization before calling this.
+        """
+        raise NotImplementedError('_eq_internal is abstract')
+
     def __ne__(self, o):
-        r = self == o
-        if r is NotImplemented:
-            return NotImplemented
-        return symnot(r)
+        if options.eq_eliminate_structural and self.eq(o):
+            return False
+        return self._ne_internal(o)
+
+    def _ne_internal(self, o):
+        return symnot(self._eq_internal(o))
 
     def eq(self, o):
         """Return True if self and o are structurally identical.
@@ -329,19 +345,22 @@ class MetaZ3Wrapper(type):
 
     def __new__(cls, classname, bases, classdict):
         if "__wrap__" in classdict:
+            OVERRIDES = {"__eq__" : "_eq_internal",
+                         "__ne__" : "_ne_internal"}
             ref_type = classdict["__ref_type__"]
             for method in classdict.pop("__wrap__"):
                 base_method = getattr(ref_type, method)
                 nargs = base_method.__func__.__code__.co_argcount
                 args = ["o%d" % i for i in range(nargs - 1)]
-                code = "def %s(%s):\n" % (method, ",".join(["self"] + args))
+                dmethod = OVERRIDES.get(method, method)
+                code = "def %s(%s):\n" % (dmethod, ",".join(["self"] + args))
                 for o in args:
                     code += " if isinstance(%s, Symbolic): %s=%s._v\n" % \
                         (o, o, o)
                 code += " return wrap(self._v.%s(%s))" % (method, ",".join(args))
                 locals_dict = {}
                 exec code in globals(), locals_dict
-                classdict[method] = locals_dict[method]
+                classdict[dmethod] = locals_dict[dmethod]
 
         return type.__new__(cls, classname, bases, classdict)
 
@@ -653,7 +672,7 @@ class SMapBase(Symbolic):
         x = self._indexType.var()
         self[x]._declare_assumptions(lambda expr: assume(forall(x, expr)))
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         if isinstance(self._valueType, SExpr):
@@ -763,7 +782,7 @@ class SStructBase(Symbolic):
             if isinstance(sub, Symbolic):
                 sub._declare_assumptions(assume)
 
-    def __eq__(self, o):
+    def _eq_internal(self, o):
         if type(self) != type(o):
             return NotImplemented
         return symand([getattr(self, name) == getattr(o, name)

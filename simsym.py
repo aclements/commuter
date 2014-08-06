@@ -613,19 +613,6 @@ def tsynonym(name, baseType):
 # Compound objects
 #
 
-def compound_eq(c1, c2):
-    def cmp1(a, b):
-        if options.eq_eliminate_structural and \
-           z3.is_ast(a) and z3.is_ast(b) and a.eq(b):
-            return True
-        if z3.is_ast(a) or z3.is_ast(b):
-            return wrap(a == b)
-        assert not isinstance(a, Symbolic)
-        assert not isinstance(b, Symbolic)
-        return a == b
-    parts = flatten_compound(compound_map(cmp1, c1, c2))
-    return symand(parts)
-
 class SMapBase(Symbolic):
     """The base type of symbolic mutable mapping types.  Objects of
     this type map from symbolic values to symbolic values.  Maps
@@ -658,9 +645,19 @@ class SMapBase(Symbolic):
         self[x]._declare_assumptions(lambda expr: assume(forall(x, expr)))
 
     def __eq__(self, o):
-        if not isinstance(o, type(self)):
+        if type(self) != type(o):
             return NotImplemented
-        return compound_eq(self._getter(), o._getter())
+        if isinstance(self._valueType, SExpr):
+            # Optimize away the forall
+            vs, vo = self._getter(), o._getter()
+            assert not isinstance(vs, dict)
+            assert not isinstance(vo, dict)
+            return wrap(vs == vo)
+        # valueType may have a complex __eq__.  In many (all?) cases
+        # the forall isn't actually necessary, but we don't have the
+        # mechanism to push it down the AST and eliminate it.
+        x = self._indexType.var()
+        return forall(x, self[x] == o[x])
 
     def __getitem__(self, idx):
         """Return the value at index 'idx'."""
@@ -758,13 +755,10 @@ class SStructBase(Symbolic):
                 sub._declare_assumptions(assume)
 
     def __eq__(self, o):
-        # XXX Duplicated with SMapBase.  Maybe have SymbolicCompound?
-        # XXX Structural equality is almost always not what we want.
-        # Maybe this should be offered as a method, but make the
-        # default __eq__ raise an exception?
-        if not isinstance(o, type(self)):
+        if type(self) != type(o):
             return NotImplemented
-        return compound_eq(self._getter(), o._getter())
+        return symand([getattr(self, name) == getattr(o, name)
+                       for name in self._fields])
 
     def __getattr__(self, name):
         if name not in self._fields:

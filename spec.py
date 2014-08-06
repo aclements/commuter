@@ -251,10 +251,10 @@ class TestWriter(simtest.ExecutionMonitorBase):
         #   testname -> pathname '_' testnum
         self.model_data = {'tests':{}}
 
-        self.nmodel = self.nerror = 0
+        self.nmodel = self.nerror = self.ntesterrors = 0
 
     def get_progress_format(self):
-        return '{0.nmodel} testcases ({0.nerror} errors)'
+        return '{0.nmodel} testcases (errors: {0.nerror} model, {0.ntesterrors} testgen)'
 
     def begin_call_set(self, callset):
         super(TestWriter, self).begin_call_set(callset)
@@ -267,7 +267,7 @@ class TestWriter(simtest.ExecutionMonitorBase):
         self.model_data['tests']['_'.join(c.__name__ for c in callset)] \
             = self.model_data_callset
 
-        self.nmodel = self.nerror = 0
+        self.nmodel = self.nerror = self.ntesterrors = 0
 
         if self.testgen:
             self.testgen.begin_call_set(callset)
@@ -350,6 +350,7 @@ class TestWriter(simtest.ExecutionMonitorBase):
                 # raise Exception('Cannot enumerate: %s' % str(e))
                 print 'Cannot enumerate, moving on..'
                 print 'Failure reason:', check.reason
+                self.ntesterrors += 1
                 break
 
             if 'array-ext' in check.z3_model.sexpr():

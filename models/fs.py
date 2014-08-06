@@ -16,13 +16,11 @@ DATAVAL_BYTES = 4096
 PAGE_BYTES = 4096
 PAGE_DATAVALS = PAGE_BYTES / DATAVAL_BYTES
 assert PAGE_BYTES % DATAVAL_BYTES == 0
+DATA_MAX_LEN = 8
 
 SPid = simsym.SBool
 SOffset = simsym.tsynonym("SOffset", simsym.SInt)
-class SData(symtypes.tlist(SDataVal, lenType=SOffset)):
-    def _declare_assumptions(self, assume):
-        super(SData, self)._declare_assumptions(assume)
-        assume(self._len <= 8)
+SData = symtypes.tsmalllist(DATA_MAX_LEN, SDataVal, lenType=SOffset)
 SPipe = simsym.tstruct(data = SData)
 SPipeMap = symtypes.tmap(SPipeId, SPipe)
 class SFd(simsym.tstruct(ispipe = simsym.SBool,
@@ -377,7 +375,7 @@ class Fs(simsym.tstruct(
     def iwrite(self, inum, off, databyte, time=None):
         simsym.assume(off >= 0)
         ## Avoid overly-long files.  fs-test.py caps file size at 16 units.
-        simsym.assume(off < 10)
+        simsym.assume(off < DATA_MAX_LEN)
         ## XXX Handle sparse files?
         simsym.assume(off <= self.i_map[inum].data._len)
 
@@ -421,6 +419,7 @@ class Fs(simsym.tstruct(
                 # in read.
                 return {'r': -1, 'errno': errno.EPIPE}
 
+            simsym.assume(pipe.data.len() < DATA_MAX_LEN)
             pipe.data.append(databyte)
             return {'r': DATAVAL_BYTES}
         off = self.getproc(pid).fd_map[fd].off

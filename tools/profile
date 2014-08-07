@@ -5,8 +5,9 @@ import argparse
 import json
 import collections
 
-FIELDS = ['ntests', 'npaths', 'ncomm', 'nerr', 'max_paths', 'max_path_tests']
-ADDITIVE = ['ntests', 'npaths', 'ncomm', 'nerr',
+FIELDS = ['ntests', 'npaths', 'ncomm', 'nerr', 'testerrs',
+          'max_paths', 'max_path_tests']
+ADDITIVE = ['ntests', 'npaths', 'ncomm', 'nerr', 'testerrs',
             'diffntests', 'diffnpaths', 'diffncomm']
 SPECS = {'pct': '{:.2f}%', 'diff': '{:+}'}
 
@@ -17,6 +18,7 @@ class Sample(object):
         self.ncomm = 0
         self.ntests = 0
         self.nerr = 0
+        self.testerrs = 0
         self.test_hist = collections.Counter()
 
     @property
@@ -46,6 +48,8 @@ def process(fp):
             else:
                 ntests = 0
             sample.ntests += ntests
+            if pathinfo.get('testerror'):
+                sample.testerrs += 1
             sample.test_hist[ntests] += 1
 
     return res

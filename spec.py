@@ -357,7 +357,9 @@ class TestWriter(simtest.ExecutionMonitorBase):
                     if 'array-ext' not in check.z3_model.sexpr():
                         break
                 else:
-                    print 'Workaround failed; this won\'t end well'
+                    print 'Workaround failed, moving on..'
+                    self.ntesterrors += 1
+                    break
 
             if check.is_unsat: break
             if check.is_unknown:

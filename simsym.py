@@ -873,7 +873,14 @@ def symeq(*exprs):
     return symand([a == b for a, b in zip(exprs, exprs[1:])])
 
 def symif(pred, cons, alt):
-    return wrap(z3.If(unwrap(pred), unwrap(cons), unwrap(alt)))
+    e = z3.If(unwrap(pred), unwrap(cons), unwrap(alt))
+    # Wrap the result in the type of the consequent, rather than a
+    # generic SExpr.
+    if isinstance(cons, Symbolic):
+        return type(cons)._wrap(e, None)
+    if isinstance(alt, Symbolic):
+        return type(alt)._wrap(e, None)
+    return wrap(e)
 
 def distinct(*exprlist):
     return wrap(z3.Distinct(*map(unwrap, exprlist)))
@@ -952,6 +959,7 @@ def wrap(ref):
         return SArith._wrap(ref, None)
     if isinstance(ref, z3.BoolRef):
         return SBool._wrap(ref, None)
+    # XXX Could be a tuinterpreted
     return SExpr._wrap(ref, None)
 
 def wraplist(reflist):

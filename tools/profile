@@ -4,6 +4,7 @@ import sys
 import argparse
 import json
 import collections
+import hist
 
 FIELDS = ['ntests', 'npaths', 'ncomm', 'nerr', 'testerrs',
           'max_paths', 'max_path_tests']
@@ -77,6 +78,8 @@ def main(argv):
     parser = argparse.ArgumentParser(description='Profile models')
     parser.add_argument('--field', choices=FIELDS, default='ntests',
                         help='Field to sort and compare by')
+    parser.add_argument('--test-hist', action='store_true', default=False,
+                        help='Show histograms of # tests per model path')
     parser.add_argument('model', type=file,
                         help='The model.out to profile')
     parser.add_argument('model2', type=file, nargs='?',
@@ -101,20 +104,30 @@ def main(argv):
     sums = [0 if field in ADDITIVE else
             'TOTAL' if field == 'callset' else ''
             for field in fields]
+    hists = {}
+    hist_sum = collections.Counter()
     for obj in sorted(out, key=lambda s: getattr(s, sortby), reverse=True):
         table.append([SPECS.get(f, '{}').format(getattr(obj, f))
                       for f in fields])
         for i, field in enumerate(fields):
             if field in ADDITIVE:
                 sums[i] += getattr(obj, field)
+        if args.test_hist:
+            hists[len(table) - 1] = obj.test_hist
+            hist_sum += obj.test_hist
     table.append(map(str, sums))
+    hists[len(table) - 1] = hist_sum
 
     # Print table
     widths = [max(map(len, col)) * (1 if field == 'callset' else -1)
               for field, col in zip(fields, zip(*table))]
-    for row in table:
+    hist_right = hist.stats(hist_sum).max
+    for n, row in enumerate(table):
         print ' '.join(v.ljust(w).rjust(-w)
                        for v, w in zip(row, widths)).encode('utf8')
+        if n in hists:
+            print hist.to_line(hists[n], right=hist_right, label=False).\
+                encode('utf8')
 
 if __name__ == "__main__":
     main(sys.argv[1:])

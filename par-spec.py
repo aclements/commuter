@@ -16,10 +16,9 @@ def wrapped_main(*args):
         return spec.main(*args)
     except Exception as e:
         tb = traceback.format_exc()
-        print >>sys.stderr, "Exception in child:\n" + tb
-        if len(e.args) == 1:
-            e.args = ("%s\nin child at:\n" + tb,)
-        raise
+        msg = "Exception in child %s:\n%s" % (args, tb)
+        print >>sys.stderr, msg
+        raise Exception(msg)
 
 args = spec.parser.parse_args()
 callsets = spec.parse_functions(

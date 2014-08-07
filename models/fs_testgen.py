@@ -20,7 +20,8 @@ va_len = 4
 # DATAVAL_BYTES, where the first byte is unique and the rest are
 # zeros.
 DataVal = collections.namedtuple('DataVal', 'expr first_byte')
-all_datavals = [DataVal('dataval%d' % i, i) for i in range(8)]
+# Enough datavals for two whole files/pipes
+all_datavals = [DataVal('dataval%d' % i, i) for i in range(16)]
 
 class SkipTest(Exception):
   pass

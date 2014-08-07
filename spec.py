@@ -345,6 +345,20 @@ class TestWriter(simtest.ExecutionMonitorBase):
               self.npathmodel < args.max_tests_per_path:
             # XXX Would it be faster to reuse the solver?
             check = simsym.check(e)
+            if check.is_sat and 'array-ext' in check.z3_model.sexpr():
+                # Work around some non-deterministic bug that causes
+                # Z3 to occasionally produce models containing
+                # 'array-ext' applications that break evaluation.
+                print 'Warning: Working around array-ext bug'
+                for i in range(10):
+                    check = simsym.check(e)
+                    if not check.is_sat:
+                        continue
+                    if 'array-ext' not in check.z3_model.sexpr():
+                        break
+                else:
+                    print 'Workaround failed; this won\'t end well'
+
             if check.is_unsat: break
             if check.is_unknown:
                 # raise Exception('Cannot enumerate: %s' % str(e))
@@ -352,18 +366,6 @@ class TestWriter(simtest.ExecutionMonitorBase):
                 print 'Failure reason:', check.reason
                 self.ntesterrors += 1
                 break
-
-            if 'array-ext' in check.z3_model.sexpr():
-                # Work around some non-deterministic bug that causes
-                # Z3 to occasionally produce models containing
-                # 'array-ext' applications that break evaluation.
-                print 'Warning: Working around array-ext bug'
-                for i in range(10):
-                    check = simsym.check(e)
-                    if 'array-ext' not in check.z3_model.sexpr():
-                        break
-                else:
-                    print 'Workaround failed; this won\' end well'
 
             if args.verbose_testgen:
                 print "Model:"

@@ -41,8 +41,12 @@ class ProgressReporter(object):
         buf = ""
         if self.__dynamic:
             buf += '\r'
+            # Disable wrap
+            buf += '\033[?7l'
         buf += text
         if self.__dynamic:
+            # Re-enable wrap
+            buf += '\033[?7h'
             # Clear to end of line
             buf += '\033[K'
             if final:
@@ -52,7 +56,7 @@ class ProgressReporter(object):
                 # anything more after this, it will immediately wrap
                 # and print on the next line.  But we can still \r to
                 # overwrite this line with another progress update.
-                buf += '\033[K\033[999C '
+                buf += '\033[999C '
         else:
             buf += '\n'
         sys.stdout.write(buf)

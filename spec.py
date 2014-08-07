@@ -242,7 +242,11 @@ class TestWriter(simtest.ExecutionMonitorBase):
         #   pathinfo -> {'id': pathname,
         #                'exception': string,
         #                'diverge': '' | string,
-        #                'tests': [testinfo]}
+        #                'tests': [testinfo],
+        #                'testerror'?: string}
+        #     Either 'exception' or 'diverge' will be present.
+        #     'testerror' gives the error that terminated test
+        #     generation for this path (if any).
         #   pathname -> callsetname '_' pathid
         #   testinfo -> {'id': testname,
         #                'assignments': {expr: val},
@@ -276,6 +280,12 @@ class TestWriter(simtest.ExecutionMonitorBase):
         if self.testgen and self.testgen.stop_call_set():
             return True
         return self.nmodel >= args.max_testcases
+
+    def _testerror(self, reason, pathinfo):
+        pathinfo['testerror'] = reason
+        print 'Cannot enumerate, moving on..'
+        print 'Failure reason:', reason
+        self.ntesterrors += 1
 
     def on_path(self, result):
         super(TestWriter, self).on_path(result)
@@ -357,16 +367,13 @@ class TestWriter(simtest.ExecutionMonitorBase):
                     if 'array-ext' not in check.z3_model.sexpr():
                         break
                 else:
-                    print 'Workaround failed, moving on..'
-                    self.ntesterrors += 1
+                    self._testerror('array-ext workaround failed', pathinfo)
                     break
 
             if check.is_unsat: break
             if check.is_unknown:
                 # raise Exception('Cannot enumerate: %s' % str(e))
-                print 'Cannot enumerate, moving on..'
-                print 'Failure reason:', check.reason
-                self.ntesterrors += 1
+                self._testerror(check.reason, pathinfo)
                 break
 
             if args.verbose_testgen:

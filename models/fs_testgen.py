@@ -274,7 +274,9 @@ class FsState(object):
     return setup
 
   def gen_code(self, callname, args, res):
-    f = getattr(self, callname)
+    f = getattr(self, callname, None)
+    if f is None:
+      raise SkipTest('Test generation for %s not implemented' % callname)
     self.emit = writer = testgen.CodeWriter()
     try:
       f(args, res.copy())

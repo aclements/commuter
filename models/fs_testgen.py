@@ -517,6 +517,17 @@ class FsState(object):
       self.__check(res),
       'return r;')
 
+  def sync(self, args, res):
+    self.emit(
+      'sync();'
+      'return 0;')
+
+  def fsync(self, args, res):
+    self.emit(
+      'int r = fsync(%d);' % self.procs[args.pid.val].fds[args.fd],
+      self.__check(res),
+      'return xerrno(r);')
+
 class FsTestGenerator(testgen.TestGenerator):
   def __init__(self, test_file_name):
     super(FsTestGenerator, self).__init__(test_file_name)

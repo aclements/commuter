@@ -86,9 +86,13 @@ SIMap = symtypes.tmap(SInum, SInode)
 SPathname = SFn
 
 class Fs(simsym.tstruct(
-        i_map=SIMap, proc0=SProc, proc1=SProc, pipes=SPipeMap,
-        ## XXX Non-directories impl:
-        root_dir=SDirMap)):
+        # Process state
+        proc0=SProc, proc1=SProc, pipes=SPipeMap,
+        # In-memory file system state
+        i_map=SIMap,
+        root_dir=SDirMap, ## XXX Non-directories impl
+        # "On-disk" file system state
+        durable_root_dir=SDirMap, durable_i_map=SIMap)):
 
     def getproc(self, pid):
         if pid == False:
@@ -590,6 +594,38 @@ class Fs(simsym.tstruct(
             return {'r': 0, 'signal': 0}
         else:
             raise RuntimeError('Unexpected result from iwrite: %r' % res)
+
+    @model.methodwrap()
+    def sync(self):
+        # Update the "on-disk" state to match the "in-memory" file
+        # system state.  If only the real sync were this easy!
+        self.durable_i_map = self.i_map
+        self.durable_root_dir = self.root_dir
+        return {'r': 0}
+
+    @model.methodwrap(fd=SFdNum, pid=SPid)
+    def fsync(self, fd, pid):
+        self.add_selfpid(pid)
+        if not self.getproc(pid).fd_map.contains(fd):
+            return {'r': -1, 'errno': errno.EBADF}
+        inum = self.getproc(pid).fd_map[fd].inum
+        self.durable_i_map[inum] = self.i_map[inum]
+        return {'r': 0}
+
+    @model.methodwrap()
+    def reboot(self):
+        # Undo "in-memory" file system state back to "durable" state
+        self.i_map = self.durable_i_map
+        self.root_dir = self.durable_root_dir
+        # XXX We should probably do something with the process state.
+        # We can't reset it to "nothing" because we don't have a way
+        # to represent nothing.  We could de-constrain it as below,
+        # but I'm not sure that's right either (and it sends Z3 into
+        # an infinite loop).
+        # self.proc0 = SProc.var()
+        # self.proc1 = SProc.var()
+        # self.pipes = SPipeMap.var()
+        return {'r': 0}
 
 model_class = Fs
 model_testgen = fs_testgen.FsTestGenerator

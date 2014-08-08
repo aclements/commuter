@@ -499,9 +499,10 @@ parser.add_argument('-n', '--ncomb', type=int, default=2, action='store',
                     help='Number of system calls to combine per test')
 parser.add_argument('-f', '--functions', action='store',
                     help='Methods to run (e.g., stat,fstat).  Accepts x/y to \
-                    specify call sets, {x,y} for grouping, * for all calls, and \
-                    any combination of these.  All single calls will be \
-                    collected into combinations of size NCOMB.')
+                    specify call sets, {x,y} for grouping, * for all calls, \
+                    !set to negate a set, and any combination of these. \
+                    All single calls will be collected into combinations of \
+                    size NCOMB.')
 parser.add_argument('--max-testcases', type=int, default=sys.maxint, action='store',
                     help='Maximum # test cases to generate per call set')
 parser.add_argument('--max-tests-per-path', type=int, default=sys.maxint,
@@ -525,15 +526,26 @@ def parse_functions(functions, ncomb, module):
         functions = '*'
     chars = list(functions)
 
+    # list -> set ("," set)*
+    # set  -> "!"? call ("/" call)*
+    # call -> ("{" list "}") | "*" | callname
     def consume(char):
         if chars and chars[0] == char:
             return chars.pop(0)
     def parse_list():
-        callsets = parse_set()
+        callsets, anti = parse_set()
         while consume(','):
-            callsets.extend(parse_set())
+            ncallsets, nanti = parse_set()
+            callsets.extend(ncallsets)
+            anti.extend(nanti)
+        if not callsets and anti:
+            callsets = [[c] for c in callnames]
+        for callset in anti:
+            if callset in callsets:
+                callsets.remove(callset)
         return callsets
     def parse_set():
+        invert = consume('!')
         callsets = parse_call()
         while consume('/'):
             ncallsets = []
@@ -541,7 +553,7 @@ def parse_functions(functions, ncomb, module):
                 for cs1 in callsets:
                     ncallsets.append(cs1 + cs2)
             callsets = ncallsets
-        return callsets
+        return (callsets, []) if not invert else ([], callsets)
     def parse_call():
         if not chars:
             raise ValueError('Expected call name, found nothing')
@@ -552,12 +564,14 @@ def parse_functions(functions, ncomb, module):
             return res
         if consume('*'):
             return [[c] for c in callnames]
+        return [[parse_callname()]]
+    def parse_callname():
         callname = ''
-        while chars and chars[0] not in '{},/*':
+        while chars and chars[0] not in '!{},/*':
             callname += chars.pop(0)
         if callname not in callnames:
             raise ValueError('Unknown call %r' % callname)
-        return [[callname]]
+        return callname
 
     try:
         callsets = parse_list()

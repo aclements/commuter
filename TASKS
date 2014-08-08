@@ -114,6 +114,12 @@ representation that we can convert to and from Z3 ASTs as needed.
     function in the operator module?).  This would make it easy to
     convert to Z3 ASTs.
 
+* It would be nice if user-defined types could fit into this, too.
+  For example, tsmallist currently produces very large symbolic
+  expressions on most operations.  If the simsym AST is extensible,
+  this operations could be represented naturally and transformed into
+  the necessary large expressions only when generating Z3 expressions.
+
 
 viewer
 ======

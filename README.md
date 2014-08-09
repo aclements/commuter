@@ -156,6 +156,14 @@ was expedient.
     # Split testgen.c for parallel build
     ./split-testgen.py -d ../sv6/libutil < testgen.c
 
+Neither Linux nor sv6 support resting `reboot`, so if your goal is
+only to examine cache line sharing, you can speed up `spec.py` by
+passing `-f '!reboot'`.
+
+Furthermore, sv6 does not have an on-disk file system, so `sync` and
+`fsync` are no-ops in sv6.  To disable test generation for these as
+well, pass `-f '!reboot,!sync,!fsync'` to `spec.py`.
+
 ### Check cache line sharing on sv6 (serial version)
 
     cd ../sv6

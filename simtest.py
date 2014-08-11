@@ -103,7 +103,7 @@ def test(base, *calls):
             if diverge:
                 return
             ncallseq = callseq + (callidx,)
-            seqname = callseq_name(callseq)
+            seqname = callseq_name(ncallseq)
             # Include the sequence in all anonymous variable names
             simsym.anon_info = '_seq' + seqname
             # Record our call sequence as a schedule note

@@ -1,112 +1,10 @@
 #!/usr/bin/python
 
-import sys
 import os
 import argparse
 import json
-import itertools
-import collections
 
-def reformat_tests(testcases, runid):
-    """Convert testcases into format expected by viewer."""
-
-    for testcase in testcases:
-        # Split name
-        suite, name = testcase.pop('name').split('-', 1)
-        calls, pathid, testno = name.rsplit('_', 2)
-        testno = int(testno)
-        testcase['calls'] = calls
-        testcase['pathid'] = pathid
-        testcase['testno'] = testno
-
-        # Remove redundant fields
-        for shared in testcase['shared']:
-            if any(f in shared for f in ['stack', 'stack1', 'stack2']):
-                for pc in ['pc', 'pc1', 'pc2']:
-                    if pc in shared:
-                        del shared[pc]
-            del shared['rawaddr']
-
-        # Add identifying fields
-        testcase['runid'] = runid
-
-    return testcases
-
-def dedup_stacks(testcases):
-    stacks = {}
-    rstacks = {}
-    for testcase in testcases:
-        for shared in testcase['shared']:
-            # Deduplicate stacks
-            for skey in ['stack', 'stack1', 'stack2']:
-                if skey not in shared:
-                    continue
-                stack = shared[skey]
-                rstackskey = tuple(stack)
-                if rstackskey not in rstacks:
-                    name = 's%d' % len(stacks)
-                    stacks[name] = stack
-                    rstacks[rstackskey] = name
-                shared[skey] = rstacks[rstackskey]
-
-    return stacks
-
-def split_details(testcases):
-    general, details = [], []
-    for testcase in testcases:
-        shared = testcase.pop('shared')
-        details.append({'runid': testcase['runid'],
-                        'shared': shared})
-        testcase['nshared'] = len(shared)
-        general.append(testcase)
-    return general, details
-
-def split_template(data, fields):
-    template = []
-    for rec in data:
-        template.append({f: rec.pop(f) for f in fields})
-
-    # Write template
-    tid = abs(hash(str(template)))
-    template_path = 'template-%x.json' % tid
-    json.dump(tablify(template, fields),
-              file(os.path.join(args.out, template_path), 'w'), **FORMAT)
-
-    # Return template-compressed data
-    return {'!template': template_path, '!data': data}
-
-def tablify(dicts, fields):
-    data = []
-    prev = []
-    for d in dicts:
-        # Convert to list
-        dlst = []
-        for f in fields:
-            dlst.append(d.pop(f))
-
-        # Run compress
-        if prev == dlst:
-            if isinstance(data[-1], int):
-                data[-1] += 1
-            else:
-                data.append(1)
-            continue
-
-        # Delta compress against prev
-        deltamask = 0
-        delta = []
-        for i in range(max(len(prev), len(dlst))):
-            if i >= len(prev) or i >= len(dlst) or prev[i] != dlst[i]:
-                deltamask |= 1 << i
-                delta.append(dlst[i])
-        if d:
-            delta.append(d)
-        data.append([deltamask] + delta)
-        prev = dlst
-    return {'!fields': fields, '!data': data}
-
-def json_write(data, fp):
-    json.dump(data, fp, separators=(',',':'))
+import dblib
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--out', default='data', help='Output directory')
@@ -119,23 +17,25 @@ args = parser.parse_args()
 FORMAT = {'separators': (',',':')}
 
 mscan = json.load(args.mscan)
-testcases = reformat_tests(mscan['testcases'], args.runid)
-stacks = dedup_stacks(testcases)
-data = split_template(testcases, ('calls', 'pathid', 'testno'))
+testcases = dblib.reformat_tests(mscan['testcases'], args.runid)
+
+# Compress
+stacks = dblib.dedup_stacks(testcases)
+data = dblib.split_template(testcases, ('calls', 'pathid', 'testno'), args.out)
 
 if args.details:
     # Split sharing data
-    main, details = split_details(data['!data'])
-    data['!data'] = tablify(details, ('runid', 'shared'))
+    main, details = dblib.split_details(data['!data'])
+    data['!data'] = dblib.tablify(details, ('runid', 'shared'))
     json.dump({'testcases': data, 'stacks': stacks},
               file(os.path.join(args.out, '%s-details.json' % args.runid), 'w'),
               **FORMAT)
-    data['!data'] = tablify(main, ('runid', 'nshared'))
+    data['!data'] = dblib.tablify(main, ('runid', 'nshared'))
     json.dump({'testcases': data},
               file(os.path.join(args.out, '%s.json' % args.runid), 'w'),
               **FORMAT)
 else:
-    data['!data'] = tablify(data['!data'], ('runid', 'shared'))
+    data['!data'] = dblib.tablify(data['!data'], ('runid', 'shared'))
     json.dump({'testcases': data, 'stacks': stacks},
               file(os.path.join(args.out, '%s.json' % args.runid), 'w'),
               **FORMAT)

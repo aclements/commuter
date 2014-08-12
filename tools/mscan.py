@@ -38,7 +38,10 @@ class TestSet(Enumerable):
     @property
     def calls(self):
         """The list of calls covered by this test case set."""
-        return sorted(set(self.select('_.calls.split("_")[0]')))
+        calls = set()
+        for c in self.select('_.calls.split("_")'):
+            calls.update(c)
+        return sorted(calls)
 
     def table_ul(self, calls=None):
         """Return an upper-left Table of TestSet relations.

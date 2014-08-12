@@ -1,0 +1,106 @@
+#!/usr/bin/python
+
+import sys
+import os
+import argparse
+import json
+import shutil
+import BaseHTTPServer
+import subprocess
+
+import dblib
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-b', '--browser', default='sensible-browser',
+                    help='Browser command to start viewer or "none" '
+                    '(default: %(default)s')
+parser.add_argument('-p', '--port', type=int, default=0,
+                    help='Port to listen on (default: random)')
+parser.add_argument('--host', default='',
+                    help='Host name to bind to, e.g. "localhost" (default: all)')
+parser.add_argument('mscan', nargs='+', help='mscan file to view')
+args = parser.parse_args()
+
+def load_dbs():
+    """Load mscan databases into viewer format"""
+
+    dbs = {}
+    for mscan in args.mscan:
+        print >>sys.stderr, 'Loading mscan database %s...' % mscan
+        runid = os.path.splitext(os.path.basename(mscan))[0]
+        data = json.load(open(mscan))
+        testcases = dblib.reformat_tests(data['testcases'], runid)
+        dbs[runid] = json.dumps({'testcases': testcases}, separators=(',',':'))
+    return dbs
+
+def mkindexjs(dbs):
+    """Generate loader JavaScript"""
+
+    indexjs = """$(document).ready(function() {
+        var database = new Database($('#container'));
+        var qc = new QueryCanvas($('#container'), database.outputRv);
+        qc.heatmap(Predicate.conflicted, function(tc) { return tc.runid; });
+        qc.heatbar(Predicate.conflicted);
+        qc.table();
+    """
+    for runid in dbs.keys():
+        indexjs += "    database.loadMscan(%r);" % ('data/%s.json' % runid)
+    indexjs += "});"
+    return indexjs
+
+dbs = load_dbs()
+indexjs = mkindexjs(dbs)
+
+# Run server
+TYPES = {'.html': 'text/html', '.js': 'application/javascript',
+         '.css': 'text/css'}
+class MyReqHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/':
+            self.path = '/index.html'
+
+        if self.path == '/index.js':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/javascript')
+            self.end_headers()
+            self.wfile.write(indexjs)
+            return
+
+        if self.path.startswith('/data/') and self.path.endswith('.json'):
+            runid = self.path[6:-5]
+            if runid not in dbs:
+                self.send_error(404, 'File not found')
+                return
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-length', str(len(dbs[runid])))
+            self.end_headers()
+            self.wfile.write(dbs[runid])
+            return
+
+        ext = os.path.splitext(self.path)[1]
+        if self.path.startswith('/') and self.path.count('/') == 1 and \
+           ext in ('.html', '.js', '.css', '.map'):
+            try:
+                f = open(self.path[1:], 'rb')
+            except IOError as e:
+                self.send_error(404, 'File not found')
+                return
+            self.send_response(200)
+            self.send_header('Content-type',
+                             TYPES.get(ext, 'application/octet-stream'))
+            self.send_header('Content-length', str(os.fstat(f.fileno()).st_size))
+            self.end_headers()
+            shutil.copyfileobj(f, self.wfile)
+            return
+
+        self.send_error(404, 'File not found')
+        return
+
+httpd = BaseHTTPServer.HTTPServer((args.host, args.port), MyReqHandler)
+url = 'http://%s:%s' % (httpd.server_name, httpd.server_port)
+print 'Serving viewer on %s' % url
+if args.browser != 'none':
+    print 'Starting %s %s...' % (args.browser, url)
+    subprocess.Popen([args.browser, url], stdin=open('/dev/null'))
+httpd.serve_forever()

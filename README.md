@@ -176,7 +176,7 @@ well, pass `-f '!reboot,!sync,!fsync'` to `spec.py`.
     ../commuter/par-mtrace.py -m xv6
     ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan-sv6.out
 
-### Check cache line sharing on Linux (serial version)
+### Check cache line sharing on Linux with ramfs (serial version)
 
     cd ../sv6
     # Build the Linux initramfs for mtrace
@@ -186,11 +186,19 @@ well, pass `-f '!reboot,!sync,!fsync'` to `spec.py`.
     # Check sharing
     ../mtrace/mtrace-tools/mscan --kernel ../linux-mtrace/vmlinux --check-testcases > mscan-linux.out
 
-### Check cache line sharing on Linux (parallel version)
+### Check cache line sharing on Linux with ramfs (parallel version)
 
     cd ../sv6
-    make HW=linuxmtrace
     ../commuter/par-mtrace.py -m linux
+    ../commuter/par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
+
+### Check cache line sharing on Linux with disk-based FS
+
+This requires an mtrace kernel compiled with `CONFIG_DEVTMPFS=y`,
+`CONFIG_BLK_DEV_RAM=y`, and support for the desired file system.
+
+    cd ../sv6
+    ../commuter/par-mtrace.py -m linux --fs-type ext4
     ../commuter/par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
 
 Now you can examine `mscan-sv6.out` or `mscan-linux.out` for

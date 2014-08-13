@@ -57,20 +57,24 @@ print >>sys.stderr, 'Running...'
 null = open('/dev/null', 'r+')
 procs = []
 for n in range(0, args.jobs):
+  qemuoutput = os.path.join(args.log_dir, "qemu.out.%03d" % n)
   cmd = ["make",
          "HW=%s" % hw,
          "MTRACEOUT=" + os.path.join(args.log_dir, "mtrace.out.%03d" % n),
          "RUN=%s /fstest -t -n %d -p %d; /halt" % (run, args.jobs, n),
          "QEMUNOREDIR=x",
-         "QEMUOUTPUT=" + os.path.join(args.log_dir, "qemu.out.%03d" % n),
+         "QEMUOUTPUT=" + qemuoutput,
          os.path.join(args.log_dir, "mtrace.out.%03d-scripted" % n)]
   if args.kernel:
     cmd.append('KERN=%s' % args.kernel)
   if qemuextra:
     cmd.append('QEMUEXTRA=%s' % qemuextra)
   p = subprocess.Popen(cmd, stdout=null, stdin=null)
-  procs.append(p)
+  procs.append((p, qemuoutput))
 
-for p in procs:
+for i, (p, qemuoutput) in enumerate(procs):
   p.wait()
-
+  qemulog = open(qemuoutput, 'U').read()
+  if 'fstest: done\n' not in qemulog:
+    print >>sys.stderr, 'Warning: fstest shard %d failed; see %s' % \
+      (i, qemuoutput)

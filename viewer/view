@@ -7,6 +7,8 @@ import json
 import shutil
 import BaseHTTPServer
 import subprocess
+import gzip
+from cStringIO import StringIO
 
 import dblib
 
@@ -30,7 +32,15 @@ def load_dbs():
         runid = os.path.splitext(os.path.basename(mscan))[0]
         data = json.load(open(mscan))
         testcases = dblib.reformat_tests(data['testcases'], runid)
-        dbs[runid] = json.dumps({'testcases': testcases}, separators=(',',':'))
+
+        # Do some simple compression in case this is being accessed
+        # remotely
+        stacks = dblib.dedup_stacks(testcases)
+        testcases = dblib.tablify(testcases, ('calls', 'shared',
+                                              'runid', 'pathid', 'testno'))
+
+        dbs[runid] = json.dumps({'testcases': testcases, 'stacks': stacks},
+                                separators=(',',':'))
     return dbs
 
 def mkindexjs(dbs):
@@ -49,6 +59,7 @@ def mkindexjs(dbs):
     return indexjs
 
 dbs = load_dbs()
+cdbs = {}
 indexjs = mkindexjs(dbs)
 
 # Run server
@@ -73,9 +84,21 @@ class MyReqHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            self.send_header('Content-length', str(len(dbs[runid])))
+            data = dbs[runid]
+            if 'gzip' in [e.split(';')[0].strip()
+                          for e in self.headers.get('Accept-encoding', '').
+                          split(',')]:
+                if runid not in cdbs:
+                    sio = StringIO()
+                    gzf = gzip.GzipFile(mode='w', fileobj=sio)
+                    gzf.write(dbs[runid])
+                    gzf.close()
+                    cdbs[runid] = sio.getvalue()
+                data = cdbs[runid]
+                self.send_header('Content-encoding', 'gzip')
+            self.send_header('Content-length', str(len(data)))
             self.end_headers()
-            self.wfile.write(dbs[runid])
+            self.wfile.write(data)
             return
 
         ext = os.path.splitext(self.path)[1]

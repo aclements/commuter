@@ -69,12 +69,41 @@ been used with the following operating systems:
   See the `README.md` in the mtrace repository for build instructions
   and more information on using mtrace with Linux.
 
+  Note that the we use an unconventional Linux setup.  To keep the
+  virtual machine minimal, we run it with no disk, completely from an
+  initramfs.  However, the initramfs does not contain a typical Linux
+  user-space; to keep the sv6 and Linux environments as similar as
+  possible, the initramfs contains the sv6 user-space, compiled for
+  Linux.  This is probably not the best setup in the long run, but it
+  was expedient.
+
 * sv6 - The scalable POSIX-like operating system we built with the
   help of Commuter.  sv6 includes the RadixVM virtual memory system
   and the ScaleFS file system, published in EuroSys '13 and SOSP '13,
   respectively.  sv6 can be found at
 
         git clone https://github.com/aclements/sv6.git
+
+Building dependencies
+---------------------
+
+The `setup` script will download and build all of Commuter's
+dependencies and both operating systems.  However, if you do this by
+hand,
+
+1. Make sure mtrace is checked out in `ext/mtrace` and that you've
+   compiled the mtrace version of QEMU as well as the tools in
+   `ext/mtrace/mtrace-tools`.
+
+2. Make sure sv6 is checked out in `ext/sv6`.  You *don't* need to
+   compile it, since the below instructions compile it with special
+   options.
+
+3. Make sure linux-mtrace is checked out in `ext/linux-mtrace` and
+   compiled.
+
+You can of course use a directory other than `ext`, but the directions
+below assume dependencies are checked out in `ext`.
 
 Commuter components
 -------------------
@@ -128,35 +157,14 @@ There is a web-based interactive data visualizer in `viewer/`.  See
 Running the POSIX model
 -----------------------
 
-First,
-
-1. Make sure mtrace is checked out in `../mtrace` and that you've
-   compiled the mtrace version of QEMU as well as the tools in
-   `../mtrace/mtrace-tools`.
-
-2. Make sure sv6 is checked out in `../sv6`.  You *don't* need to
-   compile it, since the below instructions compile it with special
-   options.
-
-3. Make sure linux-mtrace is checked out in `../linux-mtrace` and
-   compiled.
-
-Note that the we use an unconventional Linux setup.  To keep the
-virtual machine minimal, we run it with no disk, completely from an
-initramfs.  However, the initramfs does not contain a typical Linux
-user-space; to keep the sv6 and Linux environments as similar as
-possible, the initramfs contains the sv6 user-space, compiled for
-Linux.  This is probably not the best setup in the long run, but it
-was expedient.
-
 ### Generate test cases
 
     # Run model; go get lunch
     ./par-spec.py models.fs -t testgen.c -m model.out --max-tests-per-path 500
     # Split testgen.c for parallel build
-    ./split-testgen.py -d ../sv6/libutil < testgen.c
+    ./split-testgen.py -d ext/sv6/libutil < testgen.c
 
-Neither Linux nor sv6 support resting `reboot`, so if your goal is
+Neither Linux nor sv6 support testing `reboot`, so if your goal is
 only to examine cache line sharing, you can speed up `spec.py` by
 passing `-f '!reboot'`.
 
@@ -166,19 +174,19 @@ well, pass `-f '!reboot,!sync,!fsync'` to `spec.py`.
 
 ### Check cache line sharing on sv6 (serial version)
 
-    cd ../sv6
+    cd ext/sv6
     make HW=mtrace RUN='fstest -t; halt' mtrace.out
     ../mtrace/mtrace-tools/mscan --check-testcases --kernel o.mtrace/kernel.elf > mscan-sv6.out
 
 ### Check cache line sharing on sv6 (parallel version)
 
-    cd ../sv6
-    ../commuter/par-mtrace.py -m xv6
-    ../commuter/par-mscan.py --kernel o.mtrace/kernel.elf > mscan-sv6.out
+    cd ext/sv6
+    ../../par-mtrace.py -m xv6
+    ../../par-mscan.py --kernel o.mtrace/kernel.elf > mscan-sv6.out
 
 ### Check cache line sharing on Linux with ramfs (serial version)
 
-    cd ../sv6
+    cd ext/sv6
     # Build the Linux initramfs for mtrace
     make HW=linuxmtrace
     # Run Linux kernel with tracing
@@ -188,18 +196,18 @@ well, pass `-f '!reboot,!sync,!fsync'` to `spec.py`.
 
 ### Check cache line sharing on Linux with ramfs (parallel version)
 
-    cd ../sv6
-    ../commuter/par-mtrace.py -m linux
-    ../commuter/par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
+    cd ext/sv6
+    ../../par-mtrace.py -m linux
+    ../../par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
 
 ### Check cache line sharing on Linux with disk-based FS
 
 This requires an mtrace kernel compiled with `CONFIG_DEVTMPFS=y`,
 `CONFIG_BLK_DEV_RAM=y`, and support for the desired file system.
 
-    cd ../sv6
-    ../commuter/par-mtrace.py -m linux --fs-type ext4
-    ../commuter/par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
+    cd ext/sv6
+    ../../par-mtrace.py -m linux --fs-type ext4
+    ../../par-mscan.py --kernel ../linux-mtrace/vmlinux > mscan-linux.out
 
 Now you can examine `mscan-sv6.out` or `mscan-linux.out` for
 unnecessary sharing, or use the tools in `tools/` to generate

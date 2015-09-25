@@ -117,7 +117,7 @@ def component_z3(args):
     if not os.path.isdir('z3'):
         trace('Clone Z3')
         try:
-            sh(['git', 'clone', 'https://git01.codeplex.com/z3'])
+            sh(['git', 'clone', 'https://github.com/Z3Prover/z3'])
         except subprocess.CalledProcessError as e:
             if e.returncode == 128:
                 print >>sys.stderr

@@ -31,8 +31,8 @@ Commuter depends on several other software packages, which themselves
 depend on other packages.  You can either use Commuter's setup script
 to install these, or install them yourself.
 
-* Z3 - Z3 is available from https://z3.codeplex.com/ .  As of this
-  writing you'll need a nightly build, since Commuter depends on
+* Z3 - Z3 is available from https://github.com/Z3Prover/z3 .  As of
+  this writing you'll need a nightly build, since Commuter depends on
   several bug fixes that are not in the stable 4.3.0 release.  You can
   download pre-built nightlies for various OSs from Z3's home page, or
   clone their unstable branch.
